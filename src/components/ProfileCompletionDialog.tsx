@@ -36,7 +36,7 @@ interface ProfileCompletionDialogProps {
   userId: string;
 }
 
-// Schema for profile completion form
+// Schema for profile completion form (name + phone)
 const profileCompletionSchema = z.object({
   name: nameSchema,
   phone: z.string().min(1, "Phone number is required"),
@@ -158,7 +158,6 @@ export const ProfileCompletionDialog: React.FC<ProfileCompletionDialogProps> = (
 
     try {
       const fullPhone = countryCode + form.values.phone;
-
       const { error } = await supabase
         .from("profiles")
         .update({
@@ -167,9 +166,7 @@ export const ProfileCompletionDialog: React.FC<ProfileCompletionDialogProps> = (
         })
         .eq("id", userId);
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       toast({
         title: "Profile updated",

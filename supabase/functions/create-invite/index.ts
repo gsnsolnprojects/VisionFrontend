@@ -209,6 +209,7 @@ serve(async (req: Request) => {
           company_id: companyId,
           company_name: company.name ?? null,
           invite_token: token,
+          needs_password_set: true, // Frontend will show Set Password step after first sign-in
         },
       });
 

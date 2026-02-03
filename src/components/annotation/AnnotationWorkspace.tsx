@@ -144,9 +144,9 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       try {
         console.log("[AnnotationWorkspace] Initializing for dataset:", datasetId);
         
-        // Fetch unlabeled images
+        // Fetch unlabeled images (request a high limit so all are loaded)
         console.log("[AnnotationWorkspace] Fetching unlabeled images...");
-        const imagesData = await annotationsApi.getUnlabeledImages(datasetId);
+        const imagesData = await annotationsApi.getUnlabeledImages(datasetId, { limit: 10000 });
         console.log("[AnnotationWorkspace] Unlabeled images response:", imagesData);
         
         if (!imagesData || !imagesData.images) {
@@ -987,7 +987,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
               // Retry initialization by re-running the effect
               const initialize = async () => {
                 try {
-                  const imagesData = await annotationsApi.getUnlabeledImages(datasetId);
+                  const imagesData = await annotationsApi.getUnlabeledImages(datasetId, { limit: 10000 });
                   if (!imagesData || !imagesData.images) {
                     throw new Error("Invalid response from unlabeled-images endpoint");
                   }

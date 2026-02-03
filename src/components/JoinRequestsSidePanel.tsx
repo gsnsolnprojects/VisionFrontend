@@ -29,6 +29,7 @@ interface JoinRequest {
   profiles: {
     name: string;
     email: string;
+    phone?: string;
   } | null;
 }
 
@@ -73,7 +74,7 @@ export const JoinRequestsSidePanel: React.FC<JoinRequestsSidePanelProps> = ({
             // Fallback to direct query (may fail due to RLS, but we try)
             const { data: fallbackData } = await supabase
               .from("profiles")
-              .select("name, email")
+              .select("name, email, phone")
               .eq("id", request.user_id)
               .maybeSingle();
             profileData = fallbackData;

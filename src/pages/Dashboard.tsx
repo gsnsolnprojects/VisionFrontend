@@ -111,28 +111,50 @@ const Dashboard = () => {
   // Handle invite token from URL (only after session is ready)
   useEffect(() => {
     if (!sessionReady) return;
-    const inviteToken = searchParams.get("invite") ?? searchParams.get("project_invite");
+    const raw = searchParams.get("invite") ?? searchParams.get("project_invite");
+    const inviteToken = raw?.trim();
     if (inviteToken && user && !profileLoading) {
       handleInviteAcceptance(inviteToken);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionReady, user, searchParams, profileLoading]);
 
-  // Show profile completion dialog for invited users with incomplete profiles
+  // Show profile completion dialog for users with incomplete profiles
+  // This includes: invited users, users who joined via join request, and any user missing name/phone
   useEffect(() => {
-    if (!sessionReady || profileLoading) return;
+    if (!sessionReady || profileLoading || !profile) return;
     
-    // Only show dialog if user has a company_id (was invited/joined)
-    // AND has an incomplete profile (empty name or phone)
-    if (profile && profile.company_id) {
-      const hasIncompleteName = !profile.name || profile.name.trim() === '';
-      const hasIncompletePhone = !profile.phone || profile.phone.trim() === '';
-      
-      if (hasIncompleteName || hasIncompletePhone) {
+    // Check if profile is incomplete (empty or null name or phone)
+    const hasIncompleteName = !profile.name || profile.name.trim() === '';
+    const hasIncompletePhone = !profile.phone || profile.phone.trim() === '';
+    
+    // Show dialog if profile is incomplete
+    // Priority: Show for users with company_id (invited/joined), but also check all users
+    if (hasIncompleteName || hasIncompletePhone) {
+      // For users without company_id, only show if they're trying to join (have pending request)
+      // For users with company_id, always show
+      if (profile.company_id) {
         setShowProfileCompletionDialog(true);
+      } else {
+        // Check if user has a pending join request - if so, show profile completion
+        // This helps ensure join requests show correct name
+        const checkPendingRequest = async () => {
+          const { data: pendingRequest } = await supabase
+            .from("workspace_join_requests")
+            .select("id")
+            .eq("user_id", user?.id)
+            .in("status", ["pending", "email_sent"])
+            .maybeSingle();
+          
+          if (pendingRequest) {
+            setShowProfileCompletionDialog(true);
+          }
+        };
+        
+        checkPendingRequest();
       }
     }
-  }, [sessionReady, profileLoading, profile]);
+  }, [sessionReady, profileLoading, profile, user?.id]);
 
   // Handle join request approve/reject from email links
   const handleJoinRequestFromEmail = async (token: string, action: string) => {
@@ -280,21 +302,28 @@ const Dashboard = () => {
       }
 
       // Accept the invite
+      if (!inviteToken || !inviteToken.trim() || !user?.id) {
+        console.warn("Skipping accept-invite from dashboard due to missing token or userId", {
+          hasToken: !!inviteToken,
+          hasUserId: !!user?.id,
+        });
+        return;
+      }
+
       const { data: acceptJson, error: acceptError } = await supabase.functions.invoke("accept-invite", {
-        body: { token: inviteToken, userId: user.id },
+        body: { token: inviteToken.trim(), userId: user.id },
       });
 
-      if (!acceptError && acceptJson?.ok) {
+      const accepted = acceptJson?.ok || acceptJson?.error === "invite already accepted";
+      if (accepted) {
         toast({
-          title: "Invite accepted",
+          title: acceptJson?.error === "invite already accepted" ? "Already a member" : "Invite accepted",
           description: "You have been added to the company.",
         });
-        // Clear invite token from URL
         const newParams = new URLSearchParams(searchParams);
         newParams.delete("invite");
         newParams.delete("project_invite");
         setSearchParams(newParams);
-        // Reload profile to get updated company_id
         await reloadProfile();
       } else {
         toast({
@@ -309,7 +338,7 @@ const Dashboard = () => {
   };
 
   const checkForValidInvite = async (): Promise<boolean> => {
-    const inviteToken = searchParams.get("invite") ?? searchParams.get("project_invite");
+    const inviteToken = (searchParams.get("invite") ?? searchParams.get("project_invite"))?.trim();
     if (!inviteToken) return false;
 
     try {
@@ -708,6 +737,24 @@ const Dashboard = () => {
       return;
     }
 
+    // Check if profile has name and phone before sending join request
+    // This ensures admin sees correct name in join requests
+    if (profile) {
+      const hasIncompleteName = !profile.name || profile.name.trim() === '';
+      const hasIncompletePhone = !profile.phone || profile.phone.trim() === '';
+      
+      if (hasIncompleteName || hasIncompletePhone) {
+        toast({
+          title: "Complete your profile",
+          description: "Please complete your profile (name and phone) before joining a company.",
+          variant: "destructive",
+        });
+        setShowProfileCompletionDialog(true);
+        setShowCompanyExistsDialog(false); // Close company exists dialog
+        return;
+      }
+    }
+
     setJoinRequestLoading(true);
     try {
       // Trim and normalize company name for comparison
@@ -793,6 +840,23 @@ const Dashboard = () => {
         variant: "destructive",
       });
       return;
+    }
+
+    // Check if profile has name and phone before sending join request
+    // This ensures admin sees correct name in join requests
+    if (profile) {
+      const hasIncompleteName = !profile.name || profile.name.trim() === '';
+      const hasIncompletePhone = !profile.phone || profile.phone.trim() === '';
+      
+      if (hasIncompleteName || hasIncompletePhone) {
+        toast({
+          title: "Complete your profile",
+          description: "Please complete your profile (name and phone) before joining a company.",
+          variant: "destructive",
+        });
+        setShowProfileCompletionDialog(true);
+        return;
+      }
     }
 
     setJoinRequestLoading(true);

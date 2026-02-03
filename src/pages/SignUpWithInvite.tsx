@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/PasswordInput";
 import { motion } from "framer-motion";
 import { fadeInUpVariants } from "@/utils/animations";
@@ -27,7 +28,9 @@ export default function SignUpWithInvite() {
   const [loading, setLoading] = useState(false);
   const [validating, setValidating] = useState(!!inviteToken);
   const [inviteData, setInviteData] = useState<any>(null);
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -56,10 +59,25 @@ export default function SignUpWithInvite() {
 
   async function handleSignUp(e: React.FormEvent) {
     e.preventDefault();
+
+    if (!name.trim()) {
+      setErrorMsg("Please enter your full name.");
+      return;
+    }
+
     setLoading(true);
     setErrorMsg(null);
     try {
-      const { data, error } = await supabase.auth.signUp({ email, password });
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name: name.trim(),
+            phone: phone.trim() || null,
+          },
+        },
+      });
       
       // Handle specific error cases
       if (error) {
@@ -96,20 +114,75 @@ export default function SignUpWithInvite() {
         return;
       }
 
+      // Ensure profile row has name and phone so join requests and team members show correct details
+      // Retry logic to ensure profile is saved even if trigger hasn't run yet
+      let profileSaved = false;
+      let retries = 0;
+      const maxRetries = 3;
+      
+      while (!profileSaved && retries < maxRetries) {
+        try {
+          const { error: profileError } = await supabase
+            .from("profiles")
+            .upsert(
+              {
+                id: user.id,
+                name: name.trim(),
+                phone: phone.trim() || null,
+                email: email.trim(),
+              },
+              { onConflict: "id" }
+            );
+
+          if (profileError) {
+            console.error(`[SignUpWithInvite] Error upserting profile (attempt ${retries + 1}/${maxRetries}):`, profileError);
+            retries++;
+            // Wait a bit before retrying (exponential backoff)
+            if (retries < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 500 * retries));
+            }
+          } else {
+            profileSaved = true;
+            console.log("[SignUpWithInvite] Profile upserted successfully");
+          }
+        } catch (profileErr) {
+          console.error(`[SignUpWithInvite] Unexpected error upserting profile (attempt ${retries + 1}/${maxRetries}):`, profileErr);
+          retries++;
+          if (retries < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 500 * retries));
+          }
+        }
+      }
+      
+      if (!profileSaved) {
+        console.warn("[SignUpWithInvite] Failed to upsert profile after retries - trigger should handle it");
+      }
+
       // call accept-invite server function with token and new user.id
       if (inviteToken) {
+        if (!inviteToken.trim() || !user.id) {
+          console.warn("Skipping accept-invite after sign-up due to missing token or userId", {
+            hasToken: !!inviteToken,
+            hasUserId: !!user.id,
+          });
+        } else {
         const { data: acceptJson, error: acceptError } = await supabase.functions.invoke("accept-invite", {
-          body: { token: inviteToken, userId: user.id },
-        });
-        if (acceptError || !acceptJson?.ok) {
-          // show error but user account exists; support manual recovery.
-          setErrorMsg(acceptJson?.error || "Failed to accept invite");
-          setLoading(false);
-          return;
+            body: { token: inviteToken.trim(), userId: user.id },
+          });
+          const accepted = acceptJson?.ok || acceptJson?.error === "invite already accepted";
+          if (accepted) {
+            // all good - redirect
+            navigate("/dashboard");
+            return;
+          }
+          if (acceptError || !acceptJson?.ok) {
+            setErrorMsg(acceptJson?.error || "Failed to accept invite");
+            setLoading(false);
+            return;
+          }
         }
       }
 
-      // all good - redirect
       navigate("/dashboard");
     } catch (err:any) {
       setErrorMsg(err?.message ?? String(err));
@@ -132,18 +205,52 @@ export default function SignUpWithInvite() {
         {errorMsg && <div className="text-destructive mb-4">{errorMsg}</div>}
 
         <form onSubmit={handleSignUp} className="space-y-4">
-        <label>
-          <div className="text-sm text-muted-foreground">Email</div>
-          <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-        </label>
+          <div className="space-y-2">
+            <Label className="text-sm text-muted-foreground">Full name</Label>
+            <Input
+              type="text"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your full name"
+            />
+          </div>
 
-        <label>
-          <div className="text-sm text-muted-foreground">Password</div>
-          <PasswordInput required value={password} onChange={(e) => setPassword(e.target.value)} />
-        </label>
+          <div className="space-y-2">
+            <Label className="text-sm text-muted-foreground">Email</Label>
+            <Input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm text-muted-foreground">
+              Phone number <span className="text-xs text-muted-foreground">(optional)</span>
+            </Label>
+            <Input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="e.g. +91 98765 43210"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm text-muted-foreground">Password</Label>
+            <PasswordInput
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
 
           <div>
-            <Button type="submit" disabled={loading}>{loading ? "Creating..." : "Create account"}</Button>
+            <Button type="submit" disabled={loading}>
+              {loading ? "Creating..." : "Create account"}
+            </Button>
           </div>
         </form>
       </motion.div>

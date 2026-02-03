@@ -12,6 +12,7 @@ interface RequestItemProps {
     profiles?: {
       name: string;
       email: string;
+      phone?: string;
     } | null;
   };
   onApprove: (requestId: string) => void;
@@ -25,8 +26,9 @@ export const RequestItem: React.FC<RequestItemProps> = ({
   onReject,
   loading = false,
 }) => {
-  const requesterName = request.profiles?.name || "Unknown User";
-  const requesterEmail = request.profiles?.email || "No email";
+  // Handle empty strings properly - trim and check if meaningful
+  const requesterName = request.profiles?.name?.trim() || "Unknown User";
+  const requesterEmail = request.profiles?.email?.trim() || "No email";
   const timeAgo = formatDistanceToNow(new Date(request.created_at), { addSuffix: true });
   const isAccepted = request.status === "approved";
   const isPending = request.status === "pending" || request.status === "email_sent";

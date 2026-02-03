@@ -8,6 +8,7 @@ import {
   type InviteUserFormData,
 } from "@/lib/validations/authSchemas";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
   companyId: string;
@@ -61,12 +62,25 @@ export const InviteUserDialog: React.FC<Props> = ({
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
       const url = `${supabaseUrl}/functions/v1/create-invite`;
 
+      // Use fresh session token so Edge Function always receives a valid Authorization header
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? accessToken ?? supabaseAnonKey;
+      if (!token || token === supabaseAnonKey) {
+        toast({
+          title: "Authentication required",
+          description: "Please sign in again and try inviting.",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
+
       const res = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "apikey": supabaseAnonKey,
-          "Authorization": `Bearer ${accessToken || supabaseAnonKey}`,
+          "Authorization": `Bearer ${token}`,
         },
         body: JSON.stringify({
           companyId,

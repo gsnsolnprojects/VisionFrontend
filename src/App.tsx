@@ -1,10 +1,11 @@
-import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import Landing from "@/pages/Landing";
 import Auth from "@/pages/Auth";
 import Dashboard from "@/pages/Dashboard";
 import DatasetManager from "@/pages/DatasetManager";
 import ResetPassword from "@/pages/ResetPassword";
+import SetPasswordPage from "@/pages/SetPasswordPage";
 import VerifyEmail from "@/pages/VerifyEmail";
 import NotFound from "@/pages/NotFound";
 import MainLayout from "@/layouts/MainLayout";
@@ -32,7 +33,11 @@ import { AnnotationPage } from "@/pages/AnnotationPage";
 // Protected routes component - gates routes behind authentication
 const ProtectedRoutes = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { sessionReady, user, loading } = useProfile();
+
+  const needsPasswordSet = (user?.user_metadata as Record<string, unknown>)?.needs_password_set === true;
+  const isSetPasswordPage = location.pathname === "/set-password";
 
   // Redirect to auth if session is ready but no user
   useEffect(() => {
@@ -40,6 +45,13 @@ const ProtectedRoutes = () => {
       navigate("/auth", { replace: true });
     }
   }, [sessionReady, user, navigate]);
+
+  // If user must set password (invited, first sign-in), redirect to /set-password unless already there
+  useEffect(() => {
+    if (sessionReady && user && needsPasswordSet && !isSetPasswordPage) {
+      navigate("/set-password", { replace: true });
+    }
+  }, [sessionReady, user, needsPasswordSet, isSetPasswordPage, navigate]);
 
   // Route persistence is now handled by useRoutePersistence hook in AppShell
   // No duplicate persistence logic needed here
@@ -61,6 +73,9 @@ const ProtectedRoutes = () => {
   // Render routes only when session is ready and user exists
   return (
     <Routes>
+      {/* Set password (invited users, one-time) - no MainLayout */}
+      <Route path="/set-password" element={<SetPasswordPage />} />
+
       {/* App pages with header/sidebar */}
       <Route element={<MainLayout />}>
         {/* Dashboard */}

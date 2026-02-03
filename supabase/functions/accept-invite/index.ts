@@ -44,9 +44,11 @@ serve(async (req: Request) => {
       );
     }
     if (invite.status === "accepted") {
+      // Treat repeated uses of the same invite token as a soft success.
+      // Frontend will handle "invite already accepted" as an accepted state.
       return new Response(
         JSON.stringify({ ok: false, error: "invite already accepted" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...CORS } },
+        { status: 200, headers: { "Content-Type": "application/json", ...CORS } },
       );
     }
     if (invite.status === "revoked") {

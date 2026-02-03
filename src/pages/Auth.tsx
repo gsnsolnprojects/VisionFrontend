@@ -54,6 +54,7 @@ const Auth = () => {
   }, []);
 
   const [loading, setLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState<number>(0);
   
   // Get invite token from URL if present
   const inviteToken = searchParams.get("invite") ?? searchParams.get("project_invite");
@@ -75,6 +76,54 @@ const Auth = () => {
       setMode("signin");
     }
   }, [inviteToken, mode]);
+
+  // Restore signup verification resend cooldown from localStorage on mount
+  useEffect(() => {
+    try {
+      const storedReadyAt = localStorage.getItem("signup-resend-ready-at");
+      if (!storedReadyAt) return;
+
+      const readyAt = parseInt(storedReadyAt, 10);
+      if (Number.isNaN(readyAt)) {
+        localStorage.removeItem("signup-resend-ready-at");
+        return;
+      }
+
+      const now = Date.now();
+      if (readyAt <= now) {
+        localStorage.removeItem("signup-resend-ready-at");
+        return;
+      }
+
+      const secondsRemaining = Math.ceil((readyAt - now) / 1000);
+      if (secondsRemaining > 0) {
+        setResendCooldown(secondsRemaining);
+      } else {
+        localStorage.removeItem("signup-resend-ready-at");
+      }
+    } catch {
+      // If anything goes wrong reading storage, fail silently
+    }
+  }, []);
+
+  // Countdown effect for resend cooldown
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+
+    const interval = window.setInterval(() => {
+      setResendCooldown((prev) => {
+        if (prev <= 1) {
+          localStorage.removeItem("signup-resend-ready-at");
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [resendCooldown]);
 
   // Listen for auth state changes to handle invite acceptance after magic link sign-in
   useEffect(() => {
@@ -299,7 +348,8 @@ useEffect(() => {
       return;
     }
 
-    if (acceptJson?.ok) {
+    const accepted = acceptJson?.ok || acceptJson?.error === "invite already accepted";
+    if (accepted) {
       toast({
         title: "Invite accepted",
         description: "You have been added to the company. Redirecting to dashboard...",
@@ -491,21 +541,39 @@ useEffect(() => {
       }
 
       // Create or update profile with name and phone
+      // Retry logic to ensure profile is saved even if trigger hasn't run yet
       if (data?.user?.id) {
-        const { error: profileError } = await supabase
-          .from("profiles")
-          .upsert({
-            id: data.user.id,
-            name: signupForm.values.name,
-            phone: fullPhone,
-            email: signupForm.values.email,
-          }, {
-            onConflict: "id",
-          });
+        let profileSaved = false;
+        let retries = 0;
+        const maxRetries = 3;
+        
+        while (!profileSaved && retries < maxRetries) {
+          const { error: profileError } = await supabase
+            .from("profiles")
+            .upsert({
+              id: data.user.id,
+              name: signupForm.values.name.trim(),
+              phone: fullPhone.trim(),
+              email: signupForm.values.email.trim(),
+            }, {
+              onConflict: "id",
+            });
 
-        if (profileError) {
-          console.error("Error creating profile:", profileError);
-          // Don't fail the signup if profile creation fails - trigger might handle it
+          if (profileError) {
+            console.error(`[Auth] Error upserting profile (attempt ${retries + 1}/${maxRetries}):`, profileError);
+            retries++;
+            // Wait a bit before retrying (exponential backoff)
+            if (retries < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 500 * retries));
+            }
+          } else {
+            profileSaved = true;
+            console.log("[Auth] Profile upserted successfully");
+          }
+        }
+        
+        if (!profileSaved) {
+          console.warn("[Auth] Failed to upsert profile after retries - trigger should handle it");
         }
       }
 
@@ -515,14 +583,49 @@ useEffect(() => {
           "Please check your email inbox and confirm your email to sign in.",
       });
     } catch (error: any) {
-      let message = error.message;
+      const rawMessage: string = error?.message || "";
+      let friendlyMessage = rawMessage;
 
-      if (message?.includes("User already")) {
-        message = "An account with this email already exists. Please sign in instead.";
+      if (friendlyMessage?.includes("User already")) {
+        friendlyMessage =
+          "An account with this email already exists. Please sign in instead.";
       }
+
+      // Detect Supabase email rate limit for verification emails
+      const lower = rawMessage.toLowerCase();
+      const isRateLimit =
+        error?.status === 429 ||
+        error?.code === "over_email_send_rate_limit" ||
+        lower.includes("rate limit") ||
+        lower.includes("only request this") ||
+        lower.includes("security purposes") ||
+        lower.includes("after") && lower.includes("seconds");
+
+      let description = friendlyMessage || "Something went wrong";
+
+      if (isRateLimit) {
+        // Try to extract wait time from message (e.g., "after 59 seconds")
+        const waitMatch = rawMessage.match(/(\d+)\s*seconds?/i);
+        const waitSeconds = waitMatch ? parseInt(waitMatch[1], 10) || 60 : 60;
+
+        // Start / update cooldown timer and persist ready-at timestamp
+        const readyAt = Date.now() + waitSeconds * 1000;
+        try {
+          localStorage.setItem("signup-resend-ready-at", String(readyAt));
+        } catch {
+          // Ignore storage errors
+        }
+        setResendCooldown(waitSeconds);
+
+        description =
+          `You've requested verification too many times. ` +
+          `Please wait ${waitSeconds} seconds before trying again. ` +
+          `A countdown is shown below the Sign Up button.`;
+      }
+
       toast({
         title: "signup failed",
-        description: error.message || "Something went wrong",
+        description,
         variant: "destructive",
       });
     } finally {
@@ -808,10 +911,21 @@ useEffect(() => {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={loading}
+                disabled={loading || resendCooldown > 0}
               >
-                {loading ? "Signing up..." : "Sign Up"}
+                {loading
+                  ? "Signing up..."
+                  : resendCooldown > 0
+                  ? `Sign Up (available in ${resendCooldown}s)`
+                  : "Sign Up"}
               </Button>
+
+              {resendCooldown > 0 && (
+                <p className="text-xs text-center text-muted-foreground">
+                  You can request another verification email in{" "}
+                  <span className="font-semibold">{resendCooldown}s</span>.
+                </p>
+              )}
 
               <p className="text-sm text-center text-muted-foreground">
                 Already have an account?{" "}
