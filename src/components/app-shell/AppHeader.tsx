@@ -13,12 +13,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { AppSidebar } from "./AppSidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useToast } from "@/hooks/use-toast";
 
 export const AppHeader: React.FC = () => {
   const navigate = useNavigate();
-  const { profile, isAdmin, company, loading, sessionReady, hasPermission } = useProfile();
+  const { profile, isAdmin, company, loading, sessionReady, hasPermission, user } = useProfile();
   const { isOnline, isLoading: backendStatusLoading } = useBackendStatus();
   const { theme, toggleTheme } = useTheme();
+  const { toast } = useToast();
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
   const [showRequestsPanel, setShowRequestsPanel] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -43,6 +45,110 @@ export const AppHeader: React.FC = () => {
       });
     }
   }, [profile, company, isAdmin, loading, sessionReady]);
+
+  // Realtime notifications for requester when their join request is approved or rejected
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`workspace-join-requests-user-${user.id}`)
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "workspace_join_requests",
+        filter: `user_id=eq.${user.id}`,
+      }, (payload) => {
+        const oldRow = payload.old as { status?: string } | null;
+        const newRow = payload.new as { status?: string; company_name?: string } | null;
+
+        const oldStatus = oldRow?.status;
+        const newStatus = newRow?.status;
+        const companyName = newRow?.company_name;
+
+        if (!newStatus || oldStatus === newStatus) return;
+
+        if (newStatus === "approved") {
+          toast({
+            title: "Request approved",
+            description: companyName
+              ? `Your request to join "${companyName}" has been accepted.`
+              : "Your workspace join request has been accepted.",
+          });
+        } else if (newStatus === "rejected") {
+          toast({
+            title: "Request rejected",
+            description: companyName
+              ? `Your request to join "${companyName}" has been rejected.`
+              : "Your workspace join request has been rejected.",
+            variant: "destructive",
+          });
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, toast]);
+
+  // Initial + periodic check so requester sees status change even if they weren't online at the exact moment
+  useEffect(() => {
+    if (!user?.id || !sessionReady || loading) return;
+
+    let cancelled = false;
+    let lastSeenStatus: string | null = null;
+
+    const checkRequestStatus = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("workspace_join_requests")
+          .select("status, company_name")
+          .eq("user_id", user.id)
+          .in("status", ["approved", "rejected"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (cancelled || error || !data) return;
+
+        const currentStatus = data.status;
+        const companyName = data.company_name as string | undefined;
+
+        // Only notify once per status value in this session
+        if (!currentStatus || currentStatus === lastSeenStatus) return;
+        lastSeenStatus = currentStatus;
+
+        if (currentStatus === "approved") {
+          toast({
+            title: "Request approved",
+            description: companyName
+              ? `Your request to join "${companyName}" has been accepted.`
+              : "Your workspace join request has been accepted.",
+          });
+        } else if (currentStatus === "rejected") {
+          toast({
+            title: "Request rejected",
+            description: companyName
+              ? `Your request to join "${companyName}" has been rejected.`
+              : "Your workspace join request has been rejected.",
+            variant: "destructive",
+          });
+        }
+      } catch (err) {
+        console.error("Error checking join request status:", err);
+      }
+    };
+
+    // Initial check
+    checkRequestStatus();
+    // Lightweight polling as a fallback (every 30 seconds)
+    const interval = setInterval(checkRequestStatus, 30000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [user?.id, sessionReady, loading, toast]);
 
   // Poll for pending requests (every 30 seconds) if admin
   useEffect(() => {

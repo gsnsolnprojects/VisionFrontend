@@ -728,6 +728,27 @@ const Dashboard = () => {
       return;
     }
 
+    // Prevent duplicate join requests for the same user while a request is pending
+    try {
+      const { data: existingRequest } = await supabase
+        .from("workspace_join_requests")
+        .select("id, status")
+        .eq("user_id", user.id)
+        .in("status", ["pending", "email_sent"])
+        .maybeSingle();
+
+      if (existingRequest) {
+        toast({
+          title: "Request already pending",
+          description: "You already have a join request pending. Please wait for the admin to respond.",
+        });
+        return;
+      }
+    } catch (checkError) {
+      console.error("Error checking existing join request:", checkError);
+      // If this check fails, we continue with the existing flow to avoid blocking the user
+    }
+
     if (!companyForm.validateForm()) {
       toast({
         title: "Please check your details",
@@ -831,6 +852,27 @@ const Dashboard = () => {
         variant: "destructive",
       });
       return;
+    }
+
+    // Prevent duplicate join requests for the same user while a request is pending
+    try {
+      const { data: existingRequest } = await supabase
+        .from("workspace_join_requests")
+        .select("id, status")
+        .eq("user_id", user.id)
+        .in("status", ["pending", "email_sent"])
+        .maybeSingle();
+
+      if (existingRequest) {
+        toast({
+          title: "Request already pending",
+          description: "You already have a join request pending. Please wait for the admin to respond.",
+        });
+        return;
+      }
+    } catch (checkError) {
+      console.error("Error checking existing join request:", checkError);
+      // If this check fails, we continue with the existing flow to avoid blocking the user
     }
 
     if (!user) {

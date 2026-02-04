@@ -137,12 +137,16 @@ export const companyNameSchema = z
     "Company name must be at least 2 characters"
   )
   .refine(
-    (val) => val.trim().length <= 100,
-    "Company name must be at most 100 characters"
+    (val) => val.trim().length <= 50,
+    "Company name must be at most 50 characters"
   )
   .refine(
     (val) => val.trim().length > 0,
     "Company name cannot be only whitespace"
+  )
+  .refine(
+    (val) => !/^\d+$/.test(val.trim()),
+    "Company name cannot be only numbers"
   )
   .refine(
     (val) => /^[a-zA-Z0-9\s\-_&.,()]+$/.test(val.trim()),

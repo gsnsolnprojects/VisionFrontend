@@ -9,12 +9,28 @@ import { Lock } from "lucide-react";
 export const AnnotationPage: React.FC = () => {
   const { datasetId } = useParams<{ datasetId: string }>();
   const navigate = useNavigate();
-  const { hasPermission, loading: profileLoading } = useProfile();
+  const { hasPermission, loading: profileLoading, userRole, error } = useProfile();
   const { toast } = useToast();
 
   // Check permission on mount
   useEffect(() => {
-    if (!profileLoading && !hasPermission("annotateDatasets")) {
+    // Still loading profile - don't decide permissions yet
+    if (profileLoading) return;
+
+    // If profile fetch hit a soft timeout, avoid auto-redirecting.
+    // Let the user stay on the page while the app keeps existing state.
+    if (
+      error &&
+      (error.includes("Profile fetch timeout after 8 seconds") ||
+        error.includes("Profile fetch safety timeout after 10 seconds"))
+    ) {
+      return;
+    }
+
+    // If we don't have a resolved role yet, don't force-deny access.
+    if (!userRole) return;
+
+    if (!hasPermission("annotateDatasets")) {
       toast({
         title: "Access Denied",
         description: "You don't have permission to annotate datasets.",
@@ -22,7 +38,7 @@ export const AnnotationPage: React.FC = () => {
       });
       navigate("/dashboard?view=simulation", { replace: true });
     }
-  }, [hasPermission, profileLoading, navigate, toast]);
+  }, [hasPermission, profileLoading, userRole, error, navigate, toast]);
 
   if (!datasetId) {
     return (

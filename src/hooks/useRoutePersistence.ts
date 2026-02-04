@@ -32,7 +32,8 @@ export const useRoutePersistence = (isSessionReady: boolean, user: any) => {
       const isAppRoute = location.pathname.startsWith("/dashboard") || 
                         location.pathname.startsWith("/account") ||
                         location.pathname.startsWith("/dataset") ||
-                        location.pathname.startsWith("/project");
+                        location.pathname.startsWith("/project") ||
+                        location.pathname.startsWith("/annotation");
       
       if (isAppRoute && location.pathname !== "/auth") {
         try {
@@ -56,7 +57,8 @@ export const useRoutePersistence = (isSessionReady: boolean, user: any) => {
       if (!savedRoute) {
         const isAppRoute = location.pathname.startsWith("/dashboard") || 
                           location.pathname.startsWith("/account") ||
-                          location.pathname.startsWith("/dataset");
+                          location.pathname.startsWith("/dataset") ||
+                          location.pathname.startsWith("/annotation");
         
         if (isAppRoute && location.pathname !== "/auth") {
           try {
@@ -85,7 +87,8 @@ export const useRoutePersistence = (isSessionReady: boolean, user: any) => {
           savedRoute.startsWith("/dashboard") || 
           savedRoute.startsWith("/account") || 
           savedRoute.startsWith("/dataset") ||
-          savedRoute.startsWith("/project");
+          savedRoute.startsWith("/project") ||
+          savedRoute.startsWith("/annotation");
         
         // Check if current route is a default/landing route that should be replaced
         const isDefaultRoute = 
@@ -98,7 +101,8 @@ export const useRoutePersistence = (isSessionReady: boolean, user: any) => {
           location.pathname.startsWith("/dashboard") || 
           location.pathname.startsWith("/account") || 
           location.pathname.startsWith("/dataset") ||
-          location.pathname.startsWith("/project");
+          location.pathname.startsWith("/project") ||
+          location.pathname.startsWith("/annotation");
         
         // Restore if saved route is valid and different from current
         // This handles all cases:
