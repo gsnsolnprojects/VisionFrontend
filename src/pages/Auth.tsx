@@ -2,7 +2,9 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useProfile } from "@/hooks/useProfile";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -40,6 +42,8 @@ const Auth = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { error: profileError } = useProfile();
+  const isDeactivated = profileError?.toLowerCase().includes("deactivated") ?? false;
 
   // Force light theme on auth pages (no dark mode)
   useEffect(() => {
@@ -813,8 +817,16 @@ useEffect(() => {
         variants={fadeInUpVariants}
         initial="hidden"
         animate="visible"
-        className="w-full max-w-lg"
+        className="w-full max-w-lg space-y-4"
       >
+        {isDeactivated && (
+          <Alert variant="destructive" className="w-full">
+            <AlertTitle>Account deactivated</AlertTitle>
+            <AlertDescription>
+              Your account has been deactivated. Please contact your administrator.
+            </AlertDescription>
+          </Alert>
+        )}
         <Card className="w-full shadow-lg border border-border/70">
         <CardHeader className="text-center space-y-1">
           <CardTitle className="text-3xl font-bold">{headerTitle}</CardTitle>

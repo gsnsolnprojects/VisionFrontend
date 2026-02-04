@@ -143,7 +143,7 @@ export const getRolePermissions = (role: UserRole): RolePermissions => {
         ...base,
         uploadDatasets: false,
         deleteDatasets: false,
-        viewRawDatasetImages: false,
+        viewRawDatasetImages: true, // Viewers can see dataset preview (file list, thumbnails, images) in read-only mode
         annotateDatasets: false,
         viewProjects: true,
         viewDatasets: true,

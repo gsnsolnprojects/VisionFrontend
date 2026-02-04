@@ -429,6 +429,7 @@ const PredictionPage = () => {
   const [currentDetections, setCurrentDetections] = useState<number>(0);
   const [isProcessingFrame, setIsProcessingFrame] = useState<boolean>(false);
   const [fps, setFps] = useState<number>(0); // Optional: FPS counter
+  const [liveSessionConfidenceThreshold, setLiveSessionConfidenceThreshold] = useState<number | null>(null); // Value returned from live/start (optional display)
 
   // Refs
   const pollIntervalRef = useRef<number | null>(null);
@@ -1483,7 +1484,8 @@ const PredictionPage = () => {
 
       const data = await res.json();
       const newInferenceId = data.inferenceId;
-      
+      const sessionThreshold = typeof data.confidenceThreshold === "number" ? data.confidenceThreshold : confidenceThreshold;
+
       if (!newInferenceId) {
         throw new Error("No inference ID returned from server");
       }
@@ -1492,9 +1494,10 @@ const PredictionPage = () => {
       liveInferenceIdRef.current = newInferenceId;
       isLiveInferenceRunningRef.current = true;
 
-      // Set state
+      // Set state (include confidence threshold in use for optional display)
       setLiveInferenceId(newInferenceId);
       setIsLiveInferenceRunning(true);
+      setLiveSessionConfidenceThreshold(sessionThreshold);
       setAnnotatedFrame(null);
       setCurrentDetections(0);
 
@@ -1557,6 +1560,7 @@ const PredictionPage = () => {
     // Reset state and refs
     setLiveInferenceId(null);
     setIsLiveInferenceRunning(false);
+    setLiveSessionConfidenceThreshold(null);
     setAnnotatedFrame(null);
     setFrameKey(0);
     setCurrentDetections(0);
@@ -2874,6 +2878,43 @@ const PredictionPage = () => {
                     </div>
                   </div>
                 )}
+
+                {/* Confidence Threshold - same as image/video inference (0–1, default 0.25) */}
+                <div className="space-y-2 pt-2 border-t">
+                  <Label htmlFor="live-confidence">Confidence Threshold</Label>
+                  <div className="flex items-center gap-4">
+                    <Input
+                      id="live-confidence"
+                      type="number"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={confidenceThreshold}
+                      onChange={(e) => handleConfidenceChange(parseFloat(e.target.value) || 0)}
+                      className="w-32"
+                      disabled={!hasPermission("runInference")}
+                    />
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={confidenceThreshold}
+                      onChange={(e) => handleConfidenceChange(parseFloat(e.target.value))}
+                      className="flex-1"
+                      disabled={!hasPermission("runInference")}
+                    />
+                    <span className="text-sm text-muted-foreground w-12 text-right">
+                      {confidenceThreshold.toFixed(2)}
+                    </span>
+                  </div>
+                  {isLiveInferenceRunning && liveSessionConfidenceThreshold != null && (
+                    <p className="text-xs text-muted-foreground">
+                      Session threshold in use: {liveSessionConfidenceThreshold.toFixed(2)}
+                      {liveSessionConfidenceThreshold !== confidenceThreshold && " (you can change the slider for next frames)"}
+                    </p>
+                  )}
+                </div>
 
                 {/* Control Buttons */}
                 <div className="flex items-center gap-2 pt-2 border-t">

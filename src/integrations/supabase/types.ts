@@ -180,6 +180,7 @@ export type Database = {
           created_at: string | null
           email: string
           id: string
+          is_active: boolean | null
           is_verified: boolean | null
           name: string
           phone: string
@@ -189,6 +190,7 @@ export type Database = {
           created_at?: string | null
           email: string
           id: string
+          is_active?: boolean | null
           is_verified?: boolean | null
           name: string
           phone: string
@@ -198,6 +200,7 @@ export type Database = {
           created_at?: string | null
           email?: string
           id?: string
+          is_active?: boolean | null
           is_verified?: boolean | null
           name?: string
           phone?: string
