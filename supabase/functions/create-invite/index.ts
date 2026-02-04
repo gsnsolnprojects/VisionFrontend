@@ -152,6 +152,26 @@ serve(async (req: Request) => {
       );
     }
 
+    // ---- Check if invitee email already belongs to a different company ----
+    const { data: existingInAnotherCompany } = await supabase
+      .from("profiles")
+      .select("id, email, company_id")
+      .eq("email", inviteEmail)
+      .neq("company_id", companyId)
+      .not("company_id", "is", null)
+      .maybeSingle();
+
+    if (existingInAnotherCompany) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "User already exists in another company and cannot be added to your company",
+          errorCode: "USER_IN_ANOTHER_COMPANY",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json", ...CORS } },
+      );
+    }
+
     // ---- Create invite row in company_invites ----
     const token = crypto.randomUUID();
     const expiresAt = new Date(

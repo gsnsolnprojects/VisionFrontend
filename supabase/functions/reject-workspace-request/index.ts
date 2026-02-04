@@ -1,33 +1,57 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { Resend } from "https://esm.sh/resend@4.0.0";
 
-const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const resend = new Resend(Deno.env.get("RESEND_API_KEY")!);
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Content-Type": "application/json",
+};
 
 const handler = async (req: Request): Promise<Response> => {
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response("ok", {
+      status: 200,
+      headers: corsHeaders,
+    });
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+  if (!supabaseUrl || !supabaseKey) {
+    return new Response(
+      JSON.stringify({ success: false, error: "Server configuration error" }),
+      { status: 500, headers: corsHeaders }
+    );
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
   try {
     const url = new URL(req.url);
     // Support token from query params (for email links) or body (for invoke)
     let token = url.searchParams.get("token");
-    
+
     if (!token) {
       try {
         const body = await req.json().catch(() => ({}));
-        token = body?.token;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        token = (body as any)?.token;
       } catch {
         // If JSON parsing fails, token stays null
       }
     }
 
     if (!token) {
-      return new Response("Invalid token", { status: 400 });
+      return new Response(
+        JSON.stringify({ success: false, error: "Invalid token" }),
+        { status: 400, headers: corsHeaders }
+      );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // 1) Get request so we know who to email
+    // 1) Get join request
     const { data: request, error: fetchError } = await supabase
       .from("workspace_join_requests")
       .select("*")
@@ -35,52 +59,38 @@ const handler = async (req: Request): Promise<Response> => {
       .single();
 
     if (fetchError || !request) {
-      return new Response("Request not found", { status: 404 });
+      return new Response(
+        JSON.stringify({ success: false, error: "Request not found" }),
+        { status: 404, headers: corsHeaders }
+      );
     }
 
-    // 2) Update request status to ignored (hidden from list)
+    // 2) Update request status to rejected (hidden from list in UI)
     const { error: updateError } = await supabase
       .from("workspace_join_requests")
-      .update({ status: "ignored" })
+      .update({ status: "rejected" })
       .eq("token", token);
 
-    if (updateError) throw updateError;
-
-    // 3) Get user email
-    const { data: profile, error: profileFetchError } = await supabase
-      .from("profiles")
-      .select("name, email")
-      .eq("id", request.user_id)
-      .single();
-
-    if (!profileFetchError && profile?.email) {
-      await resend.emails.send({
-        from: "VisionM <no-reply@visionm.com>",
-        to: [profile.email],
-        subject: "Workspace Access Request Rejected",
-        html: `
-          <h1>Request Rejected</h1>
-          <p>Hi ${profile.name ?? ""},</p>
-          <p>Your request to join the workspace for <strong>${request.company_name}</strong> was rejected by the admin.</p>
-          <p>If you believe this is a mistake, please contact your workspace administrator.</p>
-        `,
-      });
+    if (updateError) {
+      throw updateError;
     }
 
-    // 4) Return JSON response (for Dashboard handler) or HTML (for direct browser access)
+    // 3) Return JSON response (for Dashboard handler) or HTML (for direct browser access)
     const acceptHeader = req.headers.get("accept") || "";
-    const isJsonRequest = acceptHeader.includes("application/json") || req.headers.get("content-type")?.includes("application/json");
+    const isJsonRequest =
+      acceptHeader.includes("application/json") ||
+      req.headers.get("content-type")?.includes("application/json");
 
     if (isJsonRequest) {
       // Return JSON for Dashboard handler
       return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: "Request rejected" 
+        JSON.stringify({
+          success: true,
+          message: "Request rejected",
         }),
         {
           status: 200,
-          headers: { "Content-Type": "application/json" },
+          headers: corsHeaders,
         }
       );
     } else {
@@ -99,19 +109,24 @@ const handler = async (req: Request): Promise<Response> => {
           <body>
             <div class="error">×</div>
             <h1>Workspace Request Rejected</h1>
-            <p>The user's request to join the workspace has been rejected and the user has been notified by email.</p>
+            <p>The user's request to join the workspace has been rejected.</p>
           </body>
         </html>
         `,
         {
           status: 200,
-          headers: { "Content-Type": "text/html" },
+          headers: { ...corsHeaders, "Content-Type": "text/html" },
         }
       );
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error:", error);
-    return new Response(`Error: ${error.message}`, { status: 500 });
+    const message =
+      error instanceof Error ? error.message : "Internal server error";
+    return new Response(
+      JSON.stringify({ success: false, error: message }),
+      { status: 500, headers: corsHeaders }
+    );
   }
 };
 

@@ -121,6 +121,8 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   const lastFetchTimeRef = useRef<number>(0);
   // Track ongoing requests to prevent duplicate calls
   const ongoingRequestRef = useRef<string | null>(null);
+  // Track whether we've restored workspace session from storage
+  const hasRestoredSessionRef = useRef(false);
 
   // Track image loading state
   const { loaded: imageLoaderLoaded, error: imageError } = useImageLoader(
@@ -135,6 +137,77 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       setDrawing(false);
     }
   }, [imageLoaderLoaded, imageError, setDrawing]);
+
+  // Persist key for this dataset's annotation session
+  const storageKey = useMemo(
+    () => `annotationWorkspace:${datasetId}`,
+    [datasetId]
+  );
+
+  // Restore workspace session (current image, filters, etc.) after initial load
+  useEffect(() => {
+    if (hasRestoredSessionRef.current) return;
+    if (!images.length) return;
+
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (!raw) {
+        hasRestoredSessionRef.current = true;
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as {
+        currentImageId?: string | null;
+        selectedCategoryId?: string | null;
+        stateFilter?: AnnotationState | "all";
+        showOnlyUnannotatedImages?: boolean;
+      };
+
+      if (parsed.currentImageId) {
+        const idx = images.findIndex((img) => img.id === parsed.currentImageId);
+        if (idx >= 0) {
+          selectImage(idx);
+        }
+      }
+
+      if (parsed.selectedCategoryId) {
+        setCategory(parsed.selectedCategoryId);
+      }
+
+      if (parsed.stateFilter) {
+        setStateFilter(parsed.stateFilter);
+      }
+
+      if (typeof parsed.showOnlyUnannotatedImages === "boolean") {
+        setShowOnlyUnannotatedImages(parsed.showOnlyUnannotatedImages);
+      }
+    } catch (error) {
+      console.error("[AnnotationWorkspace] Failed to restore session state:", error);
+    } finally {
+      hasRestoredSessionRef.current = true;
+    }
+  }, [images, selectImage, setCategory, setStateFilter, setShowOnlyUnannotatedImages, storageKey]);
+
+  // Persist workspace session whenever key state changes
+  useEffect(() => {
+    try {
+      const payload = {
+        currentImageId: currentImage?.id ?? null,
+        selectedCategoryId,
+        stateFilter,
+        showOnlyUnannotatedImages,
+      };
+      window.localStorage.setItem(storageKey, JSON.stringify(payload));
+    } catch (error) {
+      console.error("[AnnotationWorkspace] Failed to persist session state:", error);
+    }
+  }, [
+    currentImage?.id,
+    selectedCategoryId,
+    stateFilter,
+    showOnlyUnannotatedImages,
+    storageKey,
+  ]);
 
   // Fetch images and categories on mount
   useEffect(() => {
