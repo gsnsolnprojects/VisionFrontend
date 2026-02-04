@@ -119,28 +119,21 @@ const ProtectedRoutes = () => {
   );
 };
 
-// Protected app wrapper - provides ProfileProvider context
-const ProtectedApp = () => {
-  return (
-    <ProfileProvider>
-      <ProtectedRoutes />
-    </ProfileProvider>
-  );
-};
-
 function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        {/* Public pages */}
-        <Route path="/" element={<Landing />} />
-        <Route path="/auth" element={<Auth />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/verify-email" element={<VerifyEmail />} />
+      <ProfileProvider>
+        <Routes>
+          {/* Public pages */}
+          <Route path="/" element={<Landing />} />
+          <Route path="/auth" element={<Auth />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
 
-        {/* Protected app pages - all routes under /dashboard, /account, /dataset, etc. */}
-        <Route path="/*" element={<ProtectedApp />} />
-      </Routes>
+          {/* Protected app pages - all routes under /dashboard, /account, /dataset, etc. */}
+          <Route path="/*" element={<ProtectedRoutes />} />
+        </Routes>
+      </ProfileProvider>
     </BrowserRouter>
   );
 }

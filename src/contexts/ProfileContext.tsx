@@ -106,6 +106,27 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
             return;
           }
 
+          // Enforce login access: deactivated users must not use the app
+          if (profileData.is_active === false) {
+            if (isDev) {
+              console.log("[ProfileContext] User is deactivated (is_active=false), signing out");
+            }
+            try {
+              sessionStorage.setItem("VISIONM_DEACTIVATED_SIGNOUT", "true");
+            } catch {
+              // ignore
+            }
+            setError("Your account has been deactivated. Please contact your administrator.");
+            setUser(null);
+            setProfile(null);
+            setCompany(null);
+            setIsAdmin(false);
+            setUserRole(null);
+            setLoading(false);
+            await supabase.auth.signOut();
+            return;
+          }
+
           setProfile(profileData);
           setCompany(null);
           setIsAdmin(false);
@@ -352,6 +373,31 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
       }
 
       if (event === "SIGNED_OUT" || !session) {
+        // Deactivated (is_active=false): show deactivation message
+        let deactivatedSignOut = false;
+        try {
+          deactivatedSignOut =
+            sessionStorage.getItem("VISIONM_DEACTIVATED_SIGNOUT") === "true";
+          if (deactivatedSignOut) {
+            sessionStorage.removeItem("VISIONM_DEACTIVATED_SIGNOUT");
+          }
+        } catch {
+          // ignore
+        }
+
+        if (deactivatedSignOut) {
+          hasInitializedProfileRef.current = false;
+          setUser(null);
+          setProfile(null);
+          setCompany(null);
+          setIsAdmin(false);
+          setSessionReady(true);
+          setLoading(false);
+          setError("Your account has been deactivated. Please contact your administrator.");
+          clearLastRoute();
+          return;
+        }
+
         // Distinguish explicit user sign-out from auto sign-out (e.g., refresh-token failure)
         let explicitSignOut = false;
         try {
@@ -370,6 +416,7 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
           }
 
           // Hard reset on explicit logout (existing behavior)
+          hasInitializedProfileRef.current = false;
           setUser(null);
           setProfile(null);
           setCompany(null);
@@ -381,6 +428,7 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
         } else {
           // Graceful handling for auto sign-out / refresh-token failures
           // Keep route and avoid full app reset; prompt user to sign in again.
+          hasInitializedProfileRef.current = false;
           setUser(null);
           setSessionReady(true);
           setLoading(false);
@@ -416,12 +464,16 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
         }
       
       } else if (event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
-        // ✅ Token refresh happens on tab focus — do NOT reload profile
+        // Re-check profile (including is_active) on token refresh so deactivated users are signed out when they focus the tab
         if (isDev) {
-          console.log("[ProfileContext] Token refreshed / user updated — skipping profile reload");
+          console.log("[ProfileContext] Token refreshed / user updated — re-checking profile (is_active)");
         }
-      
         setUser(session.user);
+        try {
+          await loadProfile(session);
+        } catch (profileError: any) {
+          console.error("[ProfileContext] loadProfile threw error on token refresh:", profileError);
+        }
         setSessionReady(true);
       }
       
