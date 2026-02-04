@@ -177,10 +177,24 @@ export const inviteUserSchema = z.object({
 
 export type InviteUserFormData = z.infer<typeof inviteUserSchema>;
 
+// Phone validation for User Profile (single field, no country selector)
+// Allows: optional + at start, digits, spaces, hyphens. Rejects letters/symbols.
+const phoneProfileSchema = z
+  .string()
+  .min(1, "Phone number is required")
+  .refine(
+    (val) => /^[\d\s\-+]+$/.test(val.trim()),
+    "Phone number can only contain digits, +, spaces, and hyphens"
+  )
+  .refine((val) => {
+    const digits = val.replace(/\D/g, "");
+    return digits.length >= 10 && digits.length <= 15;
+  }, "Phone number must be 10–15 digits");
+
 // User Profile Schema
 export const userProfileSchema = z.object({
   name: nameSchema,
-  phone: z.string().min(1, "Phone number is required"),
+  phone: phoneProfileSchema,
   companyName: z.string().max(100, "Company name must be at most 100 characters").optional(),
 });
 

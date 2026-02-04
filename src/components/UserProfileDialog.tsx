@@ -30,6 +30,7 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [company, setCompany] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -132,6 +133,7 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
   useEffect(() => {
     if (open) {
       loadProfile();
+      setIsEditing(false);
     }
   }, [open, loadProfile]);
 
@@ -183,6 +185,7 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
         description: "Your profile has been updated successfully.",
       });
 
+      setIsEditing(false);
       // Reload profile to get updated data
       await loadProfile();
     } catch (error: any) {
@@ -224,6 +227,7 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
               touched={profileForm.isFieldTouched("name")}
               placeholder="Enter your name"
               required
+              disabled={!isEditing}
             />
 
             <div>
@@ -251,6 +255,7 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
               touched={profileForm.isFieldTouched("phone")}
               placeholder="Enter your phone number"
               required
+              disabled={!isEditing}
             />
 
             {company && (
@@ -263,9 +268,9 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
                   onBlur={(e) => {
                     profileForm.handleBlur("companyName")(e as React.FocusEvent<HTMLInputElement>);
                   }}
-                  disabled={!isAdmin}
+                  disabled={!isEditing || !isAdmin}
                   className={
-                    (!isAdmin ? "bg-muted" : "") +
+                    (!isEditing || !isAdmin ? "bg-muted" : "") +
                     (profileForm.isFieldTouched("companyName") &&
                     profileForm.getFieldError("companyName")
                       ? " border-destructive"
@@ -289,17 +294,33 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
           </div>
         )}
 
-        <DialogFooter className="justify-end">
-          <Button onClick={handleSave} disabled={loading || saving}>
-            {saving ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              "Save Changes"
-            )}
-          </Button>
+        <DialogFooter className="justify-end gap-2">
+          {isEditing ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsEditing(false)}
+                disabled={loading || saving}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleSave} disabled={loading || saving}>
+                {saving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Changes"
+                )}
+              </Button>
+            </>
+          ) : (
+            <Button type="button" onClick={() => setIsEditing(true)} disabled={loading}>
+              Edit
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
