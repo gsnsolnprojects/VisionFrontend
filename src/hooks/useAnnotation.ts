@@ -174,6 +174,12 @@ export const useAnnotation = () => {
   const loadAnnotations = useCallback((newAnnotations: Annotation[]) => {
     if (!currentImage) return;
 
+    console.log("[useAnnotation] loadAnnotations called", {
+      hookCurrentImageId: currentImage?.id,
+      newCount: newAnnotations.length,
+      newImageIds: newAnnotations.map((a) => a.imageId),
+    });
+
     // Remove existing annotations for this image
     setAllAnnotations((prev) =>
       prev.filter((a) => a.imageId !== currentImage.id)

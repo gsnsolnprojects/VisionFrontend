@@ -2,12 +2,12 @@ import type { Image, Annotation } from "@/types/annotation";
 import { apiRequest } from "./config";
 
 /**
- * Get unlabeled images for a dataset
- * GET /api/dataset/:datasetId/unlabeled-images
+ * Get all images for a dataset (with optional status filter)
+ * GET /api/dataset/:datasetId/images
  */
-export const getUnlabeledImages = async (
+export const getDatasetImages = async (
   datasetId: string,
-  params?: { page?: number; limit?: number }
+  params?: { page?: number; limit?: number; status?: "all" | "unlabeled" | "labeled" }
 ): Promise<{
   images: Image[];
   total: number;
@@ -18,13 +18,16 @@ export const getUnlabeledImages = async (
   const queryParams = new URLSearchParams();
   if (params?.page) queryParams.append("page", String(params.page));
   if (params?.limit) queryParams.append("limit", String(params.limit));
+  if (params?.status && params.status !== "all") {
+    queryParams.append("status", params.status);
+  }
 
-  const path = `/dataset/${encodeURIComponent(datasetId)}/unlabeled-images${
+  const path = `/dataset/${encodeURIComponent(datasetId)}/images${
     queryParams.toString() ? `?${queryParams.toString()}` : ""
   }`;
 
-  console.log("[getUnlabeledImages] Requesting:", path);
-  
+  console.log("[getDatasetImages] Requesting:", path);
+
   try {
     const result = await apiRequest<{
       images: Image[];
@@ -33,10 +36,10 @@ export const getUnlabeledImages = async (
       limit: number;
       totalPages: number;
     }>(path);
-    console.log("[getUnlabeledImages] Response received:", result);
+    console.log("[getDatasetImages] Response received:", result);
     return result;
   } catch (error) {
-    console.error("[getUnlabeledImages] Error:", error);
+    console.error("[getDatasetImages] Error:", error);
     throw error;
   }
 };

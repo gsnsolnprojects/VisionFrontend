@@ -12,6 +12,9 @@ export interface Image {
   thumbnailUrl?: string;
   folder?: string;
   size?: number;
+  // Optional annotation metadata from backend (used for filtering/progress)
+  hasAnnotations?: boolean;
+  annotationStatus?: "unannotated" | "annotated" | "in_review" | "approved";
 }
 
 export interface Category {
