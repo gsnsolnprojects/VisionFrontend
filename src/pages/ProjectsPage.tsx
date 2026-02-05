@@ -8,17 +8,19 @@ import { EmptyState } from "@/components/pages/EmptyState";
 import { LoadingState } from "@/components/pages/LoadingState";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, FolderKanban } from "lucide-react";
+import { Plus, FolderKanban, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { fadeInUpVariants } from "@/utils/animations";
 import { ProtectedComponent } from "@/components/permissions/ProtectedComponent";
+import { DeleteProjectModal } from "@/components/dashboard/DeleteProjectModal";
 
 export const ProjectsPage: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { sessionReady, user, profile, loading: profileLoading } = useProfile();
+  const { sessionReady, user, profile, company, hasPermission, loading: profileLoading } = useProfile();
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [projectToDelete, setProjectToDelete] = useState<{ companyName: string; projectName: string } | null>(null);
 
   useEffect(() => {
     // Early return if session not ready
@@ -142,11 +144,30 @@ export const ProjectsPage: React.FC = () => {
                 className="cursor-pointer hover:shadow-md transition-shadow"
                 onClick={() => handleOpenProject(project.id)}
               >
-                <CardHeader>
-                  <CardTitle className="line-clamp-1">{project.name}</CardTitle>
-                  <CardDescription className="line-clamp-2">
-                    {project.description || "No description"}
-                  </CardDescription>
+                <CardHeader className="flex flex-row items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <CardTitle className="line-clamp-1">{project.name}</CardTitle>
+                    <CardDescription className="line-clamp-2">
+                      {project.description || "No description"}
+                    </CardDescription>
+                  </div>
+                  {hasPermission("deleteProjects") && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="shrink-0 text-muted-foreground hover:text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setProjectToDelete({
+                          companyName: company?.name ?? "",
+                          projectName: project.name ?? "",
+                        });
+                      }}
+                      title="Delete project"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </CardHeader>
                 <CardContent>
                   <p className="text-xs text-muted-foreground">
@@ -158,6 +179,30 @@ export const ProjectsPage: React.FC = () => {
           </div>
         )}
       </motion.div>
+
+      <DeleteProjectModal
+        open={projectToDelete != null}
+        onOpenChange={(open) => {
+          if (!open) setProjectToDelete(null);
+        }}
+        companyName={projectToDelete?.companyName ?? ""}
+        projectName={projectToDelete?.projectName ?? ""}
+        onDeleted={async () => {
+          // Project list is from Supabase; remove the row so UI updates
+          if (profile?.company_id && projectToDelete?.projectName) {
+            await supabase
+              .from("projects")
+              .delete()
+              .eq("company_id", profile.company_id)
+              .eq("name", projectToDelete.projectName);
+          }
+          await loadProjects();
+          toast({
+            title: "Project deleted",
+            description: "Project and all its data have been deleted.",
+          });
+        }}
+      />
     </div>
   );
 };

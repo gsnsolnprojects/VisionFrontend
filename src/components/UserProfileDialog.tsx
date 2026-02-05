@@ -35,6 +35,11 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
   const [company, setCompany] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [email, setEmail] = useState("");
+  const [initialValues, setInitialValues] = useState<UserProfileFormData>({
+    name: "",
+    phone: "",
+    companyName: "",
+  });
 
   const profileForm = useFormValidation({
     schema: userProfileSchema,
@@ -104,18 +109,40 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
           setIsAdmin(adminStatus);
           
           // Set form values
-          profileForm.setValue("name", profileData.name || session.user.user_metadata?.name || "");
-          profileForm.setValue("phone", profileData.phone || session.user.user_metadata?.phone || "");
-          profileForm.setValue("companyName", companyData.name || "");
+          const nextName = profileData.name || session.user.user_metadata?.name || "";
+          const nextPhone = profileData.phone || session.user.user_metadata?.phone || "";
+          const nextCompanyName = companyData.name || "";
+          profileForm.setValue("name", nextName);
+          profileForm.setValue("phone", nextPhone);
+          profileForm.setValue("companyName", nextCompanyName);
+          setInitialValues({
+            name: nextName,
+            phone: nextPhone,
+            companyName: nextCompanyName,
+          });
         } else {
           // Set form values without company
-          profileForm.setValue("name", profileData.name || session.user.user_metadata?.name || "");
-          profileForm.setValue("phone", profileData.phone || session.user.user_metadata?.phone || "");
+          const nextName = profileData.name || session.user.user_metadata?.name || "";
+          const nextPhone = profileData.phone || session.user.user_metadata?.phone || "";
+          profileForm.setValue("name", nextName);
+          profileForm.setValue("phone", nextPhone);
+          setInitialValues({
+            name: nextName,
+            phone: nextPhone,
+            companyName: "",
+          });
         }
       } else {
         // Set form values without company
-        profileForm.setValue("name", profileData.name || session.user.user_metadata?.name || "");
-        profileForm.setValue("phone", profileData.phone || session.user.user_metadata?.phone || "");
+        const nextName = profileData.name || session.user.user_metadata?.name || "";
+        const nextPhone = profileData.phone || session.user.user_metadata?.phone || "";
+        profileForm.setValue("name", nextName);
+        profileForm.setValue("phone", nextPhone);
+        setInitialValues({
+          name: nextName,
+          phone: nextPhone,
+          companyName: "",
+        });
       }
     } catch (error: any) {
       console.error("Error loading profile:", error);
@@ -137,6 +164,46 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
     }
   }, [open, loadProfile]);
 
+  const isFormDirty = () => {
+    const current = {
+      name: profileForm.values.name.trim(),
+      phone: profileForm.values.phone.trim(),
+      companyName: (profileForm.values.companyName || "").trim(),
+    };
+    const initial = {
+      name: initialValues.name.trim(),
+      phone: initialValues.phone.trim(),
+      companyName: (initialValues.companyName || "").trim(),
+    };
+    return (
+      current.name !== initial.name ||
+      current.phone !== initial.phone ||
+      current.companyName !== initial.companyName
+    );
+  };
+
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && isEditing && isFormDirty()) {
+      toast({
+        title: "Unsaved changes",
+        description: "Please save or cancel your changes before closing.",
+        variant: "destructive",
+      });
+      return;
+    }
+    onOpenChange(nextOpen);
+    if (!nextOpen) {
+      setIsEditing(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    profileForm.setValue("name", initialValues.name);
+    profileForm.setValue("phone", initialValues.phone);
+    profileForm.setValue("companyName", initialValues.companyName);
+    setIsEditing(false);
+  };
+
   const handleSave = async () => {
     if (!profile) return;
 
@@ -153,6 +220,29 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
     try {
       const name = profileForm.values.name.trim();
       const phone = profileForm.values.phone.trim();
+
+      // If admin is changing company name, validate no duplicate (before any updates)
+      if (isAdmin && company && profileForm.values.companyName) {
+        const companyName = profileForm.values.companyName.trim();
+        if (companyName !== company.name) {
+          const { data: existingByName } = await supabase.rpc("check_company_exists", {
+            company_name: companyName,
+          });
+          const otherCompanyWithSameName =
+            existingByName &&
+            existingByName.length > 0 &&
+            (existingByName[0] as { id?: string }).id !== company.id;
+          if (otherCompanyWithSameName) {
+            toast({
+              title: "Company name already in use",
+              description: "Another company has this name. Please choose a different name.",
+              variant: "destructive",
+            });
+            setSaving(false);
+            return;
+          }
+        }
+      }
 
       // Update profile
       const { error: profileError } = await supabase
@@ -176,7 +266,18 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
             })
             .eq("id", company.id);
 
-          if (companyError) throw companyError;
+          if (companyError) {
+            if (companyError.code === "23505") {
+              toast({
+                title: "Company name already in use",
+                description: "Another company has this name. Please choose a different name.",
+                variant: "destructive",
+              });
+              setSaving(false);
+              return;
+            }
+            throw companyError;
+          }
         }
       }
 
@@ -201,8 +302,29 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
+      <DialogContent
+        onInteractOutside={(e) => {
+          if (isEditing && isFormDirty()) {
+            e.preventDefault();
+            toast({
+              title: "Unsaved changes",
+              description: "Please save or cancel your changes before closing.",
+              variant: "destructive",
+            });
+          }
+        }}
+        onEscapeKeyDown={(e) => {
+          if (isEditing && isFormDirty()) {
+            e.preventDefault();
+            toast({
+              title: "Unsaved changes",
+              description: "Please save or cancel your changes before closing.",
+              variant: "destructive",
+            });
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>User Profile</DialogTitle>
           <DialogDescription>
@@ -300,7 +422,7 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setIsEditing(false)}
+                onClick={handleCancelEdit}
                 disabled={loading || saving}
               >
                 Cancel

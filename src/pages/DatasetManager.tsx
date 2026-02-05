@@ -48,6 +48,7 @@ import { fadeInUpVariants, staggerContainerVariants } from "@/utils/animations";
 import { ClassNameDialog } from "@/components/dataset/ClassNameDialog";
 import { getDetectedClasses, type DetectedClassesResponse } from "@/lib/api/categories";
 import { ProtectedComponent } from "@/components/permissions/ProtectedComponent";
+import { DeleteProjectModal } from "@/components/dashboard/DeleteProjectModal";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
 const apiUrl = (path: string) => {
@@ -217,6 +218,8 @@ const DatasetManager = () => {
   const [selectedImageFile, setSelectedImageFile] = useState<FileEntry | null>(null);
   const [selectedLabelFile, setSelectedLabelFile] = useState<FileEntry | null>(null);
   const [labelFileContent, setLabelFileContent] = useState<string | null>(null);
+  const [labelFileLoadFailed, setLabelFileLoadFailed] = useState<boolean>(false);
+  const [labelFileLoading, setLabelFileLoading] = useState<boolean>(false);
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -240,9 +243,8 @@ const DatasetManager = () => {
 
   const zoomContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Delete project state
+  // Delete project state (modal uses dashboard API: GET summary, DELETE project)
   const [showDeleteProjectDialog, setShowDeleteProjectDialog] = useState<boolean>(false);
-  const [deletingProject, setDeletingProject] = useState<boolean>(false);
 
   // Delete version state
   const [versionToDelete, setVersionToDelete] = useState<string | null>(null);
@@ -1015,7 +1017,8 @@ const DatasetManager = () => {
       
       if (labelFile) {
         setSelectedLabelFile(labelFile);
-        // Fetch label file content
+        setLabelFileLoadFailed(false);
+        // Fetch label file content via API
         try {
           const headers = await getAuthHeaders();
           const url = apiUrl(`/dataset/${encodeURIComponent(datasetId)}/file/${encodeURIComponent(labelFile.id)}`);
@@ -1042,7 +1045,7 @@ const DatasetManager = () => {
     setCurrentFileIndex(index >= 0 ? index : -1);
   }, [selectedVersionDatasetId, currentDatasetId, folderFiles, fileManifest, navigableImageFiles]);
 
-  // Resolve to image file id for GET /dataset/:id/file/:fileId (backend serves images only; label id → 404)
+  // Resolve to image file id for GET /dataset/:id/file/:fileId (backend serves both images and label files)
   const getImageFileIdForViewer = useCallback(
     (file: FileEntry | null, manifest: FileEntry[]): string | null => {
       if (!file?.id) return null;
@@ -1110,6 +1113,9 @@ const DatasetManager = () => {
   const handleLabelClick = useCallback(async (file: FileEntry) => {
     setSelectedLabelFile(file);
     setSelectedImageFile(null); // Clear image if any
+    setLabelFileContent(null);
+    setLabelFileLoadFailed(false);
+    setLabelFileLoading(true);
     // Reset zoom and pan
     setZoomLevel(1);
     setPanX(0);
@@ -1117,29 +1123,26 @@ const DatasetManager = () => {
     
     const datasetId = selectedVersionDatasetId || currentDatasetId;
     if (datasetId && file.type === "label") {
-      // Fetch label file content - try download endpoint first, then regular file endpoint
       try {
         const headers = await getAuthHeaders();
-        let url = apiUrl(`/dataset/${encodeURIComponent(datasetId)}/file/${encodeURIComponent(file.id)}`);
-        let res = await fetch(url, { method: "GET", headers });
-        
-        // If download endpoint doesn't exist, try regular file endpoint
-        if (!res.ok) {
-          url = apiUrl(`/dataset/${encodeURIComponent(datasetId)}/file/${encodeURIComponent(file.id)}`);
-          res = await fetch(url, { method: "GET", headers });
-        }
+        const url = apiUrl(`/dataset/${encodeURIComponent(datasetId)}/file/${encodeURIComponent(file.id)}`);
+        const res = await fetch(url, { method: "GET", headers });
         
         if (res.ok) {
           const text = await res.text();
           setLabelFileContent(text);
+          setLabelFileLoadFailed(false);
         } else {
           setLabelFileContent(null);
+          setLabelFileLoadFailed(true);
         }
       } catch (err) {
         console.warn("Failed to fetch label file:", err);
         setLabelFileContent(null);
+        setLabelFileLoadFailed(true);
       }
     }
+    setLabelFileLoading(false);
     
     // Set current file index for keyboard navigation - use navigableFiles (already deduplicated)
     const index = navigableFiles.findIndex(f => f.id === file.id);
@@ -1148,7 +1151,7 @@ const DatasetManager = () => {
 
   // Keyboard navigation functions - defined after handleImageClick and handleLabelClick
   // Calculate index directly from current file to avoid stale state issues
-  // When viewing image, step through image-only list (backend serves images only at /file/:fileId)
+  // When viewing image, step through image-only list
   const navigateToNextFile = useCallback(() => {
     const currentFile = selectedImageFile || selectedLabelFile;
     if (!currentFile) return;
@@ -1609,71 +1612,6 @@ const DatasetManager = () => {
         description: "Could not load version contents",
         variant: "destructive",
       });
-    }
-  };
-
-  // ------- Delete project handler -------
-  const handleDeleteProject = async () => {
-    if (!projectId) {
-      toast({
-        title: "Error",
-        description: "Project ID is missing.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setDeletingProject(true);
-
-    try {
-      // Step 1: Delete from Supabase
-      const { error: supabaseError } = await supabase
-        .from("projects")
-        .delete()
-        .eq("id", projectId);
-
-      if (supabaseError) {
-        throw new Error(`Failed to delete project from database: ${supabaseError.message}`);
-      }
-
-      // Step 2: Send API request to backend to delete project
-      try {
-        const headers = await getAuthHeaders();
-        const deleteUrl = apiUrl(`/project/${encodeURIComponent(projectId)}`);
-        const res = await fetch(deleteUrl, {
-          method: "DELETE",
-          headers: headers ? { ...headers, "Content-Type": "application/json" } : { "Content-Type": "application/json" },
-        });
-
-        if (!res.ok) {
-          // Non-fatal error - Supabase deletion succeeded, but backend may still have data
-          console.warn(`Backend deletion failed (${res.status}), but project removed from database`);
-          // Continue with success flow since Supabase deletion succeeded
-        }
-      } catch (backendError: any) {
-        // Non-fatal error - log but continue
-        console.warn("Backend deletion failed:", backendError);
-        // Continue with success flow since Supabase deletion succeeded
-      }
-
-      // Success - navigate to dashboard
-      toast({
-        title: "Project deleted",
-        description: "The project has been successfully deleted.",
-      });
-
-      setShowDeleteProjectDialog(false);
-      navigate("/dashboard");
-    } catch (error: any) {
-      console.error("Error deleting project:", error);
-      toast({
-        title: "Failed to delete project",
-        description: error.message || "An unexpected error occurred while deleting the project.",
-        variant: "destructive",
-      });
-      // Keep dialog open on error so user can try again
-    } finally {
-      setDeletingProject(false);
     }
   };
 
@@ -2386,7 +2324,6 @@ const DatasetManager = () => {
               <Button
                 variant="destructive"
                 onClick={() => setShowDeleteProjectDialog(true)}
-                disabled={deletingProject}
               >
                 <Trash2 className="h-4 w-4 mr-2" />
                 Delete Project
@@ -2604,6 +2541,8 @@ const DatasetManager = () => {
           setSelectedImageFile(null);
           setSelectedLabelFile(null);
           setLabelFileContent(null);
+          setLabelFileLoadFailed(false);
+          setLabelFileLoading(false);
           setZoomLevel(1);
           setPanX(0);
           setPanY(0);
@@ -2625,6 +2564,35 @@ const DatasetManager = () => {
           </DialogHeader>
           
           <div className="flex-1 overflow-auto space-y-4">
+            {/* Label-only view: show file contents as main content when user clicked a label file (no image) */}
+            {selectedLabelFile && !selectedImageFile && (
+              <Card className="flex-1 min-h-[50vh] flex flex-col">
+                <CardHeader className="flex-shrink-0">
+                  <CardTitle className="text-base">Label file: {selectedLabelFile.originalName}</CardTitle>
+                  <CardDescription>
+                    {(selectedLabelFile.folder && `Folder: ${selectedLabelFile.folder}`)}
+                    {(selectedLabelFile.size != null && ` • Size: ${(selectedLabelFile.size / 1024).toFixed(1)} KB`)}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex-1 min-h-0 flex flex-col">
+                  {labelFileLoading ? (
+                    <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span>Loading file contents…</span>
+                    </div>
+                  ) : labelFileLoadFailed ? (
+                    <p className="text-sm text-destructive py-4">
+                      Could not load file contents. The server may not support viewing this file, or the file may not be available.
+                    </p>
+                  ) : labelFileContent !== null ? (
+                    <pre className="text-xs bg-muted p-4 rounded overflow-auto flex-1 min-h-0 font-mono whitespace-pre-wrap break-words">
+                      {labelFileContent || "(empty file)"}
+                    </pre>
+                  ) : null}
+                </CardContent>
+              </Card>
+            )}
+
             {/* Full-size Image with Zoom & Pan */}
             {selectedImageFile && (() => {
               return (
@@ -2722,21 +2690,24 @@ const DatasetManager = () => {
               );
             })()}
             
-            {/* Label File Content */}
-            {selectedLabelFile && (
+            {/* Associated label file content (only when viewing an image) */}
+            {selectedLabelFile && selectedImageFile && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm">
-                    {selectedImageFile ? `Associated Label File: ${selectedLabelFile.originalName}` : `Label File: ${selectedLabelFile.originalName}`}
+                    Associated Label File: {selectedLabelFile.originalName}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {labelFileContent ? (
-                    <pre className="text-xs bg-muted p-4 rounded overflow-auto max-h-48">
-                      {labelFileContent}
+                  {labelFileContent !== null ? (
+                    <pre className="text-xs bg-muted p-4 rounded overflow-auto max-h-48 font-mono whitespace-pre-wrap break-words">
+                      {labelFileContent || "(empty file)"}
                     </pre>
                   ) : (
-                    <div className="text-sm text-muted-foreground">Loading label file...</div>
+                    <div className="text-sm text-muted-foreground flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading label file…
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -2797,39 +2768,24 @@ const DatasetManager = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Project Confirmation Dialog */}
-      <AlertDialog open={showDeleteProjectDialog} onOpenChange={setShowDeleteProjectDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Project?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this project? This will permanently delete the project and all associated data. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deletingProject}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteProject}
-              disabled={deletingProject}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deletingProject ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                <>
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
-                </>
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Delete Project Confirmation Modal (GET summary, then DELETE via dashboard API) */}
+      <DeleteProjectModal
+        open={showDeleteProjectDialog}
+        onOpenChange={setShowDeleteProjectDialog}
+        companyName={companyName}
+        projectName={displayProjectName}
+        onDeleted={async () => {
+          // Project list is from Supabase; remove the row so it disappears from UI (sidebar, projects page)
+          if (projectId) {
+            await supabase.from("projects").delete().eq("id", projectId);
+          }
+          toast({
+            title: "Project deleted",
+            description: "Project and all its data have been deleted.",
+          });
+          navigate("/dashboard/projects");
+        }}
+      />
 
       {/* Delete Version Confirmation Dialog */}
       <AlertDialog open={showDeleteVersionDialog} onOpenChange={(open) => {
