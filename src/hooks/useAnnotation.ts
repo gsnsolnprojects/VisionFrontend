@@ -92,6 +92,14 @@ export const useAnnotation = () => {
 
     setAllAnnotations((prev) => [...prev, newAnnotation]);
     setUnsavedChanges(true);
+    // Mark current image as having annotations in local metadata
+    setImages((prev) =>
+      prev.map((img) =>
+        currentImage && img.id === currentImage.id
+          ? { ...img, hasAnnotations: true }
+          : img
+      )
+    );
     saveToHistory();
   }, [currentImage, saveToHistory]);
 
@@ -174,12 +182,29 @@ export const useAnnotation = () => {
   const loadAnnotations = useCallback((newAnnotations: Annotation[]) => {
     if (!currentImage) return;
 
+    console.log("[useAnnotation] loadAnnotations called", {
+      hookCurrentImageId: currentImage?.id,
+      newCount: newAnnotations.length,
+      newImageIds: newAnnotations.map((a) => a.imageId),
+    });
+
     // Remove existing annotations for this image
     setAllAnnotations((prev) =>
       prev.filter((a) => a.imageId !== currentImage.id)
     );
     // Add new annotations
     setAllAnnotations((prev) => [...prev, ...newAnnotations]);
+    // Update image metadata: if backend returned annotations for this image,
+    // mark it as having annotations locally so progress can reflect it.
+    if (newAnnotations.length > 0) {
+      setImages((prev) =>
+        prev.map((img) =>
+          currentImage && img.id === currentImage.id
+            ? { ...img, hasAnnotations: true }
+            : img
+        )
+      );
+    }
     setUnsavedChanges(false);
   }, [currentImage]);
 

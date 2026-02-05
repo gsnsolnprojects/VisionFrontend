@@ -1,5 +1,5 @@
 // src/components/InviteUserDialog.tsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { FormFieldWrapper } from "@/components/FormFieldWrapper";
 import { useFormValidation } from "@/hooks/useFormValidation";
@@ -22,6 +22,8 @@ export const InviteUserDialog: React.FC<Props> = ({
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [lastInviteLink, setLastInviteLink] = useState<string | null>(null);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const [cooldownEmail, setCooldownEmail] = useState<string | null>(null);
 
   const form = useFormValidation({
     schema: inviteUserSchema,
@@ -32,6 +34,25 @@ export const InviteUserDialog: React.FC<Props> = ({
     validateOnChange: false,
     validateOnBlur: true,
   });
+
+  // Countdown timer for local 5-minute cooldown per email
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+
+    const interval = window.setInterval(() => {
+      setCooldownSeconds((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [cooldownSeconds]);
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault();
@@ -50,6 +71,18 @@ export const InviteUserDialog: React.FC<Props> = ({
       toast({
         title: "Please check your details",
         description: "Fix the highlighted errors before sending the invite.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const normalizedEmail = form.values.email.trim().toLowerCase();
+
+    // If we are currently in cooldown for this email (based on previous server response), block immediately
+    if (cooldownSeconds > 0 && cooldownEmail === normalizedEmail) {
+      toast({
+        title: "Invite rate limit",
+        description: "Please wait a few minutes before inviting this user again.",
         variant: "destructive",
       });
       return;
@@ -84,7 +117,7 @@ export const InviteUserDialog: React.FC<Props> = ({
         },
         body: JSON.stringify({
           companyId,
-          inviteEmail: form.values.email,
+          inviteEmail: normalizedEmail,
           inviteName: form.values.name || undefined,
         }),
       });
@@ -101,6 +134,23 @@ export const InviteUserDialog: React.FC<Props> = ({
       console.log("create-invite response:", res.status, data);
 
       if (!res.ok || data?.success === false) {
+        // Handle backend invite rate limit
+        if (data?.errorCode === "INVITE_RATE_LIMIT") {
+          const waitSeconds = data?.waitTimeSeconds ?? 5 * 60;
+          setCooldownSeconds(waitSeconds);
+          setCooldownEmail(normalizedEmail);
+
+          toast({
+            title: "Too many invites",
+            description:
+              data?.error ||
+              "You've recently invited this user multiple times. Please wait a few minutes before inviting them again.",
+            variant: "destructive",
+          });
+
+          return;
+        }
+
         // Extract precise error message with priority
         let errorMessage = "";
         
@@ -221,6 +271,10 @@ export const InviteUserDialog: React.FC<Props> = ({
       .catch(() => alert("Failed to copy invite link"));
   }
 
+  const normalizedEmail = form.values.email.trim().toLowerCase();
+  const isOnCooldown =
+    cooldownSeconds > 0 && cooldownEmail === normalizedEmail && !!normalizedEmail;
+
   return (
     <div className="space-y-4">
       {/* FORM SECTION */}
@@ -254,8 +308,12 @@ export const InviteUserDialog: React.FC<Props> = ({
           />
 
         <div className="flex justify-end">
-          <Button type="submit" disabled={loading}>
-            {loading ? "Sending..." : "Invite"}
+          <Button type="submit" disabled={loading || isOnCooldown}>
+            {loading
+              ? "Sending..."
+              : isOnCooldown
+              ? `Invite (available in ${Math.max(cooldownSeconds, 0)}s)`
+              : "Invite"}
           </Button>
         </div>
       </form>

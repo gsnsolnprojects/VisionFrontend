@@ -53,6 +53,11 @@ const Dashboard = () => {
   const [joinRequestLoading, setJoinRequestLoading] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "join">("create");
   const [showProfileCompletionDialog, setShowProfileCompletionDialog] = useState(false);
+  const [pendingJoinRequest, setPendingJoinRequest] = useState<{
+    company_name: string;
+    status: string;
+    created_at: string;
+  } | null>(null);
   const { setItems: setBreadcrumbs } = useBreadcrumbs();
 
   // Company Details Form Validation
@@ -155,6 +160,39 @@ const Dashboard = () => {
       }
     }
   }, [sessionReady, profileLoading, profile, user?.id]);
+
+  // Fetch latest pending join request for the current user so they can see "pending" state
+  // across refreshes (supports CC_57: pending request state retained after refresh)
+  useEffect(() => {
+    if (!sessionReady || profileLoading || !user?.id) {
+      setPendingJoinRequest(null);
+      return;
+    }
+
+    const fetchPendingJoinRequest = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("workspace_join_requests")
+          .select("company_name, status, created_at")
+          .eq("user_id", user.id)
+          .in("status", ["pending", "email_sent"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) {
+          console.error("[Dashboard] Error fetching pending join request:", error);
+          return;
+        }
+
+        setPendingJoinRequest(data || null);
+      } catch (err) {
+        console.error("[Dashboard] Unexpected error fetching pending join request:", err);
+      }
+    };
+
+    fetchPendingJoinRequest();
+  }, [sessionReady, profileLoading, user?.id]);
 
   // Handle join request approve/reject from email links
   const handleJoinRequestFromEmail = async (token: string, action: string) => {
@@ -389,7 +427,7 @@ const Dashboard = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileLoading, profile?.company_id]);
 
-  // Listen for "View Members" button click from Sidebar (backward compatibility)
+  // Listen for "Manage Members" button click from Sidebar (backward compatibility)
   useEffect(() => {
     const handleShowMembers = () => {
       // Use contextIsAdmin directly instead of isAdmin variable
@@ -830,6 +868,13 @@ const Dashboard = () => {
         description: "The workspace admin has been notified by email.",
       });
 
+      // Update local pending state so the user sees a persistent "pending" banner
+      setPendingJoinRequest({
+        company_name: companyName,
+        status: "pending",
+        created_at: new Date().toISOString(),
+      });
+
       setShowCompanyExistsDialog(false);
       // Keep company dialog open (user not yet in company)
     } catch (error: any) {
@@ -951,6 +996,13 @@ const Dashboard = () => {
       toast({
         title: "Request sent successfully",
         description: "The workspace admin has been notified by email.",
+      });
+
+      // Update local pending state so the user sees a persistent "pending" banner
+      setPendingJoinRequest({
+        company_name: companyName,
+        status: "pending",
+        created_at: new Date().toISOString(),
       });
 
       setShowCompanyDialog(false);
@@ -1079,6 +1131,22 @@ const Dashboard = () => {
             description="Manage your projects, datasets, and simulation workspace from this dashboard."
           />
         </motion.div>
+      )}
+
+      {/* Banner: show pending join request status for the current user */}
+      {pendingJoinRequest && !profile?.company_id && (
+        <div className="mx-auto mb-4 max-w-3xl rounded-md border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm">
+          <p className="font-medium text-yellow-900 dark:text-yellow-100">
+            Join request pending
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Your request to join{" "}
+            <span className="font-semibold">
+              {pendingJoinRequest.company_name || "the workspace"}
+            </span>{" "}
+            is pending admin approval.
+          </p>
+        </div>
       )}
 
       {/* CONTENT: Overview placeholder (default) */}

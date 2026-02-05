@@ -15,10 +15,15 @@ export const AnnotationStats: React.FC<AnnotationStatsProps> = ({
 }) => {
   // Memoize calculations
   const stats = useMemo(() => {
-    const annotatedImageIds = new Set(annotations.map((ann) => ann.imageId));
-    const annotatedImagesCount = annotatedImageIds.size;
+    // Dataset-level annotated images: use image metadata when available
+    const annotatedImagesCount = images.filter(
+      (img) => img.hasAnnotations || img.annotationStatus === "annotated"
+    ).length;
     const annotatedPercent =
       images.length > 0 ? Math.round((annotatedImagesCount / images.length) * 100) : 0;
+    const unannotatedImagesCount = Math.max(images.length - annotatedImagesCount, 0);
+    const unannotatedPercent =
+      images.length > 0 ? Math.round((unannotatedImagesCount / images.length) * 100) : 0;
 
     const boxesPerCategory = categories.map((category) => {
       const count = annotations.filter((ann) => ann.categoryId === category.id).length;
@@ -33,6 +38,8 @@ export const AnnotationStats: React.FC<AnnotationStatsProps> = ({
     return {
       annotatedImagesCount,
       annotatedPercent,
+      unannotatedImagesCount,
+      unannotatedPercent,
       boxesPerCategory,
     };
   }, [images.length, annotations, categories]);
@@ -63,6 +70,15 @@ export const AnnotationStats: React.FC<AnnotationStatsProps> = ({
           </div>
           <span className="font-semibold">
             {formatNumber(stats.annotatedImagesCount)} ({stats.annotatedPercent}%)
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <ImageIcon className="h-3.5 w-3.5" />
+            <span>Unannotated:</span>
+          </div>
+          <span className="font-semibold">
+            {formatNumber(stats.unannotatedImagesCount)} ({stats.unannotatedPercent}%)
           </span>
         </div>
         <div className="flex items-center justify-between">

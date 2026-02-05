@@ -217,25 +217,25 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       try {
         console.log("[AnnotationWorkspace] Initializing for dataset:", datasetId);
         
-        // Fetch unlabeled images (request a high limit so all are loaded)
-        console.log("[AnnotationWorkspace] Fetching unlabeled images...");
-        const imagesData = await annotationsApi.getUnlabeledImages(datasetId, { limit: 10000 });
-        console.log("[AnnotationWorkspace] Unlabeled images response:", imagesData);
+        // Fetch all images for this dataset (request a high limit so all are loaded)
+        console.log("[AnnotationWorkspace] Fetching dataset images...");
+        const imagesData = await annotationsApi.getDatasetImages(datasetId, { limit: 10000, status: "all" });
+        console.log("[AnnotationWorkspace] Dataset images response:", imagesData);
         
         if (!imagesData || !imagesData.images) {
-          throw new Error("Invalid response from unlabeled-images endpoint");
+          throw new Error("Invalid response from images endpoint");
         }
         
         loadImages(imagesData.images);
         console.log("[AnnotationWorkspace] Loaded", imagesData.images.length, "images");
 
-        // Auto-select first image
-        if (imagesData.images.length > 0) {
+        // Auto-select first image if nothing will restore from session
+        if (imagesData.images.length > 0 && !hasRestoredSessionRef.current) {
           selectImage(0);
-        } else {
+        } else if (imagesData.images.length === 0) {
           toast({
-            title: "No unlabeled images",
-            description: "This dataset has no unlabeled images to annotate.",
+            title: "No images",
+            description: "This dataset has no images to annotate.",
             variant: "destructive",
           });
         }
@@ -301,33 +301,22 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     annotationsRef.current = annotations;
   }, [annotations]);
 
-  // Fetch annotations when image changes (with debouncing and request deduplication)
+  // Fetch annotations when image changes (with debouncing)
   useEffect(() => {
     if (!currentImage) return;
 
     const imageId = currentImage.id;
-    const requestKey = `${datasetId}-${imageId}`;
-    const CACHE_DURATION = 2000; // 2 seconds cache
 
     // Debounce fetch to prevent rapid requests when navigating quickly between images
     const timeoutId = setTimeout(async () => {
-      const now = Date.now();
-      
-      // Check cache - don't fetch if recently fetched (within 2 seconds)
-      if (now - lastFetchTimeRef.current < CACHE_DURATION) {
-        return;
-      }
-
-      // Prevent duplicate simultaneous requests
-      if (ongoingRequestRef.current === requestKey) {
-        return;
-      }
-
-      ongoingRequestRef.current = requestKey;
-      lastFetchTimeRef.current = now;
-
       try {
         const data = await annotationsApi.getAnnotations(datasetId, imageId);
+        console.log("[AnnotationWorkspace] FETCHED ANNS", {
+          datasetId,
+          imageId,
+          count: data.annotations.length,
+          anns: data.annotations,
+        });
         loadAnnotations(data.annotations);
         setSelectedAnnotation(null); // Clear selection on image change
         selection.clearSelection(); // Phase 6: Clear multi-select
@@ -340,12 +329,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           variant: "destructive",
         });
       } finally {
-        // Clear ongoing request after a short delay to allow cache to work
-        setTimeout(() => {
-          if (ongoingRequestRef.current === requestKey) {
-            ongoingRequestRef.current = null;
-          }
-        }, CACHE_DURATION);
+        // no-op
       }
     }, 100); // Small debounce (100ms) to batch rapid image changes
 
@@ -650,13 +634,14 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     [deleteAnnotation]
   );
 
-  // Calculate annotated images count
+  // Calculate annotated images count across dataset
   const countAnnotatedImages = useCallback(() => {
-    const annotatedImageIds = new Set(
-      annotations.map((ann) => ann.imageId)
-    );
-    return annotatedImageIds.size;
-  }, [annotations]);
+    // Prefer backend-provided flags when available
+    const byMetadata = images.filter(
+      (img) => img.hasAnnotations || img.annotationStatus === "annotated"
+    ).length;
+    return byMetadata;
+  }, [images]);
 
   // Phase 4: Handle bounding box drawing - save immediately when box is complete
   const handleBboxDraw = useCallback(
@@ -1060,9 +1045,9 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
               // Retry initialization by re-running the effect
               const initialize = async () => {
                 try {
-                  const imagesData = await annotationsApi.getUnlabeledImages(datasetId, { limit: 10000 });
+                  const imagesData = await annotationsApi.getDatasetImages(datasetId, { limit: 10000, status: "all" });
                   if (!imagesData || !imagesData.images) {
-                    throw new Error("Invalid response from unlabeled-images endpoint");
+                    throw new Error("Invalid response from images endpoint");
                   }
                   loadImages(imagesData.images);
                   if (imagesData.images.length > 0) {
@@ -1347,7 +1332,13 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
               }}
             />
             {imageLoaded && imageMetrics && (
-              <BoundingBoxCanvas
+              <>
+                {console.log("[AnnotationWorkspace] RENDER CANVAS", {
+                  currentImageId: currentImage?.id,
+                  annotationsForImage: annotations.length,
+                  sample: annotations[0],
+                })}
+                <BoundingBoxCanvas
                 imageWidth={imageMetrics.displayWidth}
                 imageHeight={imageMetrics.displayHeight}
                 naturalWidth={imageMetrics.naturalWidth}
@@ -1363,7 +1354,8 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
                 onBboxDraw={handleBboxDraw}
                 onAnnotationClick={handleAnnotationClick}
                 onAnnotationUpdate={handleAnnotationUpdate}
-              />
+                />
+              </>
             )}
             {/* Phase 3: Show message when no categories */}
             {!hasCategories && imageLoaded && (
@@ -1504,8 +1496,9 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
                 setShowUnannotatedDialog(false);
                 // Phase 5: Display the list/grid of images without annotations
                 setShowOnlyUnannotatedImages(true);
-                const annotatedImageIds = new Set(annotations.map((ann) => ann.imageId));
-                const imagesWithoutAnnotations = images.filter((img) => !annotatedImageIds.has(img.id));
+                const imagesWithoutAnnotations = images.filter(
+                  (img) => !img.hasAnnotations && img.annotationStatus !== "annotated"
+                );
                 toast({
                   title: "Unannotated images",
                   description: `${imagesWithoutAnnotations.length} image(s) without annotations. Please annotate them or mark as good.`,
@@ -1519,8 +1512,9 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
               variant="default"
               onClick={async () => {
                 setShowUnannotatedDialog(false);
-                const annotatedImageIds = new Set(annotations.map((ann) => ann.imageId));
-                const imagesWithoutAnnotations = images.filter((img) => !annotatedImageIds.has(img.id));
+                const imagesWithoutAnnotations = images.filter(
+                  (img) => !img.hasAnnotations && img.annotationStatus !== "annotated"
+                );
                 const unannotatedImageIds = imagesWithoutAnnotations.map((img) => img.id);
                 await handleSaveAndConvert(unannotatedImageIds);
               }}
@@ -1550,10 +1544,9 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         <ImageThumbnailGrid
           images={
             showOnlyUnannotatedImages
-              ? (() => {
-                  const annotatedImageIds = new Set(annotations.map((ann) => ann.imageId));
-                  return images.filter((img) => !annotatedImageIds.has(img.id));
-                })()
+              ? images.filter(
+                  (img) => !img.hasAnnotations && img.annotationStatus !== "annotated"
+                )
               : images
           }
           currentImageId={currentImage?.id ?? null}

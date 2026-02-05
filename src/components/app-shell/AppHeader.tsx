@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,7 @@ export const AppHeader: React.FC = () => {
   const [showRequestsPanel, setShowRequestsPanel] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isMobile = useIsMobile();
+  const lastInviteStatusRef = useRef<string | null>(null);
 
   // Debug admin status in development (only when session is fully initialized)
   useEffect(() => {
@@ -84,6 +85,68 @@ export const AppHeader: React.FC = () => {
           });
         }
       })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, toast]);
+
+  // Realtime notifications for admins when their company invites are accepted
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`company-invites-admin-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "company_invites",
+          filter: `created_by=eq.${user.id}`,
+        },
+        (payload) => {
+          const oldRow = payload.old as { status?: string; email?: string } | null;
+          const newRow = payload.new as {
+            status?: string;
+            email?: string;
+            updated_at?: string;
+          } | null;
+
+          const oldStatus = oldRow?.status;
+          const newStatus = newRow?.status;
+
+          if (!newStatus || oldStatus === newStatus) return;
+
+          if (newStatus === "accepted") {
+            const email = newRow?.email || "The invited user";
+            const acceptedAtRaw = newRow?.updated_at;
+            let acceptedAt = acceptedAtRaw || "";
+
+            if (acceptedAtRaw) {
+              try {
+                acceptedAt = new Date(acceptedAtRaw).toLocaleString();
+              } catch {
+                acceptedAt = acceptedAtRaw;
+              }
+            }
+
+            const key = `${email}|${newStatus}|${acceptedAt}`;
+            if (lastInviteStatusRef.current === key) {
+              return;
+            }
+            lastInviteStatusRef.current = key;
+
+            toast({
+              title: "Invite accepted",
+              description: acceptedAt
+                ? `${email} accepted your company invite on ${acceptedAt}.`
+                : `${email} accepted your company invite.`,
+            });
+          }
+        },
+      )
       .subscribe();
 
     return () => {
