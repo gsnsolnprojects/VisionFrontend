@@ -1,5 +1,5 @@
 // src/components/CompanyMembers.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isUserAdmin } from "@/lib/utils/adminUtils";
@@ -24,9 +24,16 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { InviteUserDialog } from "@/components/InviteUserDialog";
 import { updateUserRole, setUserActive, deleteUser } from "@/lib/api/users";
 import type { UserRole } from "@/types/roles";
-import { Loader2, Trash2 } from "lucide-react";
+import { Loader2, Trash2, UserPlus } from "lucide-react";
 import { clearAuthCache } from "@/lib/api/config";
 
 interface CompanyMembersProps {
@@ -62,6 +69,10 @@ export const CompanyMembers: React.FC<CompanyMembersProps> = ({
   const [updatingActive, setUpdatingActive] = useState<Set<string>>(new Set());
   const [memberToDelete, setMemberToDelete] = useState<MemberProfile | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteAccessToken, setInviteAccessToken] = useState("");
+  // Track last seen invite status in this session so we don't spam notifications
+  const lastInviteStatusRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!hasPermission("manageWorkspaceUsers") || !companyId) {
@@ -115,6 +126,102 @@ export const CompanyMembers: React.FC<CompanyMembersProps> = ({
       });
     } catch {
       return dateString;
+    }
+  };
+
+  // Only platform admins and workspace admins can invite users
+  const canInviteUsers =
+    !!companyId && (userRole === "platform_admin" || userRole === "workspace_admin");
+
+  const handleAddUser = async () => {
+    if (!companyId) {
+      toast({
+        title: "Company required",
+        description: "Please create or join a company before inviting users.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const token = session?.access_token ?? "";
+      setInviteAccessToken(token);
+      setInviteOpen(true);
+    } catch (err) {
+      console.error("[CompanyMembers] Failed to get session token for invite", err);
+      setInviteAccessToken("");
+      setInviteOpen(true);
+    }
+  };
+
+  // When the invite dialog closes, show a one-time status notification
+  // about the latest invite (pending vs accepted) for this admin + company.
+  const handleInviteDialogOpenChange = async (open: boolean) => {
+    setInviteOpen(open);
+
+    // Only run the status check when dialog is being closed
+    if (open || !companyId || !user?.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("company_invites")
+        .select("email, status, created_at, updated_at")
+        .eq("company_id", companyId)
+        .eq("created_by", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error || !data) {
+        return;
+      }
+
+      const { email, status, created_at, updated_at } = data as {
+        email: string | null;
+        status: string | null;
+        created_at: string;
+        updated_at: string | null;
+      };
+
+      if (!status) return;
+
+      const key = `${email || "unknown"}|${status}`;
+      if (lastInviteStatusRef.current === key) {
+        // We've already shown a notification for this status in this session
+        return;
+      }
+      lastInviteStatusRef.current = key;
+
+      if (status === "pending") {
+        toast({
+          title: "Invite pending",
+          description:
+            email
+              ? `The invite sent to ${email} is still pending.`
+              : "The last invite is still pending.",
+        });
+      } else if (status === "accepted") {
+        const acceptedAt = updated_at || created_at;
+        let formatted = acceptedAt;
+        try {
+          formatted = new Date(acceptedAt).toLocaleString();
+        } catch {
+          // fall back to raw value
+        }
+
+        toast({
+          title: "Invite accepted",
+          description: email
+            ? `${email} accepted the invite on ${formatted}.`
+            : `The last invite was accepted on ${formatted}.`,
+        });
+      }
+    } catch (err) {
+      console.error("[CompanyMembers] Error checking latest invite status:", err);
     }
   };
 
@@ -317,11 +424,24 @@ export const CompanyMembers: React.FC<CompanyMembersProps> = ({
 
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold">Company Members</h2>
-        <p className="text-muted-foreground mt-1">
-          View all members of your company and their details.
-        </p>
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold">Company Members</h2>
+          <p className="text-muted-foreground mt-1">
+            View all members of your company and their details.
+          </p>
+        </div>
+        {canInviteUsers && (
+          <Button
+            type="button"
+            size="sm"
+            className="shrink-0"
+            onClick={handleAddUser}
+          >
+            <UserPlus className="mr-2 h-4 w-4" />
+            Add User
+          </Button>
+        )}
       </div>
 
       {members.length === 0 ? (
@@ -497,6 +617,18 @@ export const CompanyMembers: React.FC<CompanyMembersProps> = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Invite user dialog (only opens for workspace/platform admins) */}
+      <Dialog open={inviteOpen} onOpenChange={handleInviteDialogOpenChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Invite user to company</DialogTitle>
+          </DialogHeader>
+          <div className="py-2">
+            <InviteUserDialog companyId={companyId} accessToken={inviteAccessToken} />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

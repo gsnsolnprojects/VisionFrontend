@@ -1,13 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { InviteUserDialog } from "@/components/InviteUserDialog";
 import { useProfile } from "@/hooks/useProfile";
 import { useSidebar } from "./sidebar-context";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -17,7 +10,6 @@ import {
   FolderKanban,
   Users,
   Settings,
-  UserPlus,
   ChevronRight,
   ChevronDown,
   Plus,
@@ -75,10 +67,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
   const [projects, setProjects] = useState<any[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
 
-  // Invite modal state
-  const [inviteOpen, setInviteOpen] = useState<boolean>(false);
-  const [inviteAccessToken, setInviteAccessToken] = useState<string>("");
-
   const companyId = profile?.company_id ?? null;
 
   // Load projects when company_id is available (optimized: don't wait for profileLoading)
@@ -128,28 +116,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
   const handleSimulation = () => navigate("/dashboard?view=simulation");
   const handlePrediction = () => navigate("/project/prediction");
 
-  // When Add User clicked: ensure company exists and fetch access token, then open invite dialog
-  const handleAddUser = async () => {
-    if (!companyId) {
-      navigate("/dashboard");
-      return;
-    }
-
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      const token = session?.access_token ?? "";
-      setInviteAccessToken(token);
-      setInviteOpen(true);
-    } catch (err) {
-      console.error("failed to get session token for invite", err);
-      setInviteAccessToken("");
-      setInviteOpen(true);
-    }
-  };
-
   const isActive = (path: string) => location.pathname === path;
   const isActiveStartsWith = (path: string) => location.pathname.startsWith(path);
   const viewParam = searchParams.get("view");
@@ -183,7 +149,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
             active: isActiveStartsWith("/dashboard/team"),
             children: [
               {
-                label: "View Members",
+                label: "Manage Members",
                 href: "/dashboard/team/members",
                 active: isActive("/dashboard/team/members"),
               },
@@ -493,18 +459,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
                         Prediction (Testing)
                       </Button>
 
-                      {hasPermission("manageWorkspaceUsers") && companyId && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="w-full justify-start"
-                          onClick={handleAddUser}
-                          disabled={!companyId}
-                        >
-                          <UserPlus className="mr-2 h-4 w-4" />
-                          Add User
-                        </Button>
-                      )}
                     </div>
                   )}
                 </div>
@@ -514,21 +468,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
           </div>
         </nav>
       </aside>
-
-      {/* Invite modal */}
-      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Invite user to company</DialogTitle>
-          </DialogHeader>
-          <div className="py-2">
-            <InviteUserDialog
-              companyId={companyId ?? ""}
-              accessToken={inviteAccessToken}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
     </>
   );
 };

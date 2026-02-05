@@ -133,6 +133,43 @@ serve(async (req: Request) => {
       );
     }
 
+    // ---- Rate limit: at most 2 invites to the same user per 5 minutes (per company) ----
+    try {
+      const windowMs = 5 * 60 * 1000; // 5 minutes
+      const now = Date.now();
+
+      const { data: recentInvites, error: rateError } = await supabase
+        .from("company_invites")
+        .select("created_at")
+        .eq("company_id", companyId)
+        .eq("email", inviteEmail)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (!rateError && recentInvites && recentInvites.length > 0) {
+        const withinWindow = recentInvites.filter((row) => {
+          const createdAt = new Date(row.created_at as string).getTime();
+          return now - createdAt < windowMs;
+        });
+
+        // Allow at most 2 invites in the window; block if 2 or more already exist
+        if (withinWindow.length >= 2) {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: "Too many invites to this user recently. Please wait 5 minutes before inviting again.",
+              errorCode: "INVITE_RATE_LIMIT",
+              waitTimeSeconds: 5 * 60,
+            }),
+            { status: 429, headers: { "Content-Type": "application/json", ...CORS } },
+          );
+        }
+      }
+    } catch (rateCheckError) {
+      console.error("create-invite rate limit check error:", rateCheckError);
+      // On error, do not block the invite to avoid breaking legitimate flows
+    }
+
     // ---- Check if invitee email already exists in this company ----
     const { data: existingMember } = await supabase
       .from("profiles")
