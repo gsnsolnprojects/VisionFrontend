@@ -1370,17 +1370,37 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                                   ).toLocaleDateString()}
                                 </div>
                               </div>
-                              <Badge
-                                variant={
-                                  dataset.status === "ready"
-                                    ? "default"
-                                    : dataset.status === "processing"
-                                    ? "secondary"
-                                    : "destructive"
-                                }
-                              >
-                                {dataset.status ?? "unknown"}
-                              </Badge>
+                              <div className="flex items-center gap-2">
+                                <Badge
+                                  variant={
+                                    dataset.status === "ready" || dataset.status === "ready_to_train"
+                                      ? "default"
+                                      : dataset.status === "processing"
+                                      ? "secondary"
+                                      : "destructive"
+                                  }
+                                >
+                                  {dataset.status === "ready" || dataset.status === "ready_to_train"
+                                    ? "Ready"
+                                    : (dataset.status ?? "unknown")}
+                                </Badge>
+                                {dataset.status === "ready" && (
+                                  <Badge
+                                    variant="outline"
+                                    className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40"
+                                  >
+                                    Pre-Labelled
+                                  </Badge>
+                                )}
+                                {dataset.status === "ready_to_train" && (
+                                  <Badge
+                                    variant="outline"
+                                    className="bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/40"
+                                  >
+                                    Manually Labelled
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                           </div>
                         );
@@ -1496,7 +1516,11 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                     <div className="font-medium">{datasetDetails.unlabeledImages ?? 0}</div>
 
                     <div className="text-sm text-muted-foreground">Status</div>
-                    <div className="font-medium">{datasetDetails.status}</div>
+                    <div className="font-medium">
+                      {datasetDetails.status === "ready" || datasetDetails.status === "ready_to_train"
+                        ? "Ready"
+                        : (datasetDetails.status ?? "unknown")}
+                    </div>
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">No dataset details available.</p>
