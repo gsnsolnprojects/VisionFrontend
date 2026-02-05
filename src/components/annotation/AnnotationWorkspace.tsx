@@ -634,13 +634,14 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     [deleteAnnotation]
   );
 
-  // Calculate annotated images count
+  // Calculate annotated images count across dataset
   const countAnnotatedImages = useCallback(() => {
-    const annotatedImageIds = new Set(
-      annotations.map((ann) => ann.imageId)
-    );
-    return annotatedImageIds.size;
-  }, [annotations]);
+    // Prefer backend-provided flags when available
+    const byMetadata = images.filter(
+      (img) => img.hasAnnotations || img.annotationStatus === "annotated"
+    ).length;
+    return byMetadata;
+  }, [images]);
 
   // Phase 4: Handle bounding box drawing - save immediately when box is complete
   const handleBboxDraw = useCallback(
