@@ -48,6 +48,7 @@ import { fadeInUpVariants, staggerContainerVariants } from "@/utils/animations";
 import { ClassNameDialog } from "@/components/dataset/ClassNameDialog";
 import { getDetectedClasses, type DetectedClassesResponse } from "@/lib/api/categories";
 import { ProtectedComponent } from "@/components/permissions/ProtectedComponent";
+import { DeleteProjectModal } from "@/components/dashboard/DeleteProjectModal";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
 const apiUrl = (path: string) => {
@@ -240,9 +241,8 @@ const DatasetManager = () => {
 
   const zoomContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Delete project state
+  // Delete project state (modal uses dashboard API: GET summary, DELETE project)
   const [showDeleteProjectDialog, setShowDeleteProjectDialog] = useState<boolean>(false);
-  const [deletingProject, setDeletingProject] = useState<boolean>(false);
 
   // Delete version state
   const [versionToDelete, setVersionToDelete] = useState<string | null>(null);
@@ -1612,71 +1612,6 @@ const DatasetManager = () => {
     }
   };
 
-  // ------- Delete project handler -------
-  const handleDeleteProject = async () => {
-    if (!projectId) {
-      toast({
-        title: "Error",
-        description: "Project ID is missing.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setDeletingProject(true);
-
-    try {
-      // Step 1: Delete from Supabase
-      const { error: supabaseError } = await supabase
-        .from("projects")
-        .delete()
-        .eq("id", projectId);
-
-      if (supabaseError) {
-        throw new Error(`Failed to delete project from database: ${supabaseError.message}`);
-      }
-
-      // Step 2: Send API request to backend to delete project
-      try {
-        const headers = await getAuthHeaders();
-        const deleteUrl = apiUrl(`/project/${encodeURIComponent(projectId)}`);
-        const res = await fetch(deleteUrl, {
-          method: "DELETE",
-          headers: headers ? { ...headers, "Content-Type": "application/json" } : { "Content-Type": "application/json" },
-        });
-
-        if (!res.ok) {
-          // Non-fatal error - Supabase deletion succeeded, but backend may still have data
-          console.warn(`Backend deletion failed (${res.status}), but project removed from database`);
-          // Continue with success flow since Supabase deletion succeeded
-        }
-      } catch (backendError: any) {
-        // Non-fatal error - log but continue
-        console.warn("Backend deletion failed:", backendError);
-        // Continue with success flow since Supabase deletion succeeded
-      }
-
-      // Success - navigate to dashboard
-      toast({
-        title: "Project deleted",
-        description: "The project has been successfully deleted.",
-      });
-
-      setShowDeleteProjectDialog(false);
-      navigate("/dashboard");
-    } catch (error: any) {
-      console.error("Error deleting project:", error);
-      toast({
-        title: "Failed to delete project",
-        description: error.message || "An unexpected error occurred while deleting the project.",
-        variant: "destructive",
-      });
-      // Keep dialog open on error so user can try again
-    } finally {
-      setDeletingProject(false);
-    }
-  };
-
   // ------- Fetch version dependencies before deletion -------
   const fetchVersionDependencies = async (datasetId: string) => {
     setLoadingDependencies(true);
@@ -2386,7 +2321,6 @@ const DatasetManager = () => {
               <Button
                 variant="destructive"
                 onClick={() => setShowDeleteProjectDialog(true)}
-                disabled={deletingProject}
               >
                 <Trash2 className="h-4 w-4 mr-2" />
                 Delete Project
@@ -2797,39 +2731,24 @@ const DatasetManager = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Project Confirmation Dialog */}
-      <AlertDialog open={showDeleteProjectDialog} onOpenChange={setShowDeleteProjectDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Project?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this project? This will permanently delete the project and all associated data. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deletingProject}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteProject}
-              disabled={deletingProject}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deletingProject ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                <>
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
-                </>
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Delete Project Confirmation Modal (GET summary, then DELETE via dashboard API) */}
+      <DeleteProjectModal
+        open={showDeleteProjectDialog}
+        onOpenChange={setShowDeleteProjectDialog}
+        companyName={companyName}
+        projectName={displayProjectName}
+        onDeleted={async () => {
+          // Project list is from Supabase; remove the row so it disappears from UI (sidebar, projects page)
+          if (projectId) {
+            await supabase.from("projects").delete().eq("id", projectId);
+          }
+          toast({
+            title: "Project deleted",
+            description: "Project and all its data have been deleted.",
+          });
+          navigate("/dashboard/projects");
+        }}
+      />
 
       {/* Delete Version Confirmation Dialog */}
       <AlertDialog open={showDeleteVersionDialog} onOpenChange={(open) => {

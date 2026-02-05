@@ -154,6 +154,29 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
       const name = profileForm.values.name.trim();
       const phone = profileForm.values.phone.trim();
 
+      // If admin is changing company name, validate no duplicate (before any updates)
+      if (isAdmin && company && profileForm.values.companyName) {
+        const companyName = profileForm.values.companyName.trim();
+        if (companyName !== company.name) {
+          const { data: existingByName } = await supabase.rpc("check_company_exists", {
+            company_name: companyName,
+          });
+          const otherCompanyWithSameName =
+            existingByName &&
+            existingByName.length > 0 &&
+            (existingByName[0] as { id?: string }).id !== company.id;
+          if (otherCompanyWithSameName) {
+            toast({
+              title: "Company name already in use",
+              description: "Another company has this name. Please choose a different name.",
+              variant: "destructive",
+            });
+            setSaving(false);
+            return;
+          }
+        }
+      }
+
       // Update profile
       const { error: profileError } = await supabase
         .from("profiles")
@@ -176,7 +199,18 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
             })
             .eq("id", company.id);
 
-          if (companyError) throw companyError;
+          if (companyError) {
+            if (companyError.code === "23505") {
+              toast({
+                title: "Company name already in use",
+                description: "Another company has this name. Please choose a different name.",
+                variant: "destructive",
+              });
+              setSaving(false);
+              return;
+            }
+            throw companyError;
+          }
         }
       }
 
