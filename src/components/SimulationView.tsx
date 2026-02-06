@@ -133,6 +133,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
   const [loadingDatasets, setLoadingDatasets] = useState(false);
   const [loadingDatasetDetails, setLoadingDatasetDetails] = useState(false);
   const [showSimulateConfirm, setShowSimulateConfirm] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const [isSimulating, setIsSimulating] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -167,6 +168,9 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
   const hasRestoredRef = useRef<boolean>(false);
   const completionToastShownRef = useRef<boolean>(false);
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
+  const consecutivePollingFailuresRef = useRef<number>(0);
+  const backendErrorToastShownRef = useRef<boolean>(false);
+  const queuedAtRef = useRef<number | null>(null);
 
   const COMPLETION_TOAST_PREFIX = "visionm_training_completed_toast_";
 
@@ -183,6 +187,142 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
       localStorage.setItem(COMPLETION_TOAST_PREFIX + id, "1");
     } catch {
       // ignore storage errors
+    }
+  };
+
+  // Helper function to detect network/backend errors and format user-friendly error messages
+  const getBackendErrorMessage = (err: any): { title: string; description: string; isNetworkError: boolean } => {
+    const errorMessage = err?.message || String(err || "Unknown error");
+    const errorName = err?.name || "";
+
+    // Detect network errors (backend offline, connection refused, etc.)
+    if (
+      errorName === "TypeError" ||
+      errorMessage.includes("Failed to fetch") ||
+      errorMessage.includes("NetworkError") ||
+      errorMessage.includes("Network request failed") ||
+      errorMessage.includes("ECONNREFUSED") ||
+      errorMessage.includes("ERR_NETWORK") ||
+      errorMessage.includes("ERR_CONNECTION_REFUSED") ||
+      errorMessage.includes("ERR_INTERNET_DISCONNECTED")
+    ) {
+      return {
+        title: "Backend Connection Failed",
+        description: "Unable to connect to the training server. The backend may be offline or unreachable. Training has been halted.",
+        isNetworkError: true,
+      };
+    }
+
+    // Detect timeout errors
+    if (errorMessage.includes("timeout") || errorMessage.includes("Timeout")) {
+      return {
+        title: "Request Timeout",
+        description: "The training server did not respond in time. Please check your connection and try again.",
+        isNetworkError: true,
+      };
+    }
+
+    // Handle HTTP status codes
+    if (errorMessage.includes("500") || errorMessage.includes("Status fetch failed (500)")) {
+      return {
+        title: "Server Error",
+        description: "The training server encountered an internal error. Please try again later or contact support.",
+        isNetworkError: false,
+      };
+    }
+
+    if (errorMessage.includes("503") || errorMessage.includes("Status fetch failed (503)")) {
+      return {
+        title: "Service Unavailable",
+        description: "The training service is temporarily unavailable. Please try again later.",
+        isNetworkError: false,
+      };
+    }
+
+    if (errorMessage.includes("502") || errorMessage.includes("Status fetch failed (502)")) {
+      return {
+        title: "Bad Gateway",
+        description: "The training server is experiencing connectivity issues. Please try again later.",
+        isNetworkError: true,
+      };
+    }
+
+    // Generic error fallback
+    return {
+      title: "Training Error",
+      description: errorMessage.length > 100 ? `${errorMessage.substring(0, 100)}...` : errorMessage,
+      isNetworkError: false,
+    };
+  };
+
+  // Helper function to halt training and show error
+  const haltTrainingWithError = (errorInfo: { title: string; description: string; isNetworkError: boolean }, showToast: boolean = true) => {
+    // Stop polling
+    if (pollIntervalRef.current) {
+      window.clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+    if (logsPollIntervalRef.current) {
+      window.clearInterval(logsPollIntervalRef.current);
+      logsPollIntervalRef.current = null;
+    }
+
+    // Update state to failed
+    setIsSimulating(false);
+    setSimulationStatus("failed");
+
+    // Show toast notification (only once per session to avoid spam)
+    if (showToast && !backendErrorToastShownRef.current) {
+      toast({
+        title: errorInfo.title,
+        description: errorInfo.description,
+        variant: "destructive",
+      });
+      backendErrorToastShownRef.current = true;
+    }
+
+    // Clear persisted state for network errors (backend offline)
+    if (errorInfo.isNetworkError) {
+      clearTrainingState();
+      setJobId(null);
+      setEpochInfo(null);
+      setStartedAt(null);
+      setCompletedAt(null);
+      setFinalMetrics(null);
+      setHyperparametersSnapshot(null);
+      setModelInfo(null);
+    }
+  };
+
+  // Helper function to format duration from start and end timestamps
+  const formatTrainingDuration = (startedAt: string | null, completedAt: string | null): string | null => {
+    if (!startedAt || !completedAt) return null;
+    
+    try {
+      const start = new Date(startedAt).getTime();
+      const end = new Date(completedAt).getTime();
+      const durationMs = end - start;
+      
+      if (durationMs < 0) return null;
+      
+      const seconds = Math.floor(durationMs / 1000);
+      const minutes = Math.floor(seconds / 60);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+      
+      const remainingHours = hours % 24;
+      const remainingMinutes = minutes % 60;
+      const remainingSeconds = seconds % 60;
+      
+      const parts: string[] = [];
+      if (days > 0) parts.push(`${days}d`);
+      if (remainingHours > 0) parts.push(`${remainingHours}h`);
+      if (remainingMinutes > 0) parts.push(`${remainingMinutes}m`);
+      if (remainingSeconds > 0 && parts.length === 0) parts.push(`${remainingSeconds}s`);
+      
+      return parts.length > 0 ? parts.join(" ") : "0s";
+    } catch {
+      return null;
     }
   };
 
@@ -721,6 +861,26 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
             clearTrainingState();
             hasRestoredRef.current = true;
             isRestoringRef.current = false;
+            consecutivePollingFailuresRef.current = 0;
+            backendErrorToastShownRef.current = false;
+            queuedAtRef.current = null;
+            return;
+          }
+          // For server errors during restore, show error but don't halt (job might still exist)
+          if (resp.status >= 500) {
+            const errorInfo = getBackendErrorMessage(new Error(`Status fetch failed (${resp.status})`));
+            console.error("[SimulationView] Server error during restore:", errorInfo);
+            toast({
+              title: errorInfo.title,
+              description: "Unable to restore training state. " + errorInfo.description,
+              variant: "destructive",
+            });
+            clearTrainingState();
+            hasRestoredRef.current = true;
+            isRestoringRef.current = false;
+            consecutivePollingFailuresRef.current = 0;
+            backendErrorToastShownRef.current = false;
+            queuedAtRef.current = null;
             return;
           }
           throw new Error(`Status fetch failed (${resp.status})`);
@@ -815,6 +975,8 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
           // Completed: show results from snapshot, no polling, no clearing
           setIsSimulating(false);
           showCompletionToast(savedState.jobId, data.finalMetrics as FinalMetrics | null | undefined);
+          // Refresh trained models list to show newly completed model
+          void fetchTrainedModels();
         } else {
           // Failed or cancelled - clear persisted state
           clearTrainingState();
@@ -822,9 +984,21 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
         }
       } catch (err: any) {
         console.error("[SimulationView] Error restoring training state:", err);
+        // Check if it's a network error
+        const errorInfo = getBackendErrorMessage(err);
+        if (errorInfo.isNetworkError) {
+          toast({
+            title: errorInfo.title,
+            description: "Unable to restore training state. " + errorInfo.description,
+            variant: "destructive",
+          });
+        }
         // On error, clear persisted state to avoid getting stuck
         clearTrainingState();
         setIsSimulating(false);
+        consecutivePollingFailuresRef.current = 0;
+        backendErrorToastShownRef.current = false;
+        queuedAtRef.current = null;
       } finally {
         isRestoringRef.current = false;
         hasRestoredRef.current = true;
@@ -958,6 +1132,11 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
       setJobId(newJobId);
       setSimulationStatus(data.status ?? "queued");
       
+      // Reset error tracking when starting new training
+      consecutivePollingFailuresRef.current = 0;
+      backendErrorToastShownRef.current = false;
+      queuedAtRef.current = null;
+      
       // Save training state to localStorage for persistence across reloads
       saveTrainingState(newJobId, {
         projectId: selectedProjectId,
@@ -1014,13 +1193,60 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
             setSimulationStatus("idle");
             setEpochInfo(null);
             setStartedAt(null);
+            consecutivePollingFailuresRef.current = 0;
+            backendErrorToastShownRef.current = false;
             return;
+          }
+          // For server errors (500, 502, 503), increment failure counter
+          if (resp.status >= 500) {
+            consecutivePollingFailuresRef.current += 1;
+            // Halt after 2 consecutive failures
+            if (consecutivePollingFailuresRef.current >= 2) {
+              const errorInfo = getBackendErrorMessage(new Error(`Status fetch failed (${resp.status})`));
+              console.error(`[SimulationView] Server error ${resp.status} detected after ${consecutivePollingFailuresRef.current} consecutive failures`);
+              haltTrainingWithError(errorInfo, true);
+              return;
+            }
           }
           throw new Error(`Status fetch failed (${resp.status})`);
         }
         
+        // Reset consecutive failures counter on successful response
+        consecutivePollingFailuresRef.current = 0;
+        backendErrorToastShownRef.current = false;
+        
         const data = await resp.json();
         const status = data.status ?? simulationStatus;
+        
+        // Track when status becomes "queued" and detect if stuck for too long
+        const QUEUED_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+        const currentTime = Date.now();
+        
+        if (status === "queued") {
+          // If status is "queued", track when it first became queued
+          if (queuedAtRef.current === null) {
+            queuedAtRef.current = currentTime;
+          } else {
+            // Check if it's been queued for too long
+            const timeQueued = currentTime - queuedAtRef.current;
+            if (timeQueued > QUEUED_TIMEOUT_MS) {
+              console.error(`[SimulationView] Training stuck in "queued" status for ${Math.round(timeQueued / 1000)}s, halting`);
+              const errorInfo = {
+                title: "Training Worker Unavailable",
+                description: "Training has been queued for more than 2 minutes without starting. The training worker may be offline or unresponsive. Please check the backend and try again.",
+                isNetworkError: true,
+              };
+              haltTrainingWithError(errorInfo, true);
+              return;
+            }
+          }
+        } else {
+          // If status changed from "queued" to something else, reset the timer
+          if (queuedAtRef.current !== null && status !== "queued") {
+            queuedAtRef.current = null;
+          }
+        }
+        
         setSimulationStatus(status);
 
         const progressPercent =
@@ -1092,8 +1318,15 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
             logsPollIntervalRef.current = null;
           }
           setIsSimulating(false);
+          // Reset consecutive failures counter on successful status update
+          consecutivePollingFailuresRef.current = 0;
+          backendErrorToastShownRef.current = false;
+          // Reset queued timer when training ends
+          queuedAtRef.current = null;
           if (status === "completed") {
             showCompletionToast(jobIdToPoll, data.finalMetrics as FinalMetrics | null | undefined);
+            // Refresh trained models list to show newly completed model
+            void fetchTrainedModels();
           } else {
             // Clear persisted training state when training fails/cancels
             clearTrainingState();
@@ -1107,6 +1340,10 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
         }
       } catch (err: any) {
         console.error("Polling status error:", err);
+        
+        // Increment consecutive failures counter
+        consecutivePollingFailuresRef.current += 1;
+
         // If we get a 404 or 400, the job might be invalid - clear persisted state
         if (err?.message?.includes("404") || err?.message?.includes("400")) {
           console.warn("[SimulationView] Job not found or invalid, clearing persisted state");
@@ -1124,6 +1361,18 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
           setSimulationStatus("idle");
           setEpochInfo(null);
           setStartedAt(null);
+          consecutivePollingFailuresRef.current = 0;
+          backendErrorToastShownRef.current = false;
+          queuedAtRef.current = null;
+          return;
+        }
+
+        // For other errors (network, 500, etc.), check if we should halt training
+        // Halt after 2 consecutive failures to avoid false positives from transient issues
+        if (consecutivePollingFailuresRef.current >= 2) {
+          const errorInfo = getBackendErrorMessage(err);
+          console.error(`[SimulationView] Backend error detected after ${consecutivePollingFailuresRef.current} consecutive failures:`, errorInfo);
+          haltTrainingWithError(errorInfo, true);
         }
       }
     };
@@ -1209,11 +1458,20 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
         logsPollIntervalRef.current = null;
       }
       setIsSimulating(false);
+      // Reset error tracking when cancelled
+      consecutivePollingFailuresRef.current = 0;
+      backendErrorToastShownRef.current = false;
+      queuedAtRef.current = null;
       // Clear persisted training state when cancelled
       clearTrainingState();
     } catch (err: any) {
       console.error("cancelJob error:", err);
-      toast({ title: "Cancel failed", description: err?.message ?? "Could not cancel job.", variant: "destructive" });
+      const errorInfo = getBackendErrorMessage(err);
+      toast({
+        title: "Cancel failed",
+        description: errorInfo.isNetworkError ? errorInfo.description : (err?.message ?? "Could not cancel job."),
+        variant: "destructive",
+      });
     }
   };
 
@@ -1235,6 +1493,11 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
       setIsSimulating(true);
       setSimulationProgress(0);
       
+      // Reset error tracking when retrying
+      consecutivePollingFailuresRef.current = 0;
+      backendErrorToastShownRef.current = false;
+      queuedAtRef.current = null;
+      
       // Save new training state to localStorage
       saveTrainingState(newId, {
         projectId: selectedProjectId,
@@ -1247,7 +1510,12 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
       toast({ title: "Retry started", description: `New job ${newId} started`, variant: "default" });
     } catch (err: any) {
       console.error("retryJob error:", err);
-      toast({ title: "Retry failed", description: err?.message ?? "Could not retry job.", variant: "destructive" });
+      const errorInfo = getBackendErrorMessage(err);
+      toast({
+        title: "Retry failed",
+        description: errorInfo.isNetworkError ? errorInfo.description : (err?.message ?? "Could not retry job."),
+        variant: "destructive",
+      });
     }
   };
 
@@ -2239,6 +2507,14 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                     <div>
                       <h4 className="text-sm font-semibold mb-2">Final Metrics</h4>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                        {formatTrainingDuration(startedAt, completedAt) && (
+                          <div className="p-3 border rounded">
+                            <div className="text-muted-foreground">Training Duration</div>
+                            <div className="font-semibold mt-1">
+                              {formatTrainingDuration(startedAt, completedAt)}
+                            </div>
+                          </div>
+                        )}
                         {finalMetrics.bestEpoch !== undefined && (
                           <div className="p-3 border rounded">
                             <div className="text-muted-foreground">Best Epoch</div>
@@ -2370,7 +2646,10 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
               {/* Cancel / Retry */}
               <div className="mt-4 flex gap-2">
                 {(simulationStatus === "queued" || simulationStatus === "running") && (
-                  <Button variant="destructive" onClick={cancelJob}>
+                  <Button
+                    variant="destructive"
+                    onClick={() => setShowCancelConfirm(true)}
+                  >
                     Cancel
                   </Button>
                 )}
@@ -2413,7 +2692,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
         )}
       </motion.div>
 
-      {/* Confirmation dialog */}
+      {/* Start training confirmation dialog */}
       <Dialog open={showSimulateConfirm} onOpenChange={setShowSimulateConfirm}>
         <DialogContent>
           <DialogHeader>
@@ -2431,6 +2710,36 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
             <Button variant="outline" onClick={() => setShowSimulateConfirm(false)}>Cancel</Button>
             <Button onClick={startTraining}>
               {isSimulating ? <> <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Starting... </> : "Confirm & Start"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Stop training confirmation dialog */}
+      <Dialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Stop training?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to stop this training run? Progress for this run will be stopped.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowCancelConfirm(false)}
+            >
+              No, keep training
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                setShowCancelConfirm(false);
+                await cancelJob();
+              }}
+              disabled={!(simulationStatus === "queued" || simulationStatus === "running")}
+            >
+              Yes, stop training
             </Button>
           </DialogFooter>
         </DialogContent>
