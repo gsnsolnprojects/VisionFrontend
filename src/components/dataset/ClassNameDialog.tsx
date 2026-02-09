@@ -18,6 +18,7 @@ import type {
 } from "@/lib/api/categories";
 import { createCategoriesFromClasses } from "@/lib/api/categories";
 import { getAuthHeaders, apiUrl } from "@/lib/api/config";
+import { containsDangerousPattern } from "@/lib/xss";
 
 interface ClassNameDialogProps {
   datasetId: string;
@@ -236,6 +237,15 @@ export const ClassNameDialog: React.FC<ClassNameDialogProps> = ({
   const handleNameChange = (classId: number, value: string) => {
     const trimmedValue = value.trim();
     
+    // XSS validation: reject <script>, on*, javascript: patterns
+    if (containsDangerousPattern(trimmedValue)) {
+      setErrors((prev) => ({
+        ...prev,
+        [classId.toString()]: "Invalid characters: script tags, event handlers, and javascript: URLs are not allowed",
+      }));
+      return;
+    }
+    
     // Validation: max 50 characters
     if (trimmedValue.length > 50) {
       setErrors((prev) => ({
@@ -263,6 +273,18 @@ export const ClassNameDialog: React.FC<ClassNameDialogProps> = ({
     setErrors({});
 
     try {
+      // XSS validation: reject any mapping with dangerous patterns before API call
+      const hasDangerousMappings = Object.values(classMappings).some((v) => containsDangerousPattern(v?.trim()));
+      if (hasDangerousMappings) {
+        toast({
+          title: "Validation Error",
+          description: "Class names contain invalid characters. Please remove script tags, event handlers, and javascript: URLs.",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
+
       // Build final mappings with sensible defaults:
       // - Trim user input
       // - If empty, fall back to detectedClasses.classNames[index] or `class_${id}`

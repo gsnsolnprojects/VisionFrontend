@@ -50,7 +50,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, safeText } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -357,9 +357,9 @@ const PredictionPage = () => {
   const [deletingInference, setDeletingInference] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   
-  // History view state - initialize from URL query parameter
+  // History view state - initialize from URL query parameter (sanitized)
   const [viewMode, setViewMode] = useState<"new" | "history" | "live-logs">(() => {
-    const tabParam = searchParams.get("tab");
+    const tabParam = sanitizeUrlParam(searchParams.get("tab"));
     if (tabParam === "history") return "history";
     if (tabParam === "live-logs") return "live-logs";
     return "new";
@@ -2686,7 +2686,7 @@ const PredictionPage = () => {
                       ) : (
                         projects.map((project) => (
                           <SelectItem key={String(project.id)} value={String(project.id)}>
-                            {project.name}
+                            {safeText(project.name)}
                           </SelectItem>
                         ))
                       )}
@@ -3151,13 +3151,13 @@ const PredictionPage = () => {
                               className="flex items-center justify-between gap-2"
                             >
                               <span className="truncate text-muted-foreground">
-                                {file.name}
+                                {safeText(file.name)}
                               </span>
                               <button
                                 type="button"
                                 className="shrink-0 text-muted-foreground hover:text-destructive"
                                 onClick={() => handleRemoveTestFile(file.name)}
-                                aria-label={`Remove ${file.name}`}
+                                aria-label={`Remove ${safeText(file.name)}`}
                               >
                                 ×
                               </button>
@@ -3208,7 +3208,7 @@ const PredictionPage = () => {
                         )}
                       >
                         <div className="font-medium">
-                          {model.name || model.modelVersion || model.modelId || "Unnamed Model"}
+                          {safeText(model.name || model.modelVersion || model.modelId || "Unnamed Model")}
                         </div>
                         {model.metrics && (
                           <div className="text-xs text-muted-foreground mt-1 space-y-0.5">

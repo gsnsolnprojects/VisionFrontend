@@ -1,5 +1,6 @@
 import React from "react";
 import { useLocation } from "react-router-dom";
+import { safeText } from "@/lib/utils";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -46,13 +47,13 @@ export const AppBreadcrumbs: React.FC<BreadcrumbsProps> = ({
             <React.Fragment key={index}>
               <BreadcrumbItem>
                 {isLast ? (
-                  <BreadcrumbPage>{item.label}</BreadcrumbPage>
+                  <BreadcrumbPage>{safeText(item.label)}</BreadcrumbPage>
                 ) : item.href ? (
                   <BreadcrumbLink asChild>
-                    <Link to={item.href}>{item.label}</Link>
+                    <Link to={item.href}>{safeText(item.label)}</Link>
                   </BreadcrumbLink>
                 ) : (
-                  <BreadcrumbPage>{item.label}</BreadcrumbPage>
+                  <BreadcrumbPage>{safeText(item.label)}</BreadcrumbPage>
                 )}
               </BreadcrumbItem>
               {!isLast && <BreadcrumbSeparator />}
@@ -85,7 +86,7 @@ function generateBreadcrumbsFromPath(pathname: string): BreadcrumbItem[] {
       return;
     }
 
-    // Format label (capitalize, replace hyphens)
+    // Format label (capitalize, replace hyphens) - segment from pathname is escaped on render
     const label = segment
       .split("-")
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
