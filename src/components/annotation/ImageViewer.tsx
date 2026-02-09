@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getAuthHeaders } from "@/lib/api/config";
+import { getAuthHeaders, apiUrl, API_BASE_URL } from "@/lib/api/config";
 
 interface ImageViewerProps {
   imageUrl: string | null;
@@ -35,31 +35,72 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   const imageObjectUrlCache = useRef<Map<string, string>>(new Map());
   const currentObjectUrlRef = useRef<string | null>(null);
 
+  // Normalize image URL to use the same API base as other requests
+  const normalizeImageUrl = useCallback((url: string): string => {
+    // If backend returned a relative path that already starts with /api,
+    // just attach the correct origin (avoid /api/api double prefixing).
+    if (url.startsWith("/api/")) {
+      if (!API_BASE_URL) return url;
+      try {
+        const apiBaseUrl = new URL(API_BASE_URL);
+        return `${apiBaseUrl.origin}${url}`;
+      } catch {
+        return url;
+      }
+    }
+
+    // If backend returned some other relative path, route it through apiUrl
+    if (url.startsWith("/")) {
+      return apiUrl(url);
+    }
+
+    // If backend returned an absolute URL, ensure it uses the same origin as API_BASE_URL
+    try {
+      const apiBase = API_BASE_URL.replace(/\/+$/, "");
+      if (!apiBase) return url;
+
+      const apiBaseUrl = new URL(apiBase);
+      const imageUrlObj = new URL(url);
+
+      // Only rewrite if path is under the API base path (typically "/api")
+      if (imageUrlObj.pathname.startsWith(apiBaseUrl.pathname)) {
+        return `${apiBaseUrl.origin}${imageUrlObj.pathname}${imageUrlObj.search}`;
+      }
+    } catch {
+      // Fallback to original URL on any parsing errors
+      return url;
+    }
+
+    return url;
+  }, []);
+
   // Fetch image as blob with authentication headers
   const fetchImageAsObjectUrl = useCallback(async (url: string): Promise<string | null> => {
+    const normalizedUrl = normalizeImageUrl(url);
+
     // Check cache first
-    if (imageObjectUrlCache.current.has(url)) {
-      return imageObjectUrlCache.current.get(url) || null;
+    if (imageObjectUrlCache.current.has(normalizedUrl)) {
+      return imageObjectUrlCache.current.get(normalizedUrl) || null;
     }
 
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(url, { headers });
+      const res = await fetch(normalizedUrl, { headers });
 
       if (!res.ok) {
-        console.warn(`Failed to fetch image: ${url}`, res.status);
+        console.warn(`Failed to fetch image: ${normalizedUrl}`, res.status);
         return null;
       }
 
       const blob = await res.blob();
       const objectUrl = URL.createObjectURL(blob);
-      imageObjectUrlCache.current.set(url, objectUrl);
+      imageObjectUrlCache.current.set(normalizedUrl, objectUrl);
       return objectUrl;
     } catch (error) {
       console.error("Error fetching image:", error);
       return null;
     }
-  }, []);
+  }, [normalizeImageUrl]);
 
   // Cleanup object URLs on unmount
   useEffect(() => {

@@ -22,6 +22,10 @@ interface HyperparametersChatbotProps {
     totalImages?: number;
     labeledImages?: number;
     unlabeledImages?: number;
+    trainCount?: number;
+    valCount?: number;
+    testCount?: number;
+    numClasses?: number;
     version?: string;
     status?: string;
   };
@@ -33,19 +37,165 @@ interface HyperparametersChatbotProps {
     learningRate?: number;
     workers?: number;
   };
-  onParamsSuggested?: (params: HyperparametersSnapshot) => void;
+  /**
+   * Called when the user applies AI-suggested parameters.
+   * If a specific YOLO model variant was chosen from AI suggestions,
+   * modelKey will contain that variant key (e.g. "YOLOv8s").
+   */
+  onParamsSuggested?: (params: HyperparametersSnapshot, modelKey?: string) => void;
 }
 
-const SYSTEM_PROMPT = `You are an expert machine learning engineer specializing in computer vision model training. 
-Your role is to suggest optimal hyperparameters for YOLO model training based on dataset characteristics.
+const SYSTEM_PROMPT = `
+You are a senior machine learning engineer specializing in YOLO object detection models.
 
-Guidelines:
-- Consider dataset size, labeled vs unlabeled ratio
-- Suggest parameters that balance training time and model performance
-- Provide reasoning for each parameter suggestion
-- Consider computational resources (batch size, workers)
-- Use industry best practices for YOLO training
-- Respond with a clear explanation followed by JSON format for the suggested parameters`;
+Your task is to recommend PRACTICAL, SAFE, and PRODUCTION-READY hyperparameters.
+The goal is NOT to squeeze maximum accuracy, but to ensure:
+- Stable training
+- Reasonable convergence
+- Minimal overfitting
+- Correct defaults for non-technical users
+
+ASSUME:
+- Pretrained YOLO weights are ALWAYS used (transfer learning).
+- Training NEVER starts from scratch.
+
+────────────────────────────────
+STEP 1: DATASET SIZE CLASSIFICATION (MANDATORY)
+────────────────────────────────
+Classify the dataset based on the number of TRAINING images:
+
+- EXTREMELY SMALL: train < 50
+- SMALL: 50 ≤ train ≤ 200
+- MEDIUM: 200 < train ≤ 5000
+- LARGE: train > 5000
+
+You MUST explicitly state the chosen bucket.
+
+────────────────────────────────
+STEP 2: YOLO MODEL CAPACITY (CRITICAL)
+────────────────────────────────
+YOLO models differ greatly in capacity. You MUST adapt parameters accordingly.
+
+Model categories:
+- NANO: YOLOv5 Nano, YOLOv8 Nano, YOLOv26 Nano
+- SMALL: YOLOv8 Small, YOLOv11 Small
+- MEDIUM: YOLOv8 Medium
+- LARGE: YOLOv8 Large
+- EXTRA LARGE: YOLOv8 Extra Large
+These categories represent model capacity only. You MUST NOT recommend which specific YOLO variant to use.
+Instead, you MUST provide parameter suggestions for each variant and explain the trade-offs.
+
+RULE:
+As model size increases:
+- Reduce epochs (slightly)
+- Reduce learning rate (slightly)
+- Reduce batch size
+- Increase overfitting warnings
+
+────────────────────────────────
+STEP 3: HARD PARAMETER LIMITS (DO NOT BREAK)
+────────────────────────────────
+
+EXTREMELY SMALL DATASET (<50 train):
+- NANO: epochs 30–50, LR ≤ 0.003
+- SMALL: epochs 25–40, LR ≤ 0.002
+- MEDIUM+: epochs ≤ 25, LR = 0.001 ONLY
+⚠ Strong overfitting warning required
+
+SMALL DATASET (50–200 train):
+- NANO: epochs 60–120, LR 0.002–0.005
+- SMALL: epochs 50–100, LR 0.001–0.003
+- MEDIUM+: epochs 40–80, LR ≤ 0.002
+
+MEDIUM DATASET (200–5000 train):
+- NANO: epochs 120–200, LR 0.005–0.01
+- SMALL: epochs 100–160, LR 0.003–0.008
+- MEDIUM: epochs 80–140, LR 0.003–0.006
+- LARGE/XL: epochs 60–120, LR 0.001–0.003
+
+LARGE DATASET (>5000 train):
+- Epochs: 120–300 (model dependent)
+- LR: 0.005–0.01
+- Batch size as allowed by GPU
+
+GLOBAL CONSTRAINTS:
+- Never suggest batch size > training images
+- Never suggest LR < 0.0005 or > 0.02
+- Never exceed dataset bucket ranges by more than ±20%
+
+────────────────────────────────
+STEP 4: EVALUATION REQUIREMENTS
+────────────────────────────────
+You MUST:
+1. State dataset size bucket
+2. State YOLO model capacity category (Nano / Small / Medium / Large / Extra Large) when applicable
+3. Evaluate EACH current parameter as:
+   - Too low
+   - Reasonable
+   - Too high / unsafe
+4. Propose ONE coherent "default" configuration (for a typical YOLO model on this dataset)
+5. Additionally, for YOLO models, provide parameter suggestions for EACH variant (YOLOv8n, YOLOv8s, YOLOv8m, YOLOv8l, YOLOv8x) in a separate JSON field called "perModel". Do NOT tell the user which model to choose; only describe how parameters and trade-offs differ.
+6. Explain changes in SIMPLE language for non-technical users
+7. Warn clearly about overfitting or instability
+8. If labeling more data would help more than tuning, say so
+
+────────────────────────────────
+FINAL OUTPUT (MANDATORY)
+────────────────────────────────
+End with ONE valid JSON object. The top-level values are your default recommended configuration (model-agnostic or typical), and "perModel" holds per-variant suggestions when YOLO is used:
+
+{
+  "epochs": number,
+  "batchSize": number,
+  "imgSize": number,
+  "learningRate": number,
+  "workers": number,
+  "reasoning": {
+    "epochs": "short explanation",
+    "batchSize": "short explanation",
+    "imgSize": "short explanation",
+    "learningRate": "short explanation",
+    "workers": "short explanation"
+  },
+  "perModel": {
+    "YOLOv8n": {
+      "epochs": number,
+      "batchSize": number,
+      "imgSize": number,
+      "learningRate": number,
+      "workers": number
+    },
+    "YOLOv8s": {
+      "epochs": number,
+      "batchSize": number,
+      "imgSize": number,
+      "learningRate": number,
+      "workers": number
+    },
+    "YOLOv8m": {
+      "epochs": number,
+      "batchSize": number,
+      "imgSize": number,
+      "learningRate": number,
+      "workers": number
+    },
+    "YOLOv8l": {
+      "epochs": number,
+      "batchSize": number,
+      "imgSize": number,
+      "learningRate": number,
+      "workers": number
+    },
+    "YOLOv8x": {
+      "epochs": number,
+      "batchSize": number,
+      "imgSize": number,
+      "learningRate": number,
+      "workers": number
+    }
+  }
+}
+`;
 
 export const HyperparametersChatbot: React.FC<HyperparametersChatbotProps> = ({
   datasetInfo,
@@ -56,17 +206,38 @@ export const HyperparametersChatbot: React.FC<HyperparametersChatbotProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [userInput, setUserInput] = useState("");
   const [suggestedParams, setSuggestedParams] = useState<HyperparametersSnapshot | null>(null);
+  const [perModelParams, setPerModelParams] = useState<Record<string, HyperparametersSnapshot> | null>(null);
+  const [selectedSuggestionKey, setSelectedSuggestionKey] = useState<string>("default");
   const [provider, setProvider] = useState<AIProvider>(() => {
     const stored = window.localStorage.getItem("aiProvider");
     return stored === "gemini" ? "gemini" : "gemini";
   });
 
   const buildDatasetContext = () => {
+    // Calculate number of classes - use provided value or estimate from train/val/test splits
+    const numClasses = datasetInfo.numClasses || 3; // Default to 3 if not provided
+    
+    // Calculate total labeled images from train/val/test splits if available
+    const trainCount = datasetInfo.trainCount || 0;
+    const valCount = datasetInfo.valCount || 0;
+    const testCount = datasetInfo.testCount || 0;
+    const totalLabeledFromSplits = trainCount + valCount + testCount;
+    const totalLabeled = datasetInfo.labeledImages || totalLabeledFromSplits || 0;
+    
     return {
+      datasetId: datasetInfo.datasetId,
       datasetSize: datasetInfo.totalImages || 0,
-      numClasses: 3,
-      avgImageResolution: "1280x720",
-      hardware: "CPU",
+      numClasses: numClasses,
+      labeledImages: totalLabeled,
+      unlabeledImages: datasetInfo.unlabeledImages || 0,
+      trainCount: trainCount,
+      valCount: valCount,
+      testCount: testCount,
+      trainValTestSplit: trainCount > 0 || valCount > 0 || testCount > 0 
+        ? `${trainCount}/${valCount}/${testCount}` 
+        : undefined,
+      version: datasetInfo.version || "Unknown",
+      status: datasetInfo.status || "Unknown",
     };
   };
 
@@ -90,11 +261,28 @@ export const HyperparametersChatbot: React.FC<HyperparametersChatbotProps> = ({
     window.localStorage.setItem("aiProvider", provider);
   }, [provider]);
 
+  // Clear messages and reset suggestions when dataset changes
+  useEffect(() => {
+    clearMessages();
+    setSuggestedParams(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datasetInfo.datasetId]);
+
   const buildDatasetPrompt = () => {
+    const trainCount = datasetInfo.trainCount || 0;
+    const valCount = datasetInfo.valCount || 0;
+    const testCount = datasetInfo.testCount || 0;
+    const numClasses = datasetInfo.numClasses || 3;
+    const totalLabeled = datasetInfo.labeledImages || (trainCount + valCount + testCount) || 0;
+
     const datasetSummary = {
       totalImages: datasetInfo.totalImages || 0,
-      labeledImages: datasetInfo.labeledImages || 0,
+      labeledImages: totalLabeled,
       unlabeledImages: datasetInfo.unlabeledImages || 0,
+      trainCount: trainCount,
+      valCount: valCount,
+      testCount: testCount,
+      numClasses: numClasses,
       version: datasetInfo.version || "Unknown",
       status: datasetInfo.status || "Unknown",
       modelType: modelType,
@@ -103,35 +291,64 @@ export const HyperparametersChatbot: React.FC<HyperparametersChatbotProps> = ({
         batchSize: currentParams?.batchSize || 16,
         imgSize: currentParams?.imgSize || 640,
         learningRate: currentParams?.learningRate || 0.01,
-        workers: currentParams?.workers || 4
-      }
+        workers: currentParams?.workers || 4,
+      },
     };
 
-    return `I need help selecting optimal training hyperparameters for a ${modelType} model.
+    const trainingImages = trainCount || totalLabeled || datasetSummary.totalImages;
 
-Dataset Information:
-- Total Images: ${datasetSummary.totalImages}
-- Labeled Images: ${datasetSummary.labeledImages}
-- Unlabeled Images: ${datasetSummary.unlabeledImages}
-- Dataset Version: ${datasetSummary.version}
-- Dataset Status: ${datasetSummary.status}
+    return `You are a senior ML engineer helping configure YOLO training.
 
-Current Parameters (if any):
+Goal: suggest SAFE, PRACTICAL hyperparameters that avoid overfitting and are easy for non-technical users.
+
+Dataset:
+- Total images: ${datasetSummary.totalImages}
+- Labeled: ${datasetSummary.labeledImages}, Unlabeled: ${datasetSummary.unlabeledImages}
+- Train / Val / Test: ${trainCount}/${valCount}/${testCount}
+- Classes: ${numClasses}
+- Version / status: ${datasetSummary.version} / ${datasetSummary.status}
+
+Model:
+- Type: ${datasetSummary.modelType}
+
+Current hyperparameters:
 - Epochs: ${datasetSummary.currentParams.epochs}
-- Batch Size: ${datasetSummary.currentParams.batchSize}
-- Image Size: ${datasetSummary.currentParams.imgSize}
-- Learning Rate: ${datasetSummary.currentParams.learningRate}
+- Batch size: ${datasetSummary.currentParams.batchSize}
+- Image size: ${datasetSummary.currentParams.imgSize}
+- Learning rate: ${datasetSummary.currentParams.learningRate}
 - Workers: ${datasetSummary.currentParams.workers}
 
-Please suggest optimal hyperparameters and provide:
-1. Recommended values for each parameter
-2. Brief explanation for each recommendation
-3. Expected training time estimate (if possible)
-4. Any warnings or considerations
-5. You are an AI assistant helping a non-technical user.
-6. Answer the questions in short and simple language.
+Let TRAIN_IMAGES = ${trainingImages}.
+Dataset size buckets:
+- EXTREMELY SMALL: TRAIN_IMAGES < 50
+- SMALL: 50–200
+- MEDIUM: 200–5000
+- LARGE: > 5000
 
-After your explanation, provide the parameters in JSON format like this:
+Use these as safe defaults (you may make small changes, but explain why):
+- EXTREMELY SMALL: epochs 30–80, batch 2–4, img 416–512, lr 0.001–0.003
+- SMALL: epochs 60–120, batch 4–8, img 512–640, lr 0.001–0.005
+- MEDIUM: epochs 80–200, batch 8–32, img 640, lr 0.003–0.01
+- LARGE: epochs 120–300, batch 16–64, img 640+, lr 0.005–0.01
+
+Hard rules:
+- Batch size must NOT be greater than TRAIN_IMAGES.
+- Learning rate must stay between 0.0005 and 0.02.
+- Stay close to the ranges above.
+- If the dataset is EXTREMELY SMALL or SMALL, clearly warn about overfitting.
+
+TASK:
+1) Say which size bucket this dataset belongs to.
+2) For each current parameter (epochs, batch size, image size, learning rate, workers), say if it is too low, reasonable, or too high/unsafe, with a short reason.
+3) Propose ONE default set of hyperparameters for this dataset that is stable and follows the rules.
+4) If the model type is YOLO, also give a separate set of hyperparameters for each YOLO variant we support (YOLOv26s, YOLOv11s, YOLOv5n, YOLOv8s, YOLOv8m, YOLOv8l, YOLOv8x). For each variant, adjust epochs, batch size, image size (if needed), and learning rate based on model capacity. Do NOT tell the user which model to pick; just show how the settings differ.
+5) Use simple language.
+6) If collecting more labeled data would help more than tuning, say that clearly.
+
+OUTPUT:
+First, write the explanations.
+Then END with ONE JSON object:
+
 {
   "epochs": number,
   "batchSize": number,
@@ -139,13 +356,23 @@ After your explanation, provide the parameters in JSON format like this:
   "learningRate": number,
   "workers": number,
   "reasoning": {
-    "epochs": "explanation",
-    "batchSize": "explanation",
-    "imgSize": "explanation",
-    "learningRate": "explanation",
-    "workers": "explanation"
+    "epochs": "short explanation",
+    "batchSize": "short explanation",
+    "imgSize": "short explanation",
+    "learningRate": "short explanation",
+    "workers": "short explanation"
+  },
+  "perModel": {
+    "YOLOv26s": { "epochs": number, "batchSize": number, "imgSize": number, "learningRate": number, "workers": number },
+    "YOLOv11s": { "epochs": number, "batchSize": number, "imgSize": number, "learningRate": number, "workers": number },
+    "YOLOv5n":  { "epochs": number, "batchSize": number, "imgSize": number, "learningRate": number, "workers": number },
+    "YOLOv8s":  { "epochs": number, "batchSize": number, "imgSize": number, "learningRate": number, "workers": number },
+    "YOLOv8m":  { "epochs": number, "batchSize": number, "imgSize": number, "learningRate": number, "workers": number },
+    "YOLOv8l":  { "epochs": number, "batchSize": number, "imgSize": number, "learningRate": number, "workers": number },
+    "YOLOv8x":  { "epochs": number, "batchSize": number, "imgSize": number, "learningRate": number, "workers": number }
   }
-}`;
+}
+`;
   };
 
   const handleAnalyze = async () => {
@@ -155,6 +382,8 @@ After your explanation, provide the parameters in JSON format like this:
 
     clearMessages();
     setSuggestedParams(null);
+    setPerModelParams(null);
+    setSelectedSuggestionKey("default");
     const prompt = buildDatasetPrompt();
     const response = await sendMessage(prompt);
     
@@ -169,8 +398,11 @@ After your explanation, provide the parameters in JSON format like this:
             batchSize: parsed.batchSize,
             imgSize: parsed.imgSize,
             learningRate: parsed.learningRate,
-            workers: parsed.workers
+            workers: parsed.workers,
           });
+        }
+        if (parsed.perModel && typeof parsed.perModel === "object") {
+          setPerModelParams(parsed.perModel as Record<string, HyperparametersSnapshot>);
         }
       }
     } catch {
@@ -188,7 +420,15 @@ After your explanation, provide the parameters in JSON format like this:
 
   const handleApplySuggestions = () => {
     if (suggestedParams && onParamsSuggested) {
-      onParamsSuggested(suggestedParams);
+      const effectiveParams =
+        selectedSuggestionKey === "default" || !perModelParams
+          ? suggestedParams
+          : perModelParams[selectedSuggestionKey] || suggestedParams;
+
+      const selectedModelKey =
+        selectedSuggestionKey === "default" || !perModelParams ? undefined : selectedSuggestionKey;
+
+      onParamsSuggested(effectiveParams, selectedModelKey);
       setIsOpen(false);
     }
   };
@@ -290,38 +530,63 @@ After your explanation, provide the parameters in JSON format like this:
                     <Check className="h-4 w-4 text-primary" />
                     <span className="font-semibold text-sm">Suggested Parameters:</span>
                   </div>
+                  {perModelParams && (
+                    <div className="mb-3">
+                      <label className="text-xs text-muted-foreground mr-2">Using config for:</label>
+                      <select
+                        className="border rounded px-2 py-1 text-xs bg-background"
+                        value={selectedSuggestionKey}
+                        onChange={(e) => setSelectedSuggestionKey(e.target.value)}
+                      >
+                        <option value="default">Default (dataset-based)</option>
+                        {Object.keys(perModelParams).map((key) => (
+                          <option key={key} value={key}>
+                            {key}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {(() => {
+                    const effective =
+                      selectedSuggestionKey === "default" || !perModelParams
+                        ? suggestedParams
+                        : perModelParams[selectedSuggestionKey] || suggestedParams;
+                    return (
                   <div className="grid grid-cols-2 gap-2 text-sm">
-                    {suggestedParams.epochs && (
+                    {effective?.epochs && (
                       <div>
                         <span className="text-muted-foreground">Epochs:</span>{" "}
-                        <span className="font-medium">{suggestedParams.epochs}</span>
+                        <span className="font-medium">{effective.epochs}</span>
                       </div>
                     )}
-                    {suggestedParams.batchSize && (
+                    {effective?.batchSize && (
                       <div>
                         <span className="text-muted-foreground">Batch Size:</span>{" "}
-                        <span className="font-medium">{suggestedParams.batchSize}</span>
+                        <span className="font-medium">{effective.batchSize}</span>
                       </div>
                     )}
-                    {suggestedParams.imgSize && (
+                    {effective?.imgSize && (
                       <div>
                         <span className="text-muted-foreground">Image Size:</span>{" "}
-                        <span className="font-medium">{suggestedParams.imgSize}</span>
+                        <span className="font-medium">{effective.imgSize}</span>
                       </div>
                     )}
-                    {suggestedParams.learningRate && (
+                    {effective?.learningRate && (
                       <div>
                         <span className="text-muted-foreground">Learning Rate:</span>{" "}
-                        <span className="font-medium">{suggestedParams.learningRate}</span>
+                        <span className="font-medium">{effective.learningRate}</span>
                       </div>
                     )}
-                    {suggestedParams.workers && (
+                    {effective?.workers && (
                       <div>
                         <span className="text-muted-foreground">Workers:</span>{" "}
-                        <span className="font-medium">{suggestedParams.workers}</span>
+                        <span className="font-medium">{effective.workers}</span>
                       </div>
                     )}
                   </div>
+                    );
+                  })()}
                 </div>
               )}
               </div>

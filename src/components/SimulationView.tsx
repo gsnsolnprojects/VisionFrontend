@@ -2136,7 +2136,27 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
               {/* If YOLO -> show model-size dropdown */}
               {modelType === "YOLO" && (
                 <div className="mb-4">
-                  <Label>YOLO Base / Trained Model</Label>
+                  <div className="flex items-center gap-1.5">
+                    <Label>YOLO Base / Trained Model</Label>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-3.5 w-3.5 cursor-help text-muted-foreground" />
+                        </TooltipTrigger>
+                        <TooltipContent side="top" align="start" className="max-w-sm">
+                          <p className="text-xs">
+                            The YOLOv8 family (n/s/m/l/x) shares the same core architecture but scales depth and width:
+                            as you move from Nano to X-Large, accuracy and model size increase while inference speed
+                            decreases. In general, YOLOv8n is best for edge/CPU or mobile, YOLOv8s for fast real-time
+                            inspection, YOLOv8m for a balanced trade-off, YOLOv8l for higher-accuracy server workloads,
+                            and YOLOv8x for maximum accuracy on powerful GPUs. Smaller variants like YOLOv5n,
+                            YOLOv11-small, or YOLOv2-6n follow the same idea: they are lighter, faster models suited for
+                            limited hardware but with slightly lower mAP than their larger counterparts.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
                   <Select
                     value={selectedModelSize}
                     onValueChange={setSelectedModelSize}
@@ -2197,6 +2217,10 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                           totalImages: datasetDetails.totalImages,
                           labeledImages: datasetDetails.labeledImages ?? datasetDetails.trainCount,
                           unlabeledImages: datasetDetails.unlabeledImages,
+                          trainCount: datasetDetails.trainCount,
+                          valCount: datasetDetails.valCount,
+                          testCount: datasetDetails.testCount,
+                          numClasses: datasetDetails.numClasses,
                           version: datasetDetails.version,
                           status: datasetDetails.status
                         }}
@@ -2206,15 +2230,28 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                           batchSize,
                           imgSize,
                           learningRate,
-                          workers
+                          workers,
                         }}
-                        onParamsSuggested={(params) => {
+                        onParamsSuggested={(params, modelKey) => {
                           setEpochs(params.epochs || 100);
                           setBatchSize(params.batchSize || 16);
                           setImgSize(params.imgSize || 640);
                           setLearningRate(params.learningRate || 0.01);
                           setWorkers(params.workers || 4);
                           setUseDefaults(false);
+
+                          // If AI suggestions were for a specific YOLO variant,
+                          // try to select a matching base model in the YOLO dropdown.
+                          if (modelKey && modelType === "YOLO" && baseModels.length > 0) {
+                            const lowerKey = modelKey.toLowerCase();
+                            const match = baseModels.find((m) => {
+                              const label = (m.name ?? m.label ?? m.filename ?? "").toLowerCase();
+                              return label.includes(lowerKey);
+                            });
+                            if (match?.key) {
+                              setSelectedModelSize(String(match.key));
+                            }
+                          }
                         }}
                       />
                     )}
