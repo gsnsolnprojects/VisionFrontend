@@ -12,9 +12,6 @@ verify_jwt = false
 [functions.reject-workspace-request]
 verify_jwt = false
 
-[functions.invite-project-user]
-verify_jwt = false
-
 [functions.upload-dataset]
 verify_jwt = false
 

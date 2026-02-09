@@ -241,252 +241,70 @@ serve(async (req: Request) => {
     // Frontend invite link (same one you copy in the UI)
     const inviteLink = `${normalizedAppUrl}/auth?invite=${encodeURIComponent(token)}`;
 
-    // ---- Check if user exists in Supabase Auth ----
-    let existingUser = null;
+    // ---- Determine whether the invitee already has an Auth account ----
+    // We use this only to decide whether to require the "set password" flow.
+    let existingUser: any = null;
     try {
-      // Use listUsers and filter by email (getUserByEmail might not be available in all versions)
       const { data: usersData, error: userError } = await supabase.auth.admin.listUsers();
       if (!userError && usersData?.users) {
         existingUser = usersData.users.find((u: any) => u.email === inviteEmail) || null;
       }
     } catch (err) {
-      // User doesn't exist or error checking - will create new user
-      console.log("User check error:", err);
+      console.log("create-invite: auth.admin.listUsers error (will treat as new user):", err);
     }
 
-    let authUserId: string | null = null;
+    // Build user_metadata for the invite:
+    // - New users: mark needs_password_set = true so the frontend routes them to /set-password
+    // - Existing users: do NOT set needs_password_set so they go directly into the company
+    const baseMetadata: Record<string, unknown> = {
+      company_id: companyId,
+      company_name: company.name ?? null,
+      invite_token: token,
+    };
 
-    // ---- Path A: User doesn't exist - Create account first, then send magic link ----
-    if (!existingUser) {
-      // Step 1: Create user account
-      const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
-        email: inviteEmail,
-        email_confirm: false, // User will confirm via magic link
-        user_metadata: {
-          company_id: companyId,
-          company_name: company.name ?? null,
-          invite_token: token,
-          needs_password_set: true, // Frontend will show Set Password step after first sign-in
-        },
-      });
+    const userMetadata: Record<string, unknown> = existingUser
+      ? baseMetadata
+      : { ...baseMetadata, needs_password_set: true };
 
-      if (createError) {
-        console.error("admin.createUser error:", createError);
-        await supabase
-          .from("company_invites")
-          .update({
-            status: "email_failed",
-            error_message: createError.message ?? String(createError),
-          })
-          .eq("id", inserted.id);
+    // ---- Send invite email via Supabase Auth using the built-in "Invite user" template ----
+    // This will work for both new and existing users and will send the invite email
+    // using Supabase's configured "Invite user" email template.
+    console.log("Sending invite email via supabase.auth.admin.inviteUserByEmail to:", inviteEmail, {
+      isExistingUser: !!existingUser,
+    });
 
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: "Failed to create user account",
-            details: createError.message ?? String(createError),
-            inviteLink,
-          }),
-          { status: 500, headers: { "Content-Type": "application/json", ...CORS } },
-        );
-      }
+    const { data: inviteUserData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(
+      inviteEmail,
+      {
+        redirectTo: inviteLink,
+        data: userMetadata,
+      },
+    );
 
-      authUserId = newUser?.user?.id ?? null;
+    if (inviteError) {
+      console.error("inviteUserByEmail error:", inviteError);
+      await supabase
+        .from("company_invites")
+        .update({
+          status: "email_failed",
+          error_message: inviteError.message ?? String(inviteError),
+        })
+        .eq("id", inserted.id);
 
-      // Step 2: Send email via Supabase (generates magic link and sends email)
-      console.log("Sending invite email via Supabase to:", inviteEmail);
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-          email: inviteEmail,
-          options: {
-            emailRedirectTo: inviteLink,
-            data: {
-              company_id: companyId,
-              company_name: company.name ?? null,
-              invite_token: token,
-            },
-          },
-        });
-
-        if (otpError) {
-        console.error("signInWithOtp error (new user):", otpError);
-        
-        // Check for rate limit error - check status, code, and message content
-        const errorMessage = otpError.message?.toLowerCase() || "";
-        const isRateLimit = 
-          otpError.status === 429 || 
-          otpError.code === "over_email_send_rate_limit" ||
-          errorMessage.includes("security purposes") ||
-          errorMessage.includes("only request this after") ||
-          errorMessage.includes("rate limit");
-        
-        if (isRateLimit) {
-          // Extract wait time from error message (e.g., "after 59 seconds")
-          const waitTimeMatch = otpError.message?.match(/(\d+)\s*seconds?/i);
-          const waitTime = waitTimeMatch ? waitTimeMatch[1] : "59";
-          
-          await supabase
-            .from("company_invites")
-            .update({
-              status: "email_failed",
-              error_message: `Rate limit: ${otpError.message}`,
-            })
-            .eq("id", inserted.id);
-
-          return new Response(
-            JSON.stringify({
-              success: false,
-              error: "Rate limit exceeded",
-              details: `Please wait ${waitTime} seconds before inviting this user again. ${otpError.message || ""}`,
-              errorCode: "RATE_LIMIT_EXCEEDED",
-              waitTime: parseInt(waitTime),
-              inviteLink,
-            }),
-            { status: 429, headers: { "Content-Type": "application/json", ...CORS } },
-          );
-        }
-
-        // Other errors
-        await supabase
-          .from("company_invites")
-          .update({
-            status: "email_failed",
-            error_message: otpError.message ?? String(otpError),
-          })
-          .eq("id", inserted.id);
-
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: "Failed to send magic link email",
-            details: otpError.message ?? String(otpError),
-            inviteLink,
-          }),
-          { status: 500, headers: { "Content-Type": "application/json", ...CORS } },
-        );
-      }
-    } else {
-      // ---- Path B: User exists - Try signInWithOtp first, fallback to generateLink if rate limited ----
-      authUserId = existingUser.id;
-
-      // Step 1: Try to send email via signInWithOtp (preferred method)
-      console.log("Sending invite email via Supabase to existing user:", inviteEmail);
-          const { error: otpError } = await supabase.auth.signInWithOtp({
-            email: inviteEmail,
-            options: {
-              emailRedirectTo: inviteLink,
-              data: {
-                company_id: companyId,
-                company_name: company.name ?? null,
-                invite_token: token,
-              },
-            },
-          });
-
-          if (otpError) {
-        console.error("signInWithOtp error (existing user):", otpError);
-        
-        // Check for rate limit error - check status, code, and message content
-        const errorMessage = otpError.message?.toLowerCase() || "";
-        const isRateLimit = 
-          otpError.status === 429 || 
-          otpError.code === "over_email_send_rate_limit" ||
-          errorMessage.includes("security purposes") ||
-          errorMessage.includes("only request this after") ||
-          errorMessage.includes("rate limit");
-        
-        if (isRateLimit) {
-          // Rate limit hit - fallback to generating link manually (no email sent, but link is valid)
-          console.warn("Rate limit hit for existing user, falling back to admin.generateLink()");
-          
-          const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-            type: "magiclink",
-            email: inviteEmail,
-            options: {
-              redirectTo: inviteLink,
-            },
-          });
-
-          if (linkError || !linkData?.properties?.action_link) {
-            // Even fallback failed
-            console.error("generateLink fallback also failed:", linkError);
-            await supabase
-              .from("company_invites")
-              .update({
-                status: "email_failed",
-                error_message: `Rate limited and generateLink failed: ${linkError?.message ?? String(linkError)}`,
-              })
-              .eq("id", inserted.id);
-
-            // Extract wait time from error message
-            const waitTimeMatch = otpError.message?.match(/(\d+)\s*seconds?/i);
-            const waitTime = waitTimeMatch ? waitTimeMatch[1] : "59";
-
-            return new Response(
-              JSON.stringify({
-                success: false,
-                error: "Rate limit exceeded",
-                details: `Please wait ${waitTime} seconds before inviting this user again. ${otpError.message || ""}`,
-                errorCode: "RATE_LIMIT_EXCEEDED",
-                waitTime: parseInt(waitTime),
-                inviteLink,
-              }),
-              { status: 429, headers: { "Content-Type": "application/json", ...CORS } },
-            );
-          }
-
-          // Fallback succeeded - we have a magic link but no email was sent
-          const magicLink = linkData.properties.action_link;
-          console.log("Generated magic link via fallback (no email sent):", magicLink);
-          
-          await supabase
-            .from("company_invites")
-            .update({
-              status: "email_sent", // Mark as sent since we have the link
-              error_message: `Email rate limited, but magic link generated: ${otpError.message}`,
-            })
-            .eq("id", inserted.id);
-
-          // Return success with the generated link
-          // Note: Email was not sent due to rate limit, but link is valid
-          return new Response(
-            JSON.stringify({
-              success: true,
-              inviteId: inserted.id,
-              inviteLink,
-              magicLink, // Include the generated magic link
-              warning: "Email sending was rate limited, but magic link was generated successfully. You can share this link manually.",
-              rateLimitInfo: {
-                message: otpError.message,
-                waitTime: 60, // Default wait time
-          },
-            }),
-            { status: 200, headers: { "Content-Type": "application/json", ...CORS } },
-          );
-        }
-
-        // Other errors (not rate limit)
-          await supabase
-            .from("company_invites")
-            .update({
-              status: "email_failed",
-              error_message: otpError.message ?? String(otpError),
-            })
-            .eq("id", inserted.id);
-
-          return new Response(
-            JSON.stringify({
-              success: false,
-              error: "Failed to send magic link email",
-              details: otpError.message ?? String(otpError),
-              inviteLink,
-            }),
-            { status: 500, headers: { "Content-Type": "application/json", ...CORS } },
-          );
-        }
-      // signInWithOtp succeeded - email was sent
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Failed to send invite email",
+          details: inviteError.message ?? String(inviteError),
+          inviteLink,
+        }),
+        { status: 500, headers: { "Content-Type": "application/json", ...CORS } },
+      );
     }
 
-    // Mark email sent + store auth user id
+    const authUserId = inviteUserData?.user?.id ?? null;
+
+    // Mark email sent + store auth user id (if available)
     await supabase
       .from("company_invites")
       .update({
