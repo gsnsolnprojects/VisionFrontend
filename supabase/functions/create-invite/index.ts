@@ -212,7 +212,7 @@ serve(async (req: Request) => {
     // ---- Create invite row in company_invites ----
     const token = crypto.randomUUID();
     const expiresAt = new Date(
-      Date.now() + 7 * 24 * 60 * 60 * 1000,
+      Date.now() + 24 * 60 * 60 * 1000,
     ).toISOString();
 
     const { data: inserted, error: insertErr } = await supabase

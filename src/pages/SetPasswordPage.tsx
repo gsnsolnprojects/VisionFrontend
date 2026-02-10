@@ -12,10 +12,12 @@ import { PasswordChecklist } from "@/components/PasswordChecklist";
 import { useFormValidation } from "@/hooks/useFormValidation";
 import { resetPasswordFormSchema } from "@/lib/validations/authSchemas";
 import { fadeInUpVariants } from "@/utils/animations";
+import { useProfile } from "@/hooks/useProfile";
 
 const SetPasswordPage = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { reloadProfile } = useProfile();
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
   const [passwordStrengthError, setPasswordStrengthError] = useState(false);
@@ -76,11 +78,11 @@ const SetPasswordPage = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    form.validateForm();
+    const formIsValid = form.validateForm();
     const passwordIsValid = isPasswordValid();
     setPasswordStrengthError(!passwordIsValid && form.values.password.length > 0);
 
-    if (!form.isValid || !passwordIsValid) {
+    if (!formIsValid || !passwordIsValid) {
       toast({
         title: "Please check your details",
         description: "Fix the highlighted errors and meet password requirements.",
@@ -100,6 +102,8 @@ const SetPasswordPage = () => {
 
       // Refresh session so ProfileProvider gets updated user_metadata before we navigate
       await supabase.auth.refreshSession();
+      // Ensure profile context is up to date (e.g., company info) before hitting dashboard
+      await reloadProfile();
 
       toast({
         title: "Password set",

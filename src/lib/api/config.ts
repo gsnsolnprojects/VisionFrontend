@@ -1,5 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
 
+// Centralized auth route used for redirects on session expiry / 401s
+const AUTH_ROUTE = "/auth";
+
 /**
  * API base URL from environment variable
  */
@@ -295,7 +298,7 @@ export const apiRequest = async <T>(
       // Session expired, redirect to login
       clearAuthCache();
       await supabase.auth.signOut();
-      window.location.href = "/login";
+      window.location.href = AUTH_ROUTE;
       throw new Error("Unauthorized - please log in again");
     }
 
@@ -312,7 +315,7 @@ export const apiRequest = async <T>(
       // Refresh failed, redirect to login
       clearAuthCache();
       await supabase.auth.signOut();
-      window.location.href = "/login";
+      window.location.href = AUTH_ROUTE;
       throw new Error("Unauthorized - please log in again");
     }
   }
