@@ -7,11 +7,10 @@ import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/PasswordInput";
 import { motion } from "framer-motion";
 import { fadeInUpVariants } from "@/utils/animations";
-import { sanitizeUrlParam } from "@/lib/xss";
 
 export default function SignUpWithInvite() {
   const [searchParams] = useSearchParams();
-  const inviteToken = sanitizeUrlParam(searchParams.get("invite") ?? searchParams.get("project_invite")); // support both, sanitized
+  const inviteToken = searchParams.get("invite") ?? searchParams.get("project_invite"); // support both
   const navigate = useNavigate();
 
   // Force light theme on sign up page (no dark mode)

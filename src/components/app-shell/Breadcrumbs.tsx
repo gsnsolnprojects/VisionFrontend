@@ -1,6 +1,5 @@
 import React from "react";
 import { useLocation } from "react-router-dom";
-import { safeText } from "@/lib/utils";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -47,13 +46,13 @@ export const AppBreadcrumbs: React.FC<BreadcrumbsProps> = ({
             <React.Fragment key={index}>
               <BreadcrumbItem>
                 {isLast ? (
-                  <BreadcrumbPage>{safeText(item.label)}</BreadcrumbPage>
+                  <BreadcrumbPage>{item.label}</BreadcrumbPage>
                 ) : item.href ? (
                   <BreadcrumbLink asChild>
-                    <Link to={item.href}>{safeText(item.label)}</Link>
+                    <Link to={item.href}>{item.label}</Link>
                   </BreadcrumbLink>
                 ) : (
-                  <BreadcrumbPage>{safeText(item.label)}</BreadcrumbPage>
+                  <BreadcrumbPage>{item.label}</BreadcrumbPage>
                 )}
               </BreadcrumbItem>
               {!isLast && <BreadcrumbSeparator />}

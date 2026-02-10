@@ -5,11 +5,9 @@ import { useProfile } from "@/hooks/useProfile";
 import { useToast } from "@/hooks/use-toast";
 import { EmptyState } from "@/components/pages/EmptyState";
 import { Lock } from "lucide-react";
-import { sanitizeUrlParam } from "@/lib/xss";
 
 export const AnnotationPage: React.FC = () => {
-  const rawDatasetId = useParams<{ datasetId: string }>().datasetId;
-  const datasetId = rawDatasetId ? sanitizeUrlParam(rawDatasetId) || null : undefined;
+  const { datasetId } = useParams<{ datasetId: string }>();
   const navigate = useNavigate();
   const { hasPermission, loading: profileLoading, userRole, error } = useProfile();
   const { toast } = useToast();

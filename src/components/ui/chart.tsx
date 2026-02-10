@@ -60,16 +60,18 @@ ChartContainer.displayName = "Chart";
 
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
   const colorConfig = Object.entries(config).filter(([_, config]) => config.theme || config.color);
-  const styleRef = React.useRef<HTMLStyleElement | null>(null);
 
-  React.useEffect(() => {
-    if (!colorConfig.length || !styleRef.current) return;
+  if (!colorConfig.length) {
+    return null;
+  }
 
-    // Build CSS from static config only - no user input. Use textContent (not innerHTML) to avoid XSS.
-    const css = Object.entries(THEMES)
-      .map(
-        ([theme, prefix]) => `
-${prefix} [data-chart=${CSS.escape(id)}] {
+  return (
+    <style
+      dangerouslySetInnerHTML={{
+        __html: Object.entries(THEMES)
+          .map(
+            ([theme, prefix]) => `
+${prefix} [data-chart=${id}] {
 ${colorConfig
   .map(([key, itemConfig]) => {
     const color = itemConfig.theme?.[theme as keyof typeof itemConfig.theme] || itemConfig.color;
@@ -78,17 +80,11 @@ ${colorConfig
   .join("\n")}
 }
 `,
-      )
-      .join("\n");
-
-    styleRef.current.textContent = css;
-  }, [id, colorConfig]);
-
-  if (!colorConfig.length) {
-    return null;
-  }
-
-  return <style ref={styleRef} />;
+          )
+          .join("\n"),
+      }}
+    />
+  );
 };
 
 const ChartTooltip = RechartsPrimitive.Tooltip;

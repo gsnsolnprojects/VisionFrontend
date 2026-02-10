@@ -11,7 +11,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Plus, FolderKanban, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { fadeInUpVariants } from "@/utils/animations";
-import { safeText } from "@/lib/utils";
 import { ProtectedComponent } from "@/components/permissions/ProtectedComponent";
 import { DeleteProjectModal } from "@/components/dashboard/DeleteProjectModal";
 
@@ -147,9 +146,9 @@ export const ProjectsPage: React.FC = () => {
               >
                 <CardHeader className="flex flex-row items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <CardTitle className="line-clamp-1">{safeText(project.name)}</CardTitle>
+                    <CardTitle className="line-clamp-1">{project.name}</CardTitle>
                     <CardDescription className="line-clamp-2">
-                      {safeText(project.description) || "No description"}
+                      {project.description || "No description"}
                     </CardDescription>
                   </div>
                   {hasPermission("deleteProjects") && (

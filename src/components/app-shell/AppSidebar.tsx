@@ -18,8 +18,7 @@ import {
   BrainCircuit,
   Menu,
 } from "lucide-react";
-import { cn, safeText } from "@/lib/utils";
-import { sanitizeUrlParam } from "@/lib/xss";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -119,7 +118,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
 
   const isActive = (path: string) => location.pathname === path;
   const isActiveStartsWith = (path: string) => location.pathname.startsWith(path);
-  const viewParam = sanitizeUrlParam(searchParams.get("view"));
+  const viewParam = searchParams.get("view");
 
   const navItems = [
     {
@@ -427,7 +426,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
                                   onNavigate?.();
                                 }}
                               >
-                                <span className="truncate">{safeText(p.name)}</span>
+                                <span className="truncate">{p.name}</span>
                               </Button>
                             ))}
                         </div>

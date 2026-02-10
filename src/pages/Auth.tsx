@@ -37,7 +37,6 @@ import {
   type ResetPasswordFormData,
 } from "@/lib/validations/authSchemas";
 import { fadeInUpVariants } from "@/utils/animations";
-import { sanitizeUrlParam } from "@/lib/xss";
 
 const Auth = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -61,15 +60,13 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState<number>(0);
   
-  // Get invite token from URL if present (sanitized)
-  const inviteToken = sanitizeUrlParam(searchParams.get("invite") ?? searchParams.get("project_invite"));
+  // Get invite token from URL if present
+  const inviteToken = searchParams.get("invite") ?? searchParams.get("project_invite");
   
   // Force signin mode when invite token is present
   const [mode, setMode] = useState<"signin" | "signup" | "forgot">(() => {
     if (inviteToken) return "signin"; // Force signin mode for invites
-    const rawMode = searchParams.get("mode");
-    const safeMode = sanitizeUrlParam(rawMode);
-    return (["signin", "signup", "forgot"].includes(safeMode) ? safeMode : "signin") as "signin" | "signup" | "forgot";
+    return (searchParams.get("mode") as "signin" | "signup" | "forgot") || "signin";
   });
 
   // Helper function to normalize URLs (remove trailing slashes)

@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { withXssValidation } from "./xssSchemas";
 
 // Phone validation rules for different countries
 export const phoneRules: Record<string, { length: number; label: string }> = {
@@ -71,14 +70,12 @@ export const simplePasswordSchema = z
   .string()
   .min(1, "Password is required");
 
-export const nameSchema = withXssValidation(
-  z
-    .string()
-    .min(1, "Name is required")
-    .min(3, "Name must be at least 3 characters")
-    .max(40, "Name must be at most 40 characters")
-    .regex(/^[A-Za-z\s]+$/, "Name must contain only letters and spaces")
-);
+export const nameSchema = z
+  .string()
+  .min(1, "Name is required")
+  .min(3, "Name must be at least 3 characters")
+  .max(40, "Name must be at most 40 characters")
+  .regex(/^[A-Za-z\s]+$/, "Name must contain only letters and spaces");
 
 // Sign Up Schema
 export const signupSchema = z.object({
@@ -132,11 +129,10 @@ export const validatePhoneNumber = (phone: string, countryCode: string): string 
 };
 
 // Company Name Schema
-export const companyNameSchema = withXssValidation(
-  z
-    .string()
-    .min(1, "Company name is required")
-    .refine(
+export const companyNameSchema = z
+  .string()
+  .min(1, "Company name is required")
+  .refine(
     (val) => val.trim().length >= 2,
     "Company name must be at least 2 characters"
   )
@@ -155,8 +151,7 @@ export const companyNameSchema = withXssValidation(
   .refine(
     (val) => /^[a-zA-Z0-9\s\-_&.,()]+$/.test(val.trim()),
     "Company name can only contain letters, numbers, spaces, and common business characters (-, _, &, ., ,, (, ))"
-  )
-);
+  );
 
 // Company Details Schema
 export const companyDetailsSchema = z.object({
@@ -168,14 +163,12 @@ export type CompanyDetailsFormData = z.infer<typeof companyDetailsSchema>;
 
 // Project Schema
 export const projectSchema = z.object({
-  projectName: withXssValidation(
-    z
-      .string()
-      .min(1, "Project name is required")
-      .min(2, "Project name must be at least 2 characters")
-      .max(30, "Project name must be at most 30 characters")
-  ),
-  projectDescription: withXssValidation(z.string().max(500, "Description must be at most 500 characters")).optional(),
+  projectName: z
+    .string()
+    .min(1, "Project name is required")
+    .min(2, "Project name must be at least 2 characters")
+    .max(30, "Project name must be at most 30 characters"),
+  projectDescription: z.string().max(500, "Description must be at most 500 characters").optional(),
 });
 
 export type ProjectFormData = z.infer<typeof projectSchema>;
@@ -183,7 +176,7 @@ export type ProjectFormData = z.infer<typeof projectSchema>;
 // Invite User Schema
 export const inviteUserSchema = z.object({
   email: emailSchema,
-  name: withXssValidation(z.string().max(100, "Name must be at most 100 characters")).optional(),
+  name: z.string().max(100, "Name must be at most 100 characters").optional(),
 });
 
 export type InviteUserFormData = z.infer<typeof inviteUserSchema>;
@@ -206,13 +199,7 @@ const phoneProfileSchema = z
 export const userProfileSchema = z.object({
   name: nameSchema,
   phone: phoneProfileSchema,
-  companyName: withXssValidation(z.string().max(100, "Company name must be at most 100 characters")).optional(),
+  companyName: z.string().max(100, "Company name must be at most 100 characters").optional(),
 });
 
 export type UserProfileFormData = z.infer<typeof userProfileSchema>;
-
-// Class name schema for dataset categories (ClassNameDialog)
-export const classNameSchema = withXssValidation(
-  z.string().max(50, "Class name must be at most 50 characters")
-);
-

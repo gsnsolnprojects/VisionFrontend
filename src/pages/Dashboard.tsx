@@ -36,8 +36,6 @@ import ProfileCompletionDialog from "@/components/ProfileCompletionDialog";
 import { SimulationView } from "@/components/SimulationView";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
-import { safeText } from "@/lib/utils";
-import { sanitizeUrlParam } from "@/lib/xss";
 
 type ViewMode = "overview" | "projects" | "simulation" | "members";
 
@@ -119,7 +117,7 @@ const Dashboard = () => {
   useEffect(() => {
     if (!sessionReady) return;
     const raw = searchParams.get("invite") ?? searchParams.get("project_invite");
-    const inviteToken = sanitizeUrlParam(raw?.trim());
+    const inviteToken = raw?.trim();
     if (inviteToken && user && !profileLoading) {
       handleInviteAcceptance(inviteToken);
     }
@@ -257,9 +255,8 @@ const Dashboard = () => {
     }
     
     // Handle join request approve/reject from email links
-    const safeToken = sanitizeUrlParam(token);
-    if (safeToken && (action === "approve" || action === "reject")) {
-      handleJoinRequestFromEmail(safeToken, action);
+    if (token && (action === "approve" || action === "reject")) {
+      handleJoinRequestFromEmail(token, action);
       // Clear params after handling
       const newParams = new URLSearchParams(searchParams);
       newParams.delete("token");
@@ -379,7 +376,7 @@ const Dashboard = () => {
   };
 
   const checkForValidInvite = async (): Promise<boolean> => {
-    const inviteToken = sanitizeUrlParam((searchParams.get("invite") ?? searchParams.get("project_invite"))?.trim());
+    const inviteToken = (searchParams.get("invite") ?? searchParams.get("project_invite"))?.trim();
     if (!inviteToken) return false;
 
     try {
@@ -1194,9 +1191,9 @@ const Dashboard = () => {
                     className="w-full text-left px-4 py-3 rounded border hover:bg-muted flex items-center justify-between"
                   >
                     <div>
-                      <div className="font-medium">{safeText(p.name)}</div>
+                      <div className="font-medium">{p.name}</div>
                       <div className="text-xs text-muted-foreground">
-                        {safeText(p.description) || "No description"}
+                        {p.description || "No description"}
                       </div>
                     </div>
                     <div className="text-sm text-primary">Open</div>

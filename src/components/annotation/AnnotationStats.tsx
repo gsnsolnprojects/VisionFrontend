@@ -1,7 +1,6 @@
 import React, { useMemo } from "react";
 import type { Image, Annotation, Category } from "@/types/annotation";
 import { ImageIcon, CheckCircle2, Box } from "lucide-react";
-import { safeText } from "@/lib/utils";
 
 interface AnnotationStatsProps {
   images: Image[];
@@ -106,9 +105,9 @@ export const AnnotationStats: React.FC<AnnotationStatsProps> = ({
                   <div
                     className="w-3 h-3 rounded-full border border-border"
                     style={{ backgroundColor: category.color }}
-                    aria-label={`${safeText(category.name)} category color`}
+                    aria-label={`${category.name} category color`}
                   />
-                  <span className="text-foreground">{safeText(category.name)}</span>
+                  <span className="text-foreground">{category.name}</span>
                 </div>
                 <span className="font-medium text-foreground">
                   {formatNumber(count)} ({percentage.toFixed(1)}%)

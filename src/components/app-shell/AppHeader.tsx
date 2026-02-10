@@ -14,7 +14,6 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { AppSidebar } from "./AppSidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
-import { safeText } from "@/lib/utils";
 
 export const AppHeader: React.FC = () => {
   const navigate = useNavigate();
@@ -286,7 +285,7 @@ export const AppHeader: React.FC = () => {
               <span className="text-xl font-bold text-primary">VisionM</span>
               {profile?.companies?.name && (
                 <span className="hidden md:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground">
-                  {safeText(profile.companies.name)}
+                  {profile.companies.name}
                 </span>
               )}
             </div>

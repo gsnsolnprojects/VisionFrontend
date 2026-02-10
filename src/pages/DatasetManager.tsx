@@ -32,8 +32,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { List, X, FileText, Search, ZoomIn, ZoomOut, RotateCcw, Maximize2, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, Folder, ChevronRight as ChevronRightIcon, ChevronDown, Trash2, Loader2, Upload, ArrowRight } from "lucide-react";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
-import { cn, safeText } from "@/lib/utils";
-import { sanitizeUrlParam } from "@/lib/xss";
+import { cn } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -132,8 +131,7 @@ const MAX_FILES = 5000;
 const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024; // 200 MB - adjust if needed
 
 const DatasetManager = () => {
-  const rawId = useParams<{ id: string }>().id;
-  const projectId = rawId ? sanitizeUrlParam(rawId) || null : undefined;
+  const { id: projectId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -2069,8 +2067,8 @@ const DatasetManager = () => {
         variants={fadeInUpVariants}
       >
         <div>
-          <h2 className="text-2xl font-bold">Upload dataset for {safeText(displayProjectName)}</h2>
-          {companyName && <p className="text-sm text-muted-foreground">{safeText(companyName)}</p>}
+          <h2 className="text-2xl font-bold">Upload dataset for {displayProjectName}</h2>
+          {companyName && <p className="text-sm text-muted-foreground">{companyName}</p>}
         </div>
       </motion.div>
 
@@ -2488,7 +2486,7 @@ const DatasetManager = () => {
                         <div className="flex items-center justify-between">
                           <span className="flex items-center gap-2">
                             <Folder className="h-4 w-4" />
-                            <span className="truncate">{safeText(folder.name)}</span>
+                            <span className="truncate">{folder.name}</span>
                           </span>
                           <span className="text-xs opacity-70">{folder.count}</span>
                         </div>
