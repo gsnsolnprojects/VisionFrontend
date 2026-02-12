@@ -49,6 +49,9 @@ import { ClassNameDialog } from "@/components/dataset/ClassNameDialog";
 import { getDetectedClasses, type DetectedClassesResponse } from "@/lib/api/categories";
 import { ProtectedComponent } from "@/components/permissions/ProtectedComponent";
 import { DeleteProjectModal } from "@/components/dashboard/DeleteProjectModal";
+import { Badge } from "@/components/ui/badge";
+import * as datasetsApi from "@/lib/api/datasets";
+import { useAugmentationStatus } from "@/hooks/useAugmentationStatus";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
 const apiUrl = (path: string) => {
@@ -165,6 +168,52 @@ const DatasetManager = () => {
 
   const [versions, setVersions] = useState<VersionEntry[]>([]);
   const [selectedVersionDatasetId, setSelectedVersionDatasetId] = useState<string | null>(null);
+  const [augmentingDatasetId, setAugmentingDatasetId] = useState<string | null>(null);
+  const [cancellingAugmentationId, setCancellingAugmentationId] = useState<string | null>(null);
+  const [showCancelAugmentDialog, setShowCancelAugmentDialog] = useState(false);
+  const [cancelAugmentDatasetId, setCancelAugmentDatasetId] = useState<string | null>(null);
+
+  const selectedVersionAugmenting = versions.find((v) => v.datasetId === selectedVersionDatasetId)?.augmentation_status === "running";
+  const {
+    status: augmentationStatus,
+    progress: augmentationProgress,
+    startPolling: startAugmentationPolling,
+    stopPolling: stopAugmentationPolling,
+  } = useAugmentationStatus(selectedVersionDatasetId);
+
+  // Start polling when selected version is augmenting
+  useEffect(() => {
+    if (selectedVersionDatasetId && selectedVersionAugmenting) {
+      startAugmentationPolling();
+    }
+  }, [selectedVersionDatasetId, selectedVersionAugmenting, startAugmentationPolling]);
+
+  const augmentationHandledRef = useRef<string | null>(null);
+  useEffect(() => {
+    const key = `${selectedVersionDatasetId}-${augmentationStatus}`;
+    if (augmentationHandledRef.current === key) return;
+    if (augmentationStatus === "succeeded") {
+      augmentationHandledRef.current = key;
+      toast({
+        title: "Augmentation completed",
+        description: "The dataset has been successfully augmented and replaced.",
+        variant: "default",
+      });
+      fetchVersions().then((normalized) => {
+        const active = (normalized || []).find((v) => v.isActive || v.is_active);
+        if (active?.datasetId) {
+          onSelectVersion(active.datasetId);
+        }
+      });
+    } else if (augmentationStatus === "failed") {
+      augmentationHandledRef.current = key;
+      toast({
+        title: "Augmentation failed",
+        description: "Dataset augmentation failed. The original dataset is unchanged.",
+        variant: "destructive",
+      });
+    }
+  }, [augmentationStatus, selectedVersionDatasetId, toast]);
   const [fileManifest, setFileManifest] = useState<FileEntry[]>([]);
   const [thumbnailCache, setThumbnailCache] = useState<Record<string, string>>({});
   // Track in-flight thumbnail requests to prevent duplicate fetches
@@ -264,6 +313,12 @@ const DatasetManager = () => {
     };
   } | null>(null);
   const [loadingDependencies, setLoadingDependencies] = useState<boolean>(false);
+
+  // Augment options dialog state
+  const [showAugmentOptionsDialog, setShowAugmentOptionsDialog] = useState(false);
+  const [augmentOptionsDatasetId, setAugmentOptionsDatasetId] = useState<string | null>(null);
+  const [augmentMultiplierPreset, setAugmentMultiplierPreset] = useState<2 | 5 | "custom">(2);
+  const [customTargetTrainTotal, setCustomTargetTrainTotal] = useState<number>(1000);
 
   // Removed local getAuthHeaders() - using centralized getAuthHeaders() from @/lib/api/config
 
@@ -592,7 +647,7 @@ const DatasetManager = () => {
     try {
       if (!companyName || !displayProjectName) return;
       const headers = await getAuthHeaders();
-      const q = new URLSearchParams({ company: companyName, project: displayProjectName });
+      const q = new URLSearchParams({ company: companyName, project: displayProjectName, includeInactive: "true",});
       const url = apiUrl(`/datasets?${q.toString()}`);
       // console.log("fetchVersions ->", url);
       const res = await fetch(url, { method: "GET", headers });
@@ -607,11 +662,14 @@ const DatasetManager = () => {
         datasetId: it.id || it.datasetId || it._id,
         createdAt: it.created_at || it.createdAt || it.created,
         status: it.status,
+        isActive: it.isActive ?? it.is_active,
         ...it,
       }));
       setVersions(normalized);
+      return normalized;
     } catch (err) {
       console.warn("fetchVersions error:", err);
+      return [];
     }
   };
 
@@ -621,6 +679,30 @@ const DatasetManager = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyName, project]);
+
+  // Auto-select active version when none selected (ensures file browser shows augmented dataset after augmentation)
+  useEffect(() => {
+    if (
+      versions.length > 0 &&
+      !selectedVersionDatasetId &&
+      companyName &&
+      displayProjectName
+    ) {
+      const activeVersion = versions.find((v) => v.isActive || v.is_active);
+      if (activeVersion?.datasetId) {
+        onSelectVersion(activeVersion.datasetId);
+      } else {
+        // Fallback: try active endpoint if no isActive in versions list
+        datasetsApi.fetchActiveDataset(companyName, displayProjectName).then((active) => {
+          const id = active?.id ?? active?._id ?? (active as { datasetId?: string })?.datasetId;
+          if (id) {
+            onSelectVersion(id);
+          }
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [versions.length, selectedVersionDatasetId, companyName, displayProjectName]);
 
   // Clear version-related state when project changes
   useEffect(() => {
@@ -1571,13 +1653,41 @@ const DatasetManager = () => {
         console.warn("fetchFolderSummary failed for version select:", err);
       }
 
-      // Primary method: Always use GET /api/dataset/:datasetId/files endpoint
-      // This ensures correct file.id (MongoDB subdocument _id) and thumbnailAvailable flags
-      console.log('🔍 [DEBUG] Fetching files using GET /api/dataset/:datasetId/files endpoint');
+      // Use files from dataset doc (GET /api/dataset/:datasetId) when available, else fetch from /files endpoint
+      // Ensures file browser uses the correct dataset (e.g. augmented) whose files array is authoritative
+      let allFiles: FileEntry[] = [];
+      const metaFiles = metaJson?.files;
+      if (Array.isArray(metaFiles) && metaFiles.length > 0) {
+        const orig = (f: Record<string, unknown>) => (f.originalName ?? f.name ?? "") as string;
+        const pathOr = (f: Record<string, unknown>) =>
+          (f.storedPath ?? f.path ?? (f.folder ? `${f.folder}/${orig(f)}` : orig(f))) as string;
+        allFiles = metaFiles.map((file: Record<string, unknown>) => ({
+          id: String(file.id ?? file.fileId ?? file._id ?? ""),
+          storedName: file.storedName as string | undefined,
+          originalName: orig(file),
+          type: file.type as string | undefined,
+          size: file.size as number | undefined,
+          folder: file.folder as string | undefined,
+          storedPath: pathOr(file) || "unknown",
+          thumbnailAvailable: file.thumbnailAvailable as boolean | undefined,
+          url: file.url as string | undefined,
+          name: orig(file),
+          path: pathOr(file),
+        })) as FileEntry[];
+        console.log('🔍 [DEBUG] Using files from dataset doc:', allFiles.length);
+      }
+      if (allFiles.length === 0) {
+        console.log('🔍 [DEBUG] Fetching files using GET /api/dataset/:datasetId/files endpoint');
+        try {
+          const fetched = await fetchAllFiles(datasetId);
+          allFiles = fetched || [];
+        } catch (err) {
+          console.warn("Failed to fetch files for selected version:", err);
+        }
+      }
       try {
-        const allFiles = await fetchAllFiles(datasetId);
-        setFileManifest(allFiles || []);
-        const previews = (allFiles || []).slice(0, 50).map((f) => ({
+        setFileManifest(allFiles);
+        const previews = allFiles.slice(0, 50).map((f) => ({
           path: f.storedPath || f.path || (f.folder ? `${f.folder}/${f.originalName || f.name || ""}` : f.originalName || f.name || ""),
           fileId: f.id,
           thumbnailAvailable: f.thumbnailAvailable,
@@ -1731,6 +1841,71 @@ const DatasetManager = () => {
       // Keep dialog open on error so user can try again
     } finally {
       setDeletingVersion(false);
+    }
+  };
+
+  // ------- Augment version -------
+  const openAugmentOptionsDialog = (datasetId: string) => {
+    setAugmentOptionsDatasetId(datasetId);
+    setAugmentMultiplierPreset(2);
+    setCustomTargetTrainTotal(1000);
+    setShowAugmentOptionsDialog(true);
+  };
+
+  const handleAugmentVersion = async () => {
+    const datasetId = augmentOptionsDatasetId;
+    if (!datasetId) return;
+    const options =
+      augmentMultiplierPreset === "custom"
+        ? { targetTrainTotal: customTargetTrainTotal }
+        : { augmentationMultiplier: augmentMultiplierPreset };
+    setShowAugmentOptionsDialog(false);
+    setAugmentOptionsDatasetId(null);
+    setAugmentingDatasetId(datasetId);
+    try {
+      await datasetsApi.augmentDataset(datasetId, options);
+      toast({
+        title: "Augmentation started",
+        description: "Dataset augmentation has been started in the background. You can continue working while it finishes.",
+      });
+      startAugmentationPolling(datasetId);
+      await fetchVersions();
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "Failed to start augmentation";
+      const is409 = msg.includes("409") || msg.includes("Augmentation already running");
+      toast({
+        title: is409 ? "Augmentation already running" : "Failed to start augmentation",
+        description: is409 ? "An augmentation job is already in progress for this dataset." : msg,
+        variant: is409 ? "default" : "destructive",
+      });
+    } finally {
+      setAugmentingDatasetId(null);
+    }
+  };
+
+  const handleConfirmCancelAugmentation = async () => {
+    const datasetId = cancelAugmentDatasetId;
+    if (!datasetId) return;
+    setShowCancelAugmentDialog(false);
+    setCancelAugmentDatasetId(null);
+    setCancellingAugmentationId(datasetId);
+    try {
+      await datasetsApi.cancelAugmentation(datasetId);
+      stopAugmentationPolling();
+      toast({
+        title: "Augmentation cancelled",
+        description: "The augmentation process has been cancelled.",
+      });
+      await fetchVersions();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to cancel augmentation";
+      toast({
+        title: "Failed to cancel augmentation",
+        description: msg,
+        variant: "destructive",
+      });
+    } finally {
+      setCancellingAugmentationId(null);
     }
   };
 
@@ -2263,6 +2438,20 @@ const DatasetManager = () => {
               <CardDescription>Click a version to view its stored subfolders & files</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
+              {augmentationStatus === "running" && selectedVersionDatasetId && (
+                <div className="mb-3 p-2 rounded-md bg-muted/50 space-y-1.5">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      {cancellingAugmentationId ? "Cancelling…" : "Augmenting dataset…"}
+                    </span>
+                  </div>
+                  <Progress
+                    value={augmentationProgress}
+                    className="h-2"
+                    indicatorClassName="progress-striped progress-animated"
+                  />
+                </div>
+              )}
                   {versions.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 text-center">
                       <div className="relative flex-shrink-0 mb-4">
@@ -2280,10 +2469,39 @@ const DatasetManager = () => {
                         <div key={v.datasetId} className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             <button className="text-left" onClick={() => onSelectVersion(v.datasetId)}>
-                              <div className="font-medium">{v.version || v.datasetId}</div>
-                              <div className="text-xs text-muted-foreground">{v.createdAt ? new Date(v.createdAt).toLocaleString() : ""}</div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium">{v.version || v.datasetId}</span>
+                                {v.augmentation_status === "running" && (
+                                  <Badge variant="secondary" className="text-xs animate-pulse">
+                                    Augmenting…
+                                  </Badge>
+                                )}
+                                {v.datasetType && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {v.datasetType === "labeled" ? "Labeled" : "Unlabeled"}
+                                  </Badge>
+                                )}
+                                {v.annotationStatus && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {v.annotationStatus === "completed" ? "Completed" : "Pending"}
+                                  </Badge>
+                                )}
+                                {v.is_augmented && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    Augmented
+                                    {v.augmentationMultiplier != null && ` ${v.augmentationMultiplier}x`}
+                                    {v.augmentedFromVersion != null && ` from v${v.augmentedFromVersion}`}
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {v.createdAt ? new Date(v.createdAt).toLocaleString() : ""}
+                                {(v.isActive || v.is_active) && " • Active"}
+                              </div>
                             </button>
-                            {selectedVersionDatasetId === v.datasetId && <span className="text-xs text-primary"> (selected)</span>}
+                            {selectedVersionDatasetId === v.datasetId && (
+                              <span className="text-xs text-primary"> (selected)</span>
+                            )}
                           </div>
                           <div className="flex items-center gap-3">
                             <Button
@@ -2296,6 +2514,48 @@ const DatasetManager = () => {
                             >
                               View
                             </Button>
+                            <ProtectedComponent requiredPermission="annotateDatasets">
+                              {v.augmentation_status === "running" ? (
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  disabled={cancellingAugmentationId === v.datasetId}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCancelAugmentDatasetId(v.datasetId);
+                                    setShowCancelAugmentDialog(true);
+                                  }}
+                                >
+                                  {cancellingAugmentationId === v.datasetId ? (
+                                    <>
+                                      <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                                      Cancelling...
+                                    </>
+                                  ) : (
+                                    "Cancel Augmentation"
+                                  )}
+                                </Button>
+                              ) : v.status === "processing" ? null : (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={augmentingDatasetId === v.datasetId}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openAugmentOptionsDialog(v.datasetId);
+                                  }}
+                                >
+                                  {augmentingDatasetId === v.datasetId ? (
+                                    <>
+                                      <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                                      Augmenting...
+                                    </>
+                                  ) : (
+                                    "Augment"
+                                  )}
+                                </Button>
+                              )}
+                            </ProtectedComponent>
                             <ProtectedComponent requiredPermission="deleteDatasets">
                               <Button
                                 variant="outline"
@@ -2305,7 +2565,10 @@ const DatasetManager = () => {
                                   e.stopPropagation();
                                   handleDeleteVersionClick(v.datasetId);
                                 }}
-                                disabled={(deletingVersion || loadingDependencies) && versionToDelete === v.datasetId}
+                                disabled={
+                                  (deletingVersion || loadingDependencies) &&
+                                  versionToDelete === v.datasetId
+                                }
                               >
                                 Delete
                               </Button>
@@ -2786,6 +3049,109 @@ const DatasetManager = () => {
           navigate("/dashboard/projects");
         }}
       />
+
+      {/* Cancel augmentation confirmation dialog */}
+      <AlertDialog open={showCancelAugmentDialog} onOpenChange={(open) => {
+        setShowCancelAugmentDialog(open);
+        if (!open) setCancelAugmentDatasetId(null);
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel augmentation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cancel augmentation for this dataset? The process will stop and partial results may be discarded.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!cancellingAugmentationId}>Keep running</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void handleConfirmCancelAugmentation();
+              }}
+              disabled={!!cancellingAugmentationId}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {cancellingAugmentationId ? (
+                <>
+                  <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                  Cancelling…
+                </>
+              ) : (
+                "Cancel augmentation"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Augment Options Dialog */}
+      <Dialog open={showAugmentOptionsDialog} onOpenChange={(open) => {
+        if (!open) {
+          setShowAugmentOptionsDialog(false);
+          setAugmentOptionsDatasetId(null);
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Augment dataset</DialogTitle>
+            <DialogDescription>
+              Choose augmentation size. The original dataset will be backed up and replaced when complete.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Preset multiplier</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={augmentMultiplierPreset === 2 ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setAugmentMultiplierPreset(2)}
+                >
+                  2x
+                </Button>
+                <Button
+                  type="button"
+                  variant={augmentMultiplierPreset === 5 ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setAugmentMultiplierPreset(5)}
+                >
+                  5x
+                </Button>
+                <Button
+                  type="button"
+                  variant={augmentMultiplierPreset === "custom" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setAugmentMultiplierPreset("custom")}
+                >
+                  Custom
+                </Button>
+              </div>
+            </div>
+            {augmentMultiplierPreset === "custom" && (
+              <div className="space-y-2">
+                <Label htmlFor="custom-target">Target train image count</Label>
+                <Input
+                  id="custom-target"
+                  type="number"
+                  min={1}
+                  value={customTargetTrainTotal}
+                  onChange={(e) => setCustomTargetTrainTotal(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                />
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowAugmentOptionsDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => void handleAugmentVersion()}>
+              Start Augmentation
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Version Confirmation Dialog */}
       <AlertDialog open={showDeleteVersionDialog} onOpenChange={(open) => {

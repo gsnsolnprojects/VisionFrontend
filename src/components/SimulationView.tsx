@@ -29,6 +29,8 @@ import { useProfile } from "@/hooks/useProfile";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { getAuthHeaders } from "@/lib/api/config";
+import * as datasetsApi from "@/lib/api/datasets";
+import { useAugmentationStatus } from "@/hooks/useAugmentationStatus";
 import { ProtectedComponent } from "@/components/permissions/ProtectedComponent";
 import { ModelDownloadButton } from "@/components/training/ModelDownloadButton";
 import { ModelDeployButton } from "@/components/training/ModelDeployButton";
@@ -40,6 +42,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   saveTrainingState,
   loadTrainingState,
@@ -158,6 +170,23 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
   const [deletingModelId, setDeletingModelId] = useState<string | null>(null);
   const [showDeleteModelDialog, setShowDeleteModelDialog] = useState(false);
   // annotationMode removed - now using separate route for annotation page
+  // Augmentation UI state (frontend-only; backend handles heavy lifting)
+  const [showAugmentDialog, setShowAugmentDialog] = useState(false);
+  const [augmentingDataset, setAugmentingDataset] = useState(false);
+  const [augmentMultiplierPreset, setAugmentMultiplierPreset] = useState<2 | 5 | "custom">(2);
+  const [customTargetTrainTotal, setCustomTargetTrainTotal] = useState<number>(1000);
+  const [cancellingAugmentation, setCancellingAugmentation] = useState(false);
+  const [showCancelAugmentDialog, setShowCancelAugmentDialog] = useState(false);
+
+  const {
+    status: augmentationStatus,
+    progress: augmentationProgress,
+    error: augmentationError,
+    isPolling: augmentationIsPolling,
+    startPolling: startAugmentationPolling,
+    stopPolling: stopAugmentationPolling,
+    syncFromStatus: syncAugmentationFromStatus,
+  } = useAugmentationStatus(selectedDatasetId || null);
 
   // refs
   const pollIntervalRef = useRef<number | null>(null);
@@ -294,6 +323,73 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
     }
   };
 
+  // Sync augmentation status from datasetDetails and start polling if already running
+  useEffect(() => {
+    if (datasetDetails?.augmentation_status) {
+      syncAugmentationFromStatus(
+        datasetDetails.augmentation_status,
+        datasetDetails.augmentation_error
+      );
+      if (datasetDetails.augmentation_status === "running" && !augmentationIsPolling) {
+        startAugmentationPolling();
+      }
+    }
+  }, [datasetDetails?.augmentation_status, datasetDetails?.augmentation_error, syncAugmentationFromStatus, augmentationIsPolling, startAugmentationPolling]);
+
+  const augmentationHandledRef = useRef<string | null>(null);
+  useEffect(() => {
+    const key = `${selectedDatasetId}-${augmentationStatus}`;
+    if (augmentationHandledRef.current === key) return;
+    if (augmentationStatus === "succeeded") {
+      augmentationHandledRef.current = key;
+      toast({
+        title: "Augmentation completed",
+        description: "The dataset has been successfully augmented and replaced.",
+        variant: "success",
+      });
+      if (selectedDatasetId) {
+        stopAugmentationPolling();
+        setTimeout(() => {
+          void fetchDatasets();
+          void fetchDatasetDetails(selectedDatasetId);
+        }, 100);
+      }
+    } else if (augmentationStatus === "failed") {
+      augmentationHandledRef.current = key;
+      toast({
+        title: "Augmentation failed",
+        description:
+          augmentationError ||
+          "Dataset augmentation failed. The original dataset is unchanged.",
+        variant: "destructive",
+      });
+    }
+  }, [augmentationStatus, augmentationError, selectedDatasetId, stopAugmentationPolling, toast]);
+
+  const handleCancelAugmentation = async () => {
+    if (!selectedDatasetId) return;
+    setShowCancelAugmentDialog(false);
+    setCancellingAugmentation(true);
+    try {
+      await datasetsApi.cancelAugmentation(selectedDatasetId);
+      stopAugmentationPolling();
+      await fetchDatasetDetails(selectedDatasetId);
+      toast({
+        title: "Augmentation cancelled",
+        description: "The augmentation process has been cancelled.",
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to cancel augmentation";
+      toast({
+        title: "Failed to cancel augmentation",
+        description: msg,
+        variant: "destructive",
+      });
+    } finally {
+      setCancellingAugmentation(false);
+    }
+  };
+
   // Helper function to format duration from start and end timestamps
   const formatTrainingDuration = (startedAt: string | null, completedAt: string | null): string | null => {
     if (!startedAt || !completedAt) return null;
@@ -417,7 +513,8 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
 
       // request both projectId and project name as query params (server may accept either)
       const qs = new URLSearchParams({
-        status: "ready",
+        //status: "ready",
+        includeInactive: "true",
         ...(projectId ? { projectId: String(projectId) } : {}),
         ...(projectName ? { project: String(projectName) } : {}),
       });
@@ -546,6 +643,18 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
       }
 
       const json = await resp.json();
+      console.log("[SimulationView] fetchDatasetDetails response:", {
+        datasetId,
+        status: json.status,
+        unlabeledImages: json.unlabeledImages,
+        unlabeled_images: json.unlabeled_images,
+        labeledImages: json.labeledImages,
+        labeled_images: json.labeled_images,
+        totalImages: json.totalImages,
+        augmentation_status: json.augmentation_status,
+        is_augmented: json.is_augmented,
+        fullResponse: json,
+      });
       setDatasetDetails(json);
     } catch (err: any) {
       if (err?.name === "AbortError") return;
@@ -804,6 +913,15 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
     } else {
       setDatasetDetails(null);
     }
+    
+    // Cleanup: abort any pending dataset details request when dataset changes or component unmounts
+    return () => {
+      if (datasetDetailsAbortRef.current) {
+        datasetDetailsAbortRef.current.abort();
+        datasetDetailsAbortRef.current = null;
+      }
+      // Augmentation polling cleans up via useAugmentationStatus when datasetId changes
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDatasetId, sessionReady]);
 
@@ -1028,6 +1146,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
         datasetDetailsAbortRef.current.abort();
         datasetDetailsAbortRef.current = null;
       }
+      // Augmentation polling cleans up via useAugmentationStatus on unmount
     };
   }, []);
 
@@ -1045,6 +1164,27 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
       toast({
         title: "Missing inputs",
         description: "Select dataset and model type before starting training.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate dataset is trainable: trainCount > 0 and status ready
+    const trainCount = datasetDetails?.trainCount ?? 0;
+    const status = datasetDetails?.status;
+    const isReady = status === "ready" || status === "ready_to_train";
+    if (trainCount <= 0) {
+      toast({
+        title: "Dataset has no training images",
+        description: "This dataset has no training images. Add labeled images or select a different version.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!isReady) {
+      toast({
+        title: "Dataset not ready for training",
+        description: `Dataset status is "${status ?? "unknown"}". Only datasets with status "ready" or "ready_to_train" can be used for training.`,
         variant: "destructive",
       });
       return;
@@ -1632,27 +1772,54 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                                   Version: {dataset.version ?? "unknown"}
                                 </div>
                                 <div className="text-xs text-muted-foreground mt-1">
-                                  {(dataset.totalImages ?? 0) + " images"} •{" "}
+                                  {(dataset.trainCount != null || dataset.valCount != null || dataset.testCount != null)
+                                    ? `Train: ${dataset.trainCount ?? 0}, Val: ${dataset.valCount ?? 0}, Test: ${dataset.testCount ?? 0}`
+                                    : `${(dataset.totalImages ?? 0)} images`}
+                                  {" • "}
                                   {new Date(
                                     dataset.createdAt ?? dataset.created_at ?? Date.now(),
                                   ).toLocaleDateString()}
                                 </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <Badge
-                                  variant={
-                                    dataset.status === "ready" || dataset.status === "ready_to_train"
-                                      ? "default"
-                                      : dataset.status === "processing"
-                                      ? "secondary"
-                                      : "destructive"
-                                  }
-                                >
-                                  {dataset.status === "ready" || dataset.status === "ready_to_train"
-                                    ? "Ready"
-                                    : (dataset.status ?? "unknown")}
-                                </Badge>
-                                {dataset.status === "ready" && (
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {dataset.datasetType && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {dataset.datasetType === "labeled" ? "Labeled" : "Unlabeled"}
+                                  </Badge>
+                                )}
+                                {dataset.annotationStatus && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {dataset.annotationStatus === "completed" ? "Completed" : "Pending"}
+                                  </Badge>
+                                )}
+                                {dataset.augmentation_status === "running" && (
+                                  <Badge variant="secondary" className="text-xs animate-pulse">
+                                    Augmenting…
+                                  </Badge>
+                                )}
+                                {dataset.is_augmented && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    Augmented
+                                    {dataset.augmentationMultiplier != null && ` ${dataset.augmentationMultiplier}x`}
+                                    {dataset.augmentedFromVersion != null && ` from v${dataset.augmentedFromVersion}`}
+                                  </Badge>
+                                )}
+                                {!dataset.datasetType && (
+                                  <Badge
+                                    variant={
+                                      dataset.status === "ready" || dataset.status === "ready_to_train"
+                                        ? "default"
+                                        : dataset.status === "processing"
+                                        ? "secondary"
+                                        : "destructive"
+                                    }
+                                  >
+                                    {dataset.status === "ready" || dataset.status === "ready_to_train"
+                                      ? "Ready"
+                                      : (dataset.status ?? "unknown")}
+                                  </Badge>
+                                )}
+                                {!dataset.datasetType && dataset.status === "ready" && (
                                   <Badge
                                     variant="outline"
                                     className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40"
@@ -1660,7 +1827,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                                     Pre-Labelled
                                   </Badge>
                                 )}
-                                {dataset.status === "ready_to_train" && (
+                                {!dataset.datasetType && dataset.status === "ready_to_train" && (
                                   <Badge
                                     variant="outline"
                                     className="bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/40"
@@ -1691,7 +1858,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                 initial="hidden"
                 animate="visible"
               >
-                <div className="flex justify-end">
+                <div className="flex justify-end gap-2">
                   <Button
                     variant="outline"
                     type="button"
@@ -1706,6 +1873,102 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
               </motion.div>
             </ProtectedComponent>
           )}
+
+        {/* Optional: Augment Dataset / Cancel Augmentation - strict: datasetType unlabeled, annotationStatus completed, unlabeledImagesCount 0 */}
+        {selectedDatasetId &&
+          datasetDetails && (() => {
+            const unlabeledCount = datasetDetails.unlabeledImagesCount ?? datasetDetails.unlabeledImages ?? datasetDetails.unlabeled_images ?? 0;
+            const hasNewFields = datasetDetails.datasetType != null || datasetDetails.annotationStatus != null;
+            const canAugment = hasNewFields
+              ? datasetDetails.datasetType === "unlabeled" && datasetDetails.annotationStatus === "completed" && unlabeledCount === 0
+              : (datasetDetails.status === "ready_to_train" && unlabeledCount === 0);
+            const disabledReason = !canAugment
+              ? datasetDetails.datasetType !== "unlabeled" && datasetDetails.datasetType != null
+                ? "Dataset must be unlabeled type"
+                : datasetDetails.annotationStatus !== "completed" && datasetDetails.annotationStatus != null
+                  ? "Complete annotation first"
+                  : unlabeledCount > 0
+                    ? "Complete annotation of all images before augmenting"
+                    : datasetDetails.status !== "ready_to_train" && !hasNewFields
+                      ? "Dataset not ready for augmentation"
+                      : undefined
+              : undefined;
+            return (
+              <ProtectedComponent requiredPermission="annotateDatasets">
+                <motion.div
+                  key="augment-dataset-toggle"
+                  variants={fadeInUpVariants}
+                  initial="hidden"
+                  animate="visible"
+                >
+                  <div className="flex flex-col gap-2 mt-2">
+                    {(augmentationStatus === "running" || datasetDetails.augmentation_status === "running") && (
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">
+                            {cancellingAugmentation ? "Cancelling…" : "Augmenting dataset…"}
+                          </span>
+                        </div>
+                        <Progress
+                          value={augmentationStatus === "running" ? augmentationProgress : 100}
+                          className="h-2"
+                          indicatorClassName={augmentationStatus === "running" ? "progress-striped progress-animated" : undefined}
+                        />
+                      </div>
+                    )}
+                    {augmentationStatus === "succeeded" && (
+                      <div className="text-sm text-green-600 dark:text-green-400">
+                        Augmentation completed
+                      </div>
+                    )}
+                    {augmentationStatus === "failed" && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="text-sm text-destructive cursor-help">
+                              Augmentation failed
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{augmentationError || "An error occurred"}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                    <div className="flex justify-end gap-2">
+                    {(augmentationStatus === "running" || datasetDetails.augmentation_status === "running") ? (
+                      <Button
+                        variant="destructive"
+                        type="button"
+                        disabled={cancellingAugmentation}
+                        onClick={() => setShowCancelAugmentDialog(true)}
+                      >
+                        {cancellingAugmentation ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Cancelling…
+                          </>
+                        ) : (
+                          "Cancel Augmentation"
+                        )}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        type="button"
+                        disabled={!canAugment}
+                        onClick={() => setShowAugmentDialog(true)}
+                        title={disabledReason}
+                      >
+                        Augment Dataset
+                      </Button>
+                    )}
+                    </div>
+                  </div>
+                </motion.div>
+              </ProtectedComponent>
+            );
+          })()}
 
         {/* Training view content */}
         {(
@@ -1783,12 +2046,40 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                     <div className="text-sm text-muted-foreground">Unlabeled</div>
                     <div className="font-medium">{datasetDetails.unlabeledImages ?? 0}</div>
 
+                    <div className="text-sm text-muted-foreground">Train / Val / Test</div>
+                    <div className="font-medium">
+                      {[
+                        datasetDetails.trainCount ?? 0,
+                        datasetDetails.valCount ?? 0,
+                        datasetDetails.testCount ?? 0,
+                      ].join(" / ")}
+                    </div>
+
                     <div className="text-sm text-muted-foreground">Status</div>
                     <div className="font-medium">
                       {datasetDetails.status === "ready" || datasetDetails.status === "ready_to_train"
                         ? "Ready"
                         : (datasetDetails.status ?? "unknown")}
                     </div>
+                    {datasetDetails.annotationStatus != null && (
+                      <>
+                        <div className="text-sm text-muted-foreground">Annotation</div>
+                        <div className="font-medium">
+                          {datasetDetails.annotationStatus === "completed" ? "Completed" : "Pending"}
+                        </div>
+                      </>
+                    )}
+                    {datasetDetails.augmentation_status != null && (
+                      <>
+                        <div className="text-sm text-muted-foreground">Augmentation</div>
+                        <div className="font-medium">
+                          {datasetDetails.augmentation_status}
+                          {datasetDetails.augmentation_status === "failed" && datasetDetails.augmentation_error && (
+                            <span className="text-destructive text-xs block mt-1">{datasetDetails.augmentation_error}</span>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">No dataset details available.</p>
@@ -2106,6 +2397,157 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* Cancel augmentation confirmation dialog */}
+            <AlertDialog open={showCancelAugmentDialog} onOpenChange={setShowCancelAugmentDialog}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Cancel augmentation?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Cancel augmentation for this dataset? The process will stop and partial results may be discarded.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={cancellingAugmentation}>Keep running</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void handleCancelAugmentation();
+                    }}
+                    disabled={cancellingAugmentation}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    {cancellingAugmentation ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Cancelling…
+                      </>
+                    ) : (
+                      "Cancel augmentation"
+                    )}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Augmentation confirmation dialog for currently selected dataset */}
+            <Dialog open={showAugmentDialog} onOpenChange={(open) => {
+              setShowAugmentDialog(open);
+              if (!open) {
+                setAugmentMultiplierPreset(2);
+                setCustomTargetTrainTotal(1000);
+              }
+            }}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Augment this dataset?</DialogTitle>
+                  <DialogDescription>
+                    Choose augmentation size. The original dataset will be backed up and replaced only
+                    after augmentation completes successfully.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-2">
+                  <div className="space-y-2">
+                    <Label>Preset multiplier</Label>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant={augmentMultiplierPreset === 2 ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setAugmentMultiplierPreset(2)}
+                      >
+                        2x
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={augmentMultiplierPreset === 5 ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setAugmentMultiplierPreset(5)}
+                      >
+                        5x
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={augmentMultiplierPreset === "custom" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setAugmentMultiplierPreset("custom")}
+                      >
+                        Custom
+                      </Button>
+                    </div>
+                  </div>
+                  {augmentMultiplierPreset === "custom" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="sim-custom-target">Target train image count</Label>
+                      <Input
+                        id="sim-custom-target"
+                        type="number"
+                        min={1}
+                        value={customTargetTrainTotal}
+                        onChange={(e) => setCustomTargetTrainTotal(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                      />
+                    </div>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowAugmentDialog(false)}
+                    disabled={augmentingDataset}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="default"
+                    onClick={async () => {
+                      if (!selectedDatasetId || augmentingDataset) return;
+                      setAugmentingDataset(true);
+                      const options = augmentMultiplierPreset === "custom"
+                        ? { targetTrainTotal: customTargetTrainTotal }
+                        : { augmentationMultiplier: augmentMultiplierPreset };
+                      try {
+                        await datasetsApi.augmentDataset(selectedDatasetId, options);
+                        toast({
+                          title: "Augmentation started",
+                          description:
+                            "Dataset augmentation has been started in the background. You can continue working while it finishes.",
+                        });
+                        startAugmentationPolling();
+                        setShowAugmentDialog(false);
+                      } catch (error: unknown) {
+                        const msg = error instanceof Error ? error.message : String(error ?? "");
+                        const is409 = msg.includes("409") || msg.includes("Augmentation already running");
+                        if (is409) {
+                          toast({
+                            title: "Augmentation already running",
+                            description: "An augmentation job is already in progress for this dataset.",
+                            variant: "default",
+                          });
+                          startAugmentationPolling();
+                        } else {
+                          toast({
+                            title: "Failed to start augmentation",
+                            description: msg || "An error occurred while starting dataset augmentation.",
+                            variant: "destructive",
+                          });
+                        }
+                      } finally {
+                        setAugmentingDataset(false);
+                      }
+                    }}
+                  >
+                    {augmentingDataset ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Starting...
+                      </>
+                    ) : (
+                      "Start Augmentation"
+                    )}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
         {/* Model Type + Model Size + Hyperparameters - Conditional on selectedDatasetId */}
         <AnimatePresence mode="wait">
@@ -2717,10 +3159,33 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                   exit="hidden"
                   className="flex justify-end"
                 >
-                  <Button onClick={() => setShowSimulateConfirm(true)} size="lg" className="gap-2">
-                    <Play className="h-4 w-4" />
-                    Start Training
-                  </Button>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span>
+                          <Button
+                            onClick={() => setShowSimulateConfirm(true)}
+                            size="lg"
+                            className="gap-2"
+                            disabled={
+                              (datasetDetails?.trainCount ?? 0) <= 0 ||
+                              !(datasetDetails?.status === "ready" || datasetDetails?.status === "ready_to_train")
+                            }
+                          >
+                            <Play className="h-4 w-4" />
+                            Start Training
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {(datasetDetails?.trainCount ?? 0) <= 0
+                          ? "Dataset has no training images"
+                          : !(datasetDetails?.status === "ready" || datasetDetails?.status === "ready_to_train")
+                            ? `Dataset not ready (status: ${datasetDetails?.status ?? "unknown"})`
+                            : "Start training with selected configuration"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </motion.div>
               </ProtectedComponent>
             )}
@@ -2739,15 +3204,37 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
           <div className="space-y-2 py-4">
             <div className="flex justify-between"><span className="text-sm text-muted-foreground">Project:</span><span className="text-sm font-medium">{selectedProject?.name}</span></div>
             <div className="flex justify-between"><span className="text-sm text-muted-foreground">Dataset:</span><span className="text-sm font-medium">{selectedDataset?.version ?? datasetDetails?.version}</span></div>
+            <div className="flex justify-between"><span className="text-sm text-muted-foreground">Train / Val / Test:</span><span className="text-sm font-medium">{[datasetDetails?.trainCount ?? 0, datasetDetails?.valCount ?? 0, datasetDetails?.testCount ?? 0].join(" / ")}</span></div>
             <div className="flex justify-between"><span className="text-sm text-muted-foreground">Model Type:</span><span className="text-sm font-medium">{modelType}</span></div>
             {modelType === "YOLO" && (<div className="flex justify-between"><span className="text-sm text-muted-foreground">YOLO Size:</span><span className="text-sm font-medium">{selectedModelSize || "not selected"}</span></div>)}
             <div className="flex justify-between"><span className="text-sm text-muted-foreground">Epochs:</span><span className="text-sm font-medium">{epochs}</span></div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowSimulateConfirm(false)}>Cancel</Button>
-            <Button onClick={startTraining}>
-              {isSimulating ? <> <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Starting... </> : "Confirm & Start"}
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button
+                      onClick={startTraining}
+                      disabled={
+                        (datasetDetails?.trainCount ?? 0) <= 0 ||
+                        !(datasetDetails?.status === "ready" || datasetDetails?.status === "ready_to_train")
+                      }
+                    >
+                      {isSimulating ? <> <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Starting... </> : "Confirm & Start"}
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {(datasetDetails?.trainCount ?? 0) <= 0
+                    ? "Dataset has no training images"
+                    : !(datasetDetails?.status === "ready" || datasetDetails?.status === "ready_to_train")
+                      ? `Dataset not ready (status: ${datasetDetails?.status ?? "unknown"})`
+                      : "Start training"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </DialogFooter>
         </DialogContent>
       </Dialog>

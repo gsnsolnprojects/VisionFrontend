@@ -15,6 +15,7 @@ import { AnnotationReviewToolbar } from "@/components/annotation/AnnotationRevie
 import { AnnotationExportButton } from "@/components/annotation/AnnotationExportButton";
 import { AnnotationImportButton } from "@/components/annotation/AnnotationImportButton";
 import { AnnotationAnalytics } from "@/components/annotation/AnnotationAnalytics";
+import * as datasetsApi from "@/lib/api/datasets";
 import { useAnnotation } from "@/hooks/useAnnotation";
 import { useAnnotationSelection } from "@/hooks/useAnnotationSelection";
 import { useImageLoader } from "@/hooks/useImageLoader";
@@ -34,6 +35,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
@@ -123,6 +126,12 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   const ongoingRequestRef = useRef<string | null>(null);
   // Track whether we've restored workspace session from storage
   const hasRestoredSessionRef = useRef(false);
+  // Augmentation confirmation state (shown after successful save + convert)
+  const [showAugmentDialog, setShowAugmentDialog] = useState(false);
+  const [augmenting, setAugmenting] = useState(false);
+  const [augmentMultiplierPreset, setAugmentMultiplierPreset] = useState<2 | 5 | "custom">(2);
+  const [customTargetTrainTotal, setCustomTargetTrainTotal] = useState<number>(1000);
+  const augmentationPollRef = useRef<number | null>(null);
 
   // Track image loading state
   const { loaded: imageLoaderLoaded, error: imageError } = useImageLoader(
@@ -295,6 +304,16 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
 
     void initialize();
   }, [datasetId, loadImages, selectImage, setCategory, toast]);
+
+  // Cleanup augmentation polling when component unmounts or datasetId changes
+  useEffect(() => {
+    return () => {
+      if (augmentationPollRef.current) {
+        window.clearInterval(augmentationPollRef.current);
+        augmentationPollRef.current = null;
+      }
+    };
+  }, [datasetId]);
 
   // Keep annotations ref in sync with state (for conflict detection without dependency issues)
   useEffect(() => {
@@ -565,6 +584,14 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       });
 
       markSaved();
+      // Refresh dataset status (annotation save updates datasetType, annotationStatus, unlabeledImagesCount)
+      try {
+        await datasetsApi.fetchDatasetStatus(datasetId);
+      } catch {
+        // Non-blocking: augment dialog can still be shown
+      }
+      // After a successful save+convert, offer optional augmentation
+      setShowAugmentDialog(true);
     } catch (error) {
       console.error("Failed to save and convert:", error);
       setSaveStatus("error");
@@ -576,6 +603,48 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       setTimeout(() => setSaveStatus("idle"), 3000);
     }
   }, [annotations, datasetId, categories, hasCategories, markSaved, toast]);
+
+  // Lightweight augmentation status polling (for toast feedback only)
+  const startAugmentationStatusPolling = useCallback(
+    (id: string) => {
+      if (augmentationPollRef.current) {
+        window.clearInterval(augmentationPollRef.current);
+        augmentationPollRef.current = null;
+      }
+      augmentationPollRef.current = window.setInterval(async () => {
+        try {
+          const status = await datasetsApi.fetchDatasetStatus(id);
+          const augStatus = status.augmentation_status;
+          if (!augStatus || augStatus === "not_started" || augStatus === "running") {
+            return;
+          }
+          // Once we reach a terminal state, clear polling and notify user
+          if (augmentationPollRef.current) {
+            window.clearInterval(augmentationPollRef.current);
+            augmentationPollRef.current = null;
+          }
+          if (augStatus === "succeeded") {
+            toast({
+              title: "Augmentation completed",
+              description: "The dataset has been successfully augmented and replaced.",
+              variant: "success",
+            });
+          } else if (augStatus === "failed") {
+            toast({
+              title: "Augmentation failed",
+              description:
+                (status as any).augmentation_error ||
+                "Dataset augmentation failed. The original dataset is unchanged.",
+              variant: "destructive",
+            });
+          }
+        } catch (error) {
+          console.error("Failed to poll augmentation status:", error);
+        }
+      }, 5000);
+    },
+    [toast]
+  );
 
   // Handle image selection with unsaved changes confirmation
   const handleImageSelect = useCallback(
@@ -1520,6 +1589,118 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
               }}
             >
               Yes
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Augmentation confirmation dialog shown after annotations are saved */}
+      <Dialog open={showAugmentDialog} onOpenChange={(open) => {
+        setShowAugmentDialog(open);
+        if (!open) {
+          setAugmentMultiplierPreset(2);
+          setCustomTargetTrainTotal(1000);
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Augment this dataset?</DialogTitle>
+            <DialogDescription>
+              Your annotations have been saved and converted. Would you like to augment this dataset now?
+              Choose augmentation size below.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Preset multiplier</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={augmentMultiplierPreset === 2 ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setAugmentMultiplierPreset(2)}
+                >
+                  2x
+                </Button>
+                <Button
+                  type="button"
+                  variant={augmentMultiplierPreset === 5 ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setAugmentMultiplierPreset(5)}
+                >
+                  5x
+                </Button>
+                <Button
+                  type="button"
+                  variant={augmentMultiplierPreset === "custom" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setAugmentMultiplierPreset("custom")}
+                >
+                  Custom
+                </Button>
+              </div>
+            </div>
+            {augmentMultiplierPreset === "custom" && (
+              <div className="space-y-2">
+                <Label htmlFor="ann-custom-target">Target train image count</Label>
+                <Input
+                  id="ann-custom-target"
+                  type="number"
+                  min={1}
+                  value={customTargetTrainTotal}
+                  onChange={(e) => setCustomTargetTrainTotal(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                />
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end gap-3 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowAugmentDialog(false)}
+              disabled={augmenting}
+            >
+              No, skip for now
+            </Button>
+            <Button
+              variant="default"
+              onClick={async () => {
+                if (augmenting) return;
+                setAugmenting(true);
+                const options = augmentMultiplierPreset === "custom"
+                  ? { targetTrainTotal: customTargetTrainTotal }
+                  : { augmentationMultiplier: augmentMultiplierPreset };
+                try {
+                  await datasetsApi.augmentDataset(datasetId, options);
+                  toast({
+                    title: "Augmentation started",
+                    description:
+                      "Dataset augmentation has been started in the background. You can continue working while it finishes.",
+                  });
+                  startAugmentationStatusPolling(datasetId);
+                  setShowAugmentDialog(false);
+                } catch (error: unknown) {
+                  const msg = error instanceof Error ? error.message : String(error ?? "");
+                  const is409 = msg.includes("409") || msg.includes("Augmentation already running");
+                  if (is409) {
+                    toast({
+                      title: "Augmentation already running",
+                      description: "An augmentation job is already in progress for this dataset.",
+                      variant: "default",
+                    });
+                  } else {
+                    console.error("Failed to start augmentation:", error);
+                    toast({
+                      title: "Failed to start augmentation",
+                      description: msg || "An error occurred while starting augmentation.",
+                      variant: "destructive",
+                    });
+                  }
+                } finally {
+                  setAugmenting(false);
+                }
+              }}
+            >
+              {augmenting ? "Starting..." : "Yes, augment dataset"}
             </Button>
           </div>
         </DialogContent>
