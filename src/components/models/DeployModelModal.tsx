@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -43,7 +43,12 @@ export const DeployModelModal: React.FC<DeployModelModalProps> = ({
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   const [searchIp, setSearchIp] = useState<string>("");
   const [selectedFormat, setSelectedFormat] = useState<'pt' | 'onnx'>('pt');
+  const [targetFileName, setTargetFileName] = useState<string>("");
   const [isScanning, setIsScanning] = useState(false);
+
+  useEffect(() => {
+    setTargetFileName(selectedFormat === "onnx" ? `${modelName}.onnx` : `${modelName}.pt`);
+  }, [selectedFormat, modelName]);
   const [isSearching, setIsSearching] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -160,6 +165,10 @@ export const DeployModelModal: React.FC<DeployModelModalProps> = ({
       setError("Selected device does not have folder access");
       return;
     }
+    if (!targetFileName.trim()) {
+      setError("Please enter a target file name");
+      return;
+    }
 
     setIsDeploying(true);
     setError(null);
@@ -170,6 +179,7 @@ export const DeployModelModal: React.FC<DeployModelModalProps> = ({
         folderPath: device.folderPath,
         deviceName: device.deviceName,
         format: selectedFormat,
+        targetFileName: targetFileName.trim(),
       });
 
       // Call parent callback
@@ -186,7 +196,8 @@ export const DeployModelModal: React.FC<DeployModelModalProps> = ({
       setSelectedDevice(null);
       setDevices([]);
       setSearchIp("");
-      setSelectedFormat('pt');
+      setSelectedFormat("pt");
+      setTargetFileName(`${modelName}.pt`);
     } catch (err) {
       let errorMessage =
         err instanceof Error ? err.message : "Failed to deploy model";
@@ -216,7 +227,8 @@ export const DeployModelModal: React.FC<DeployModelModalProps> = ({
       setSelectedDevice(null);
       setDevices([]);
       setSearchIp("");
-      setSelectedFormat('pt');
+      setSelectedFormat("pt");
+      setTargetFileName(`${modelName}.pt`);
       setError(null);
     }
   };
@@ -406,6 +418,19 @@ export const DeployModelModal: React.FC<DeployModelModalProps> = ({
                   </p>
                 )}
               </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Target File Name
+                </label>
+                <Input
+                  type="text"
+                  value={targetFileName}
+                  onChange={(e) => setTargetFileName(e.target.value)}
+                  placeholder={selectedFormat === "onnx" ? `${modelName}.onnx` : `${modelName}.pt`}
+                  disabled={isDeploying}
+                  className="w-full"
+                />
+              </div>
             </div>
           )}
         </div>
@@ -421,7 +446,7 @@ export const DeployModelModal: React.FC<DeployModelModalProps> = ({
           </Button>
           <Button
             onClick={handleDeploy}
-            disabled={!selectedDevice || isDeploying}
+            disabled={!selectedDevice || !targetFileName.trim() || isDeploying}
             className="gap-2"
           >
             {isDeploying ? (
