@@ -11,9 +11,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Rocket, AlertCircle } from "lucide-react";
+import { Loader2, Rocket, AlertCircle, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import * as modelsApi from "@/lib/api/models";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface Device {
   ipAddress: string;
@@ -237,7 +243,21 @@ export const DeployModelModal: React.FC<DeployModelModalProps> = ({
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>Deploy Model to Device</DialogTitle>
+          <div className="flex items-center gap-2">
+            <DialogTitle>Deploy Model to Device</DialogTitle>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-4 w-4 cursor-help text-muted-foreground shrink-0" />
+                </TooltipTrigger>
+                <TooltipContent side="top" align="start" className="max-w-sm">
+                  <p className="text-xs">
+                    Create a shared folder on the target device before deploying. The backend requires write access to copy the model files. For setup instructions, refer to the help manual.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
           <DialogDescription>
             Deploy Model: {modelName}
           </DialogDescription>

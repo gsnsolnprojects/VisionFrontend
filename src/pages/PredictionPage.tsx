@@ -49,6 +49,7 @@ import {
   ZoomOut,
   ChevronLeft,
   ChevronRight,
+  Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -69,6 +70,12 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { fadeInUpVariants, staggerContainerVariants } from "@/utils/animations";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
 const apiUrl = (path: string) => {
@@ -2666,7 +2673,23 @@ const PredictionPage = () => {
             >
               <Card>
                 <CardHeader>
-                  <CardTitle>Select Project</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    Select Project
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex cursor-help">
+                            <Info className="h-4 w-4 text-muted-foreground shrink-0" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" align="start" className="max-w-sm">
+                          <p className="text-xs">
+                            Choose the project that contains your trained models. Inference will use models from this project.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </CardTitle>
                   <CardDescription>Choose project scope for datasets and models</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -3010,7 +3033,23 @@ const PredictionPage = () => {
               ) : (
                 <Card>
                   <CardHeader>
-                    <CardTitle>Test Inputs</CardTitle>
+                    <CardTitle className="flex items-center gap-2">
+                      Test Inputs
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-flex cursor-help">
+                              <Info className="h-4 w-4 text-muted-foreground shrink-0" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" align="start" className="max-w-sm">
+                            <p className="text-xs">
+                              Provide images or video for prediction. Drag and drop files, select from disk, or use live camera for real-time inference.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </CardTitle>
                     <CardDescription>Upload custom images or use your camera for inference</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -3178,7 +3217,23 @@ const PredictionPage = () => {
               {/* Right: model selection (always visible) */}
           <Card>
             <CardHeader>
-              <CardTitle>Select Model</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                Select Model
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex cursor-help">
+                        <Info className="h-4 w-4 text-muted-foreground shrink-0" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" align="start" className="max-w-sm">
+                      <p className="text-xs">
+                        Pick a trained model to run predictions. Metrics like mAP50, precision, and recall help you compare model performance.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </CardTitle>
               <CardDescription>Choose a trained model for inference</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -3237,7 +3292,23 @@ const PredictionPage = () => {
       {inferenceStatus === "idle" && selectedProjectId && !liveCameraMode && (
         <Card>
           <CardHeader>
-            <CardTitle>Inference Settings</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              Inference Settings
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex cursor-help">
+                      <Info className="h-4 w-4 text-muted-foreground shrink-0" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" align="start" className="max-w-sm">
+                    <p className="text-xs">
+                      Set the confidence threshold to filter detections. Higher values reduce false positives; lower values catch more objects but may include noise.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </CardTitle>
             <CardDescription>Configure confidence threshold and start prediction</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
