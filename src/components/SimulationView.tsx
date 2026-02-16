@@ -1689,7 +1689,23 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
         <motion.div variants={fadeInUpVariants}>
           <Card>
             <CardHeader>
-              <CardTitle>Select Project</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                Select Project
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex cursor-help">
+                        <Info className="h-4 w-4 text-muted-foreground shrink-0" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" align="start" className="max-w-sm">
+                      <p className="text-xs">
+                        Choose the project that contains your datasets. Training and model selection will be scoped to this project.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </CardTitle>
               <CardDescription>Choose project scope for datasets</CardDescription>
             </CardHeader>
             <CardContent>
@@ -1727,7 +1743,23 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
             >
               <Card>
                 <CardHeader>
-                  <CardTitle>Select Dataset Version</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    Select Dataset Version
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex cursor-help">
+                            <Info className="h-4 w-4 text-muted-foreground shrink-0" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" align="start" className="max-w-sm">
+                          <p className="text-xs">
+                            Pick a dataset version that has finished processing. Ready versions can be used for training. Pre-Labelled means annotations are included.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </CardTitle>
                   <CardDescription>Choose a ready dataset for the selected project</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -2022,7 +2054,23 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                 >
             <Card>
               <CardHeader>
-                <CardTitle>Dataset Summary</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  Dataset Summary
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex cursor-help">
+                          <Info className="h-4 w-4 text-muted-foreground shrink-0" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" align="start" className="max-w-sm">
+                        <p className="text-xs">
+                          Overview of the selected dataset: version, image counts, train/val/test split, and annotation status. This data is used for training configuration.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </CardTitle>
                 <CardDescription>Metadata fetched from GET /api/dataset/:datasetId</CardDescription>
               </CardHeader>
               <CardContent>
@@ -2088,7 +2136,23 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
 
             <Card>
               <CardHeader>
-                <CardTitle>Trained Models</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  Trained Models
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex cursor-help">
+                          <Info className="h-4 w-4 text-muted-foreground shrink-0" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" align="start" className="max-w-sm">
+                        <p className="text-xs">
+                          Models trained on your datasets. Each shows mAP@0.5 (mean Average Precision). You can download, deploy, or delete models from here.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </CardTitle>
                 <CardDescription>Models trained for this project</CardDescription>
               </CardHeader>
               <CardContent>
@@ -2494,7 +2558,23 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
             >
               <Card>
             <CardHeader>
-              <CardTitle>Select Model & Hyperparameters</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                Select Model & Hyperparameters
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex cursor-help">
+                        <Info className="h-4 w-4 text-muted-foreground shrink-0" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" align="start" className="max-w-sm">
+                      <p className="text-xs">
+                        Choose a base model (e.g. YOLO) and adjust hyperparameters like epochs, batch size, and learning rate before starting training.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </CardTitle>
               <CardDescription>Choose a model and tune hyperparameters</CardDescription>
             </CardHeader>
             <CardContent>

@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { List, X, FileText, Search, ZoomIn, ZoomOut, RotateCcw, Maximize2, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, Folder, ChevronRight as ChevronRightIcon, ChevronDown, Trash2, Loader2, Upload, ArrowRight } from "lucide-react";
+import { List, X, FileText, Search, ZoomIn, ZoomOut, RotateCcw, Maximize2, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, Folder, ChevronRight as ChevronRightIcon, ChevronDown, Trash2, Loader2, Upload, ArrowRight, Info } from "lucide-react";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { cn } from "@/lib/utils";
 import {
@@ -53,6 +53,12 @@ import { Badge } from "@/components/ui/badge";
 import * as datasetsApi from "@/lib/api/datasets";
 import { useAugmentationStatus } from "@/hooks/useAugmentationStatus";
 import { AugmentVersionNameModal } from "@/components/datasets/AugmentVersionNameModal";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
 const apiUrl = (path: string) => {
@@ -2221,7 +2227,23 @@ const DatasetManager = () => {
           <Card>
           <CardHeader className="cursor-pointer" onClick={() => { setLabelledOpen((p) => !p); setUnlabelledOpen(false); }}>
             <CardTitle className="flex justify-between items-center">
-              <span>Labelled data</span>
+              <span className="flex items-center gap-2">
+                Labelled data
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span onClick={(e) => e.stopPropagation()} className="inline-flex cursor-help">
+                        <Info className="h-4 w-4 text-muted-foreground shrink-0" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" align="start" className="max-w-sm">
+                      <p className="text-xs">
+                        Upload a folder containing images and their corresponding YOLO-format label files (.txt). Each image should have a matching label file with the same base name.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </span>
               <span className="text-xs text-muted-foreground">{labelledOpen ? "▾" : "▸"}</span>
             </CardTitle>
             <CardDescription>Upload folder with both images and labels</CardDescription>
@@ -2268,7 +2290,23 @@ const DatasetManager = () => {
         <Card>
           <CardHeader className="cursor-pointer" onClick={() => { setUnlabelledOpen((p) => !p); setLabelledOpen(false); }}>
             <CardTitle className="flex justify-between items-center">
-              <span>Unlabelled data</span>
+              <span className="flex items-center gap-2">
+                Unlabelled data
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span onClick={(e) => e.stopPropagation()} className="inline-flex cursor-help">
+                        <Info className="h-4 w-4 text-muted-foreground shrink-0" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" align="start" className="max-w-sm">
+                      <p className="text-xs">
+                        Upload a folder containing images only. Use this for inference, or when you plan to add annotations later in the annotation workspace.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </span>
               <span className="text-xs text-muted-foreground">{unlabelledOpen ? "▾" : "▸"}</span>
             </CardTitle>
             <CardDescription>Upload folder with images only</CardDescription>
@@ -2400,7 +2438,23 @@ const DatasetManager = () => {
         <div>
           <Card>
             <CardHeader>
-              <CardTitle>Versions</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                Versions
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex cursor-help">
+                        <Info className="h-4 w-4 text-muted-foreground shrink-0" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" align="start" className="max-w-sm">
+                      <p className="text-xs">
+                        Each version is a snapshot of your dataset. Use View to browse files, Augment to create augmented copies for training, or Delete to remove a version. Active versions are used for training.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </CardTitle>
               <CardDescription>Click a version to view its stored subfolders & files</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -2544,28 +2598,42 @@ const DatasetManager = () => {
                       ))}
                     </div>
                   )}
+              <ProtectedComponent requiredPermission="deleteProjects">
+                <div className="pt-4 mt-4 border-t">
+                  <Button
+                    variant="destructive"
+                    onClick={() => setShowDeleteProjectDialog(true)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Project
+                  </Button>
+                </div>
+              </ProtectedComponent>
             </CardContent>
           </Card>
-          
-          {/* Delete Project Button - Direct button below Versions Card */}
-          <ProtectedComponent requiredPermission="deleteProjects">
-            <div className="mt-4">
-              <Button
-                variant="destructive"
-                onClick={() => setShowDeleteProjectDialog(true)}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete Project
-              </Button>
-            </div>
-          </ProtectedComponent>
         </div>
 
         {/* Dataset Summary */}
         {metadata && (
           <Card>
             <CardHeader>
-              <CardTitle>Dataset summary</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                Dataset summary
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex cursor-help">
+                        <Info className="h-4 w-4 text-muted-foreground shrink-0" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" align="start" className="max-w-sm">
+                      <p className="text-xs">
+                        Overview of your dataset: total files, size, and folder breakdown. Labels folders contain YOLO-format annotations; images folders contain the corresponding image files.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </CardTitle>
               <CardDescription>ID: {metadata.id}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
@@ -2608,7 +2676,23 @@ const DatasetManager = () => {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>File Browser</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  File Browser
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex cursor-help">
+                          <Info className="h-4 w-4 text-muted-foreground shrink-0" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" align="start" className="max-w-sm">
+                        <p className="text-xs">
+                          Browse images and label files in your dataset. Use the folder list to navigate, search to find files by name, and switch between grid or list view.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </CardTitle>
                 <CardDescription>Browse all dataset files</CardDescription>
               </div>
               <div className="flex items-center gap-2">

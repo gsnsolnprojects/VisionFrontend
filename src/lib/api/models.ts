@@ -131,6 +131,7 @@ export const deployModelToDevice = async (
     folderPath: string;
     deviceName?: string;
     format?: 'pt' | 'onnx';
+    targetFileName?: string;
   }
 ): Promise<{
   deploymentId: string;
@@ -149,7 +150,8 @@ export const deployModelToDevice = async (
       ipAddress: config.ipAddress,
       folderPath: config.folderPath,
       deviceName: config.deviceName,
-      format: config.format || 'pt', // Default to 'pt' if not provided
+      format: config.format || 'pt',
+      targetFileName: config.targetFileName,
     }),
   });
 };
