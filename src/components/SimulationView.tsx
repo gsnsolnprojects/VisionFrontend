@@ -52,6 +52,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { AugmentVersionNameModal } from "@/components/datasets/AugmentVersionNameModal";
 import {
   saveTrainingState,
   loadTrainingState,
@@ -173,8 +174,6 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
   // Augmentation UI state (frontend-only; backend handles heavy lifting)
   const [showAugmentDialog, setShowAugmentDialog] = useState(false);
   const [augmentingDataset, setAugmentingDataset] = useState(false);
-  const [augmentMultiplierPreset, setAugmentMultiplierPreset] = useState<2 | 5 | "custom">(2);
-  const [customTargetTrainTotal, setCustomTargetTrainTotal] = useState<number>(1000);
   const [cancellingAugmentation, setCancellingAugmentation] = useState(false);
   const [showCancelAugmentDialog, setShowCancelAugmentDialog] = useState(false);
 
@@ -2431,123 +2430,57 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
             </AlertDialog>
 
             {/* Augmentation confirmation dialog for currently selected dataset */}
-            <Dialog open={showAugmentDialog} onOpenChange={(open) => {
-              setShowAugmentDialog(open);
-              if (!open) {
-                setAugmentMultiplierPreset(2);
-                setCustomTargetTrainTotal(1000);
+            <AugmentVersionNameModal
+              open={showAugmentDialog}
+              onOpenChange={setShowAugmentDialog}
+              currentVersion={
+                datasetList.find(
+                  (d) => String(d._id ?? d.id) === selectedDatasetId
+                )?.version
               }
-            }}>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Augment this dataset?</DialogTitle>
-                  <DialogDescription>
-                    Choose augmentation size. The original dataset will be backed up and replaced only
-                    after augmentation completes successfully.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-2">
-                  <div className="space-y-2">
-                    <Label>Preset multiplier</Label>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        variant={augmentMultiplierPreset === 2 ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setAugmentMultiplierPreset(2)}
-                      >
-                        2x
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={augmentMultiplierPreset === 5 ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setAugmentMultiplierPreset(5)}
-                      >
-                        5x
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={augmentMultiplierPreset === "custom" ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setAugmentMultiplierPreset("custom")}
-                      >
-                        Custom
-                      </Button>
-                    </div>
-                  </div>
-                  {augmentMultiplierPreset === "custom" && (
-                    <div className="space-y-2">
-                      <Label htmlFor="sim-custom-target">Target train image count</Label>
-                      <Input
-                        id="sim-custom-target"
-                        type="number"
-                        min={1}
-                        value={customTargetTrainTotal}
-                        onChange={(e) => setCustomTargetTrainTotal(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                      />
-                    </div>
-                  )}
-                </div>
-                <DialogFooter>
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowAugmentDialog(false)}
-                    disabled={augmentingDataset}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="default"
-                    onClick={async () => {
-                      if (!selectedDatasetId || augmentingDataset) return;
-                      setAugmentingDataset(true);
-                      const options = augmentMultiplierPreset === "custom"
-                        ? { targetTrainTotal: customTargetTrainTotal }
-                        : { augmentationMultiplier: augmentMultiplierPreset };
-                      try {
-                        await datasetsApi.augmentDataset(selectedDatasetId, options);
-                        toast({
-                          title: "Augmentation started",
-                          description:
-                            "Dataset augmentation has been started in the background. You can continue working while it finishes.",
-                        });
-                        startAugmentationPolling();
-                        setShowAugmentDialog(false);
-                      } catch (error: unknown) {
-                        const msg = error instanceof Error ? error.message : String(error ?? "");
-                        const is409 = msg.includes("409") || msg.includes("Augmentation already running");
-                        if (is409) {
-                          toast({
-                            title: "Augmentation already running",
-                            description: "An augmentation job is already in progress for this dataset.",
-                            variant: "default",
-                          });
-                          startAugmentationPolling();
-                        } else {
-                          toast({
-                            title: "Failed to start augmentation",
-                            description: msg || "An error occurred while starting dataset augmentation.",
-                            variant: "destructive",
-                          });
-                        }
-                      } finally {
-                        setAugmentingDataset(false);
-                      }
-                    }}
-                  >
-                    {augmentingDataset ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Starting...
-                      </>
-                    ) : (
-                      "Start Augmentation"
-                    )}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+              isLoading={augmentingDataset}
+              title="Augment this dataset?"
+              description="Enter a name for the new augmented version. The original dataset will be backed up and replaced only after augmentation completes successfully."
+              cancelLabel="Cancel"
+              confirmLabel="Start Augmentation"
+              onConfirm={async (versionName, options) => {
+                if (!selectedDatasetId || augmentingDataset) return;
+                setAugmentingDataset(true);
+                try {
+                  await datasetsApi.augmentDataset(selectedDatasetId, versionName, options);
+                  toast({
+                    title: "Augmentation started",
+                    description:
+                      "Dataset augmentation has been started in the background. You can continue working while it finishes.",
+                  });
+                  startAugmentationPolling();
+                  setShowAugmentDialog(false);
+                } catch (error: unknown) {
+                  const msg = error instanceof Error ? error.message : String(error ?? "");
+                  const is409 = msg.includes("409") || msg.includes("Augmentation already running");
+                  if (is409) {
+                    toast({
+                      title: "Augmentation already running",
+                      description: "Augmentation already running for this dataset.",
+                      variant: "default",
+                    });
+                    startAugmentationPolling();
+                    setShowAugmentDialog(false);
+                  } else {
+                    // For 400 errors (validation errors), show backend error message as-is
+                    // Keep modal open so user can fix the version name
+                    toast({
+                      title: "Failed to start augmentation",
+                      description: msg || "An error occurred while starting dataset augmentation.",
+                      variant: "destructive",
+                    });
+                    // Modal stays open for user to correct the version name
+                  }
+                } finally {
+                  setAugmentingDataset(false);
+                }
+              }}
+            />
 
         {/* Model Type + Model Size + Hyperparameters - Conditional on selectedDatasetId */}
         <AnimatePresence mode="wait">

@@ -52,6 +52,7 @@ import { DeleteProjectModal } from "@/components/dashboard/DeleteProjectModal";
 import { Badge } from "@/components/ui/badge";
 import * as datasetsApi from "@/lib/api/datasets";
 import { useAugmentationStatus } from "@/hooks/useAugmentationStatus";
+import { AugmentVersionNameModal } from "@/components/datasets/AugmentVersionNameModal";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
 const apiUrl = (path: string) => {
@@ -317,8 +318,6 @@ const DatasetManager = () => {
   // Augment options dialog state
   const [showAugmentOptionsDialog, setShowAugmentOptionsDialog] = useState(false);
   const [augmentOptionsDatasetId, setAugmentOptionsDatasetId] = useState<string | null>(null);
-  const [augmentMultiplierPreset, setAugmentMultiplierPreset] = useState<2 | 5 | "custom">(2);
-  const [customTargetTrainTotal, setCustomTargetTrainTotal] = useState<number>(1000);
 
   // Removed local getAuthHeaders() - using centralized getAuthHeaders() from @/lib/api/config
 
@@ -1847,40 +1846,7 @@ const DatasetManager = () => {
   // ------- Augment version -------
   const openAugmentOptionsDialog = (datasetId: string) => {
     setAugmentOptionsDatasetId(datasetId);
-    setAugmentMultiplierPreset(2);
-    setCustomTargetTrainTotal(1000);
     setShowAugmentOptionsDialog(true);
-  };
-
-  const handleAugmentVersion = async () => {
-    const datasetId = augmentOptionsDatasetId;
-    if (!datasetId) return;
-    const options =
-      augmentMultiplierPreset === "custom"
-        ? { targetTrainTotal: customTargetTrainTotal }
-        : { augmentationMultiplier: augmentMultiplierPreset };
-    setShowAugmentOptionsDialog(false);
-    setAugmentOptionsDatasetId(null);
-    setAugmentingDatasetId(datasetId);
-    try {
-      await datasetsApi.augmentDataset(datasetId, options);
-      toast({
-        title: "Augmentation started",
-        description: "Dataset augmentation has been started in the background. You can continue working while it finishes.",
-      });
-      startAugmentationPolling(datasetId);
-      await fetchVersions();
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : "Failed to start augmentation";
-      const is409 = msg.includes("409") || msg.includes("Augmentation already running");
-      toast({
-        title: is409 ? "Augmentation already running" : "Failed to start augmentation",
-        description: is409 ? "An augmentation job is already in progress for this dataset." : msg,
-        variant: is409 ? "default" : "destructive",
-      });
-    } finally {
-      setAugmentingDatasetId(null);
-    }
   };
 
   const handleConfirmCancelAugmentation = async () => {
@@ -3086,72 +3052,64 @@ const DatasetManager = () => {
       </AlertDialog>
 
       {/* Augment Options Dialog */}
-      <Dialog open={showAugmentOptionsDialog} onOpenChange={(open) => {
-        if (!open) {
-          setShowAugmentOptionsDialog(false);
-          setAugmentOptionsDatasetId(null);
+      <AugmentVersionNameModal
+        open={showAugmentOptionsDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowAugmentOptionsDialog(false);
+            setAugmentOptionsDatasetId(null);
+          }
+        }}
+        currentVersion={
+          augmentOptionsDatasetId
+            ? versions.find((v) => v.datasetId === augmentOptionsDatasetId)?.version
+            : null
         }
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Augment dataset</DialogTitle>
-            <DialogDescription>
-              Choose augmentation size. The original dataset will be backed up and replaced when complete.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Preset multiplier</Label>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant={augmentMultiplierPreset === 2 ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setAugmentMultiplierPreset(2)}
-                >
-                  2x
-                </Button>
-                <Button
-                  type="button"
-                  variant={augmentMultiplierPreset === 5 ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setAugmentMultiplierPreset(5)}
-                >
-                  5x
-                </Button>
-                <Button
-                  type="button"
-                  variant={augmentMultiplierPreset === "custom" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setAugmentMultiplierPreset("custom")}
-                >
-                  Custom
-                </Button>
-              </div>
-            </div>
-            {augmentMultiplierPreset === "custom" && (
-              <div className="space-y-2">
-                <Label htmlFor="custom-target">Target train image count</Label>
-                <Input
-                  id="custom-target"
-                  type="number"
-                  min={1}
-                  value={customTargetTrainTotal}
-                  onChange={(e) => setCustomTargetTrainTotal(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                />
-              </div>
-            )}
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setShowAugmentOptionsDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={() => void handleAugmentVersion()}>
-              Start Augmentation
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+        isLoading={!!augmentingDatasetId}
+        title="Augment dataset"
+        description="Enter a name for the new augmented version. The original dataset will be backed up and replaced when complete."
+        cancelLabel="Cancel"
+        confirmLabel="Start Augmentation"
+        onConfirm={async (versionName, options) => {
+          const datasetId = augmentOptionsDatasetId;
+          if (!datasetId) return;
+          setAugmentingDatasetId(datasetId);
+          try {
+            await datasetsApi.augmentDataset(datasetId, versionName, options);
+            setShowAugmentOptionsDialog(false);
+            setAugmentOptionsDatasetId(null);
+            toast({
+              title: "Augmentation started",
+              description: "Dataset augmentation has been started in the background. You can continue working while it finishes.",
+            });
+            startAugmentationPolling(datasetId);
+            await fetchVersions();
+          } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : "Failed to start augmentation";
+            const is409 = msg.includes("409") || msg.includes("Augmentation already running");
+            if (is409) {
+              toast({
+                title: "Augmentation already running",
+                description: "Augmentation already running for this dataset.",
+                variant: "default",
+              });
+              setShowAugmentOptionsDialog(false);
+              setAugmentOptionsDatasetId(null);
+            } else {
+              // For 400 errors (validation errors), show backend error message as-is
+              // Keep modal open so user can fix the version name
+              toast({
+                title: "Failed to start augmentation",
+                description: msg || "An error occurred while starting dataset augmentation.",
+                variant: "destructive",
+              });
+              // Modal stays open for user to correct the version name
+            }
+          } finally {
+            setAugmentingDatasetId(null);
+          }
+        }}
+      />
 
       {/* Delete Version Confirmation Dialog */}
       <AlertDialog open={showDeleteVersionDialog} onOpenChange={(open) => {

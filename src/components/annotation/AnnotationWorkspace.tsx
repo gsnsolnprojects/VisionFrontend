@@ -35,14 +35,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { AugmentVersionNameModal } from "@/components/datasets/AugmentVersionNameModal";
 
 interface AnnotationWorkspaceProps {
   datasetId: string;
@@ -584,13 +583,13 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       });
 
       markSaved();
-      // Refresh dataset status (annotation save updates datasetType, annotationStatus, unlabeledImagesCount)
+      // Fetch dataset status for version name default, then offer optional augmentation
       try {
-        await datasetsApi.fetchDatasetStatus(datasetId);
+        const status = await datasetsApi.fetchDatasetStatus(datasetId);
+        setAugmentDatasetVersion(status.version ?? null);
       } catch {
-        // Non-blocking: augment dialog can still be shown
+        setAugmentDatasetVersion(null);
       }
-      // After a successful save+convert, offer optional augmentation
       setShowAugmentDialog(true);
     } catch (error) {
       console.error("Failed to save and convert:", error);
@@ -1595,116 +1594,52 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       </Dialog>
 
       {/* Augmentation confirmation dialog shown after annotations are saved */}
-      <Dialog open={showAugmentDialog} onOpenChange={(open) => {
-        setShowAugmentDialog(open);
-        if (!open) {
-          setAugmentMultiplierPreset(2);
-          setCustomTargetTrainTotal(1000);
-        }
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Augment this dataset?</DialogTitle>
-            <DialogDescription>
-              Your annotations have been saved and converted. Would you like to augment this dataset now?
-              Choose augmentation size below.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Preset multiplier</Label>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant={augmentMultiplierPreset === 2 ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setAugmentMultiplierPreset(2)}
-                >
-                  2x
-                </Button>
-                <Button
-                  type="button"
-                  variant={augmentMultiplierPreset === 5 ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setAugmentMultiplierPreset(5)}
-                >
-                  5x
-                </Button>
-                <Button
-                  type="button"
-                  variant={augmentMultiplierPreset === "custom" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setAugmentMultiplierPreset("custom")}
-                >
-                  Custom
-                </Button>
-              </div>
-            </div>
-            {augmentMultiplierPreset === "custom" && (
-              <div className="space-y-2">
-                <Label htmlFor="ann-custom-target">Target train image count</Label>
-                <Input
-                  id="ann-custom-target"
-                  type="number"
-                  min={1}
-                  value={customTargetTrainTotal}
-                  onChange={(e) => setCustomTargetTrainTotal(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                />
-              </div>
-            )}
-          </div>
-          <div className="flex justify-end gap-3 mt-4">
-            <Button
-              variant="outline"
-              onClick={() => setShowAugmentDialog(false)}
-              disabled={augmenting}
-            >
-              No, skip for now
-            </Button>
-            <Button
-              variant="default"
-              onClick={async () => {
-                if (augmenting) return;
-                setAugmenting(true);
-                const options = augmentMultiplierPreset === "custom"
-                  ? { targetTrainTotal: customTargetTrainTotal }
-                  : { augmentationMultiplier: augmentMultiplierPreset };
-                try {
-                  await datasetsApi.augmentDataset(datasetId, options);
-                  toast({
-                    title: "Augmentation started",
-                    description:
-                      "Dataset augmentation has been started in the background. You can continue working while it finishes.",
-                  });
-                  startAugmentationStatusPolling(datasetId);
-                  setShowAugmentDialog(false);
-                } catch (error: unknown) {
-                  const msg = error instanceof Error ? error.message : String(error ?? "");
-                  const is409 = msg.includes("409") || msg.includes("Augmentation already running");
-                  if (is409) {
-                    toast({
-                      title: "Augmentation already running",
-                      description: "An augmentation job is already in progress for this dataset.",
-                      variant: "default",
-                    });
-                  } else {
-                    console.error("Failed to start augmentation:", error);
-                    toast({
-                      title: "Failed to start augmentation",
-                      description: msg || "An error occurred while starting augmentation.",
-                      variant: "destructive",
-                    });
-                  }
-                } finally {
-                  setAugmenting(false);
-                }
-              }}
-            >
-              {augmenting ? "Starting..." : "Yes, augment dataset"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <AugmentVersionNameModal
+        open={showAugmentDialog}
+        onOpenChange={setShowAugmentDialog}
+        currentVersion={augmentDatasetVersion}
+        isLoading={augmenting}
+        title="Augment this dataset?"
+        description="Your annotations have been saved and converted. Enter a name for the new augmented version and choose augmentation size below."
+        cancelLabel="No, skip for now"
+        confirmLabel="Yes, augment dataset"
+        onConfirm={async (versionName, options) => {
+          setAugmenting(true);
+          try {
+            await datasetsApi.augmentDataset(datasetId, versionName, options);
+            toast({
+              title: "Augmentation started",
+              description:
+                "Dataset augmentation has been started in the background. You can continue working while it finishes.",
+            });
+            startAugmentationStatusPolling(datasetId);
+            setShowAugmentDialog(false);
+          } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : String(error ?? "");
+            const is409 = msg.includes("409") || msg.includes("Augmentation already running");
+            if (is409) {
+              toast({
+                title: "Augmentation already running",
+                description: "Augmentation already running for this dataset.",
+                variant: "default",
+              });
+              setShowAugmentDialog(false);
+            } else {
+              // For 400 errors (validation errors), show backend error message as-is
+              // Keep modal open so user can fix the version name
+              console.error("Failed to start augmentation:", error);
+              toast({
+                title: "Failed to start augmentation",
+                description: msg || "An error occurred while starting augmentation.",
+                variant: "destructive",
+              });
+              // Modal stays open for user to correct the version name
+            }
+          } finally {
+            setAugmenting(false);
+          }
+        }}
+      />
 
       {/* Bottom: thumbnails */}
       <div className="border rounded-md p-3" role="navigation" aria-label="Image navigation">

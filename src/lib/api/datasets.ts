@@ -80,9 +80,11 @@ export interface DatasetStatusResponse {
 /**
  * Start dataset augmentation for a given dataset.
  * Backend is expected to perform the heavy lifting asynchronously.
+ * versionName is required; options are optional augmentation parameters.
  */
 export const augmentDataset = async (
   datasetId: string,
+  versionName: string,
   options?: {
     augmentationMultiplier?: number;
     targetTrainTotal?: number;
@@ -93,6 +95,7 @@ export const augmentDataset = async (
   return apiRequest(path, {
     method: "POST",
     body: JSON.stringify({
+      versionName: versionName.trim(),
       options,
     }),
   });

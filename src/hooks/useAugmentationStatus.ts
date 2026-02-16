@@ -16,7 +16,7 @@ export interface UseAugmentationStatusResult {
   error: string | null;
   lastUpdated: Date | null;
   isPolling: boolean;
-  startPolling: () => void;
+  startPolling: (overrideDatasetId?: string) => void;
   stopPolling: () => void;
   syncFromStatus: (augStatus: AugmentationStatus | undefined, augError?: string) => void;
 }
