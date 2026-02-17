@@ -240,6 +240,8 @@ const DatasetManager = () => {
   const thumbnailFetchInProgressRef = useRef<Map<string, Promise<string | null>>>(new Map());
   // Ref for upload section to scroll to
   const uploadSectionRef = useRef<HTMLDivElement>(null);
+  // AbortController for dataset view fetches - aborted when user closes the view
+  const datasetViewAbortControllerRef = useRef<AbortController | null>(null);
   // Ref to access latest cache without recreating callback
   const thumbnailCacheRef = useRef<Record<string, string>>({});
   
@@ -700,6 +702,10 @@ const DatasetManager = () => {
 
   // Clear version-related state when project changes
   useEffect(() => {
+    if (datasetViewAbortControllerRef.current) {
+      datasetViewAbortControllerRef.current.abort();
+      datasetViewAbortControllerRef.current = null;
+    }
     // Clear version selection and details when project changes
     setSelectedVersionDatasetId(null);
     setMetadata(null);
@@ -719,7 +725,8 @@ const DatasetManager = () => {
     folder?: string,
     type?: string,
     sort?: string,
-    order?: string
+    order?: string,
+    signal?: AbortSignal
   ) => {
     console.log('🔍 [DEBUG] fetchFileManifest called:', {
       datasetId,
@@ -738,7 +745,7 @@ const DatasetManager = () => {
       if (order) qs.append("order", order);
       const url = apiUrl(`/dataset/${encodeURIComponent(datasetId)}/files?${qs.toString()}`);
       console.log('🔍 [DEBUG] Fetching from URL:', url);
-      const res = await fetch(url, { method: "GET", headers });
+      const res = await fetch(url, { method: "GET", headers, signal });
       if (!res.ok) {
         throw new Error(`files fetch failed ${res.status}`);
       }
@@ -802,19 +809,21 @@ const DatasetManager = () => {
         }
       };
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') throw err;
       console.error('❌ [DEBUG] fetchFileManifest error:', err);
       return { list: [] as FileEntry[], meta: null };
     }
   };
 
-  const fetchAllFiles = async (datasetId: string) => {
+  const fetchAllFiles = async (datasetId: string, signal?: AbortSignal) => {
     console.log('🔍 [DEBUG] fetchAllFiles called for datasetId:', datasetId);
     
     const all: FileEntry[] = [];
     let page = 1;
     const limit = 1000;
     while (true) {
-      const { list } = await fetchFileManifest(datasetId, page, limit);
+      if (signal?.aborted) break;
+      const { list } = await fetchFileManifest(datasetId, page, limit, undefined, undefined, undefined, undefined, signal);
       if (!list || list.length === 0) break;
       all.push(...list);
       if (list.length < limit) break;
@@ -1290,15 +1299,16 @@ const DatasetManager = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedImageFile, selectedLabelFile, navigateToNextFile, navigateToPreviousFile]);
 
-  const fetchFolderSummary = async (datasetId: string) => {
+  const fetchFolderSummary = async (datasetId: string, signal?: AbortSignal) => {
     try {
       const headers = await getAuthHeaders();
       const url = apiUrl(`/dataset/${encodeURIComponent(datasetId)}/folders`);
-      const res = await fetch(url, { method: "GET", headers });
+      const res = await fetch(url, { method: "GET", headers, signal });
       if (!res.ok) return null;
       const json = await res.json();
       return json;
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') throw err;
       console.warn("fetchFolderSummary error:", err);
       return null;
     }
@@ -1617,6 +1627,14 @@ const DatasetManager = () => {
   // ------- Select a version and load everything to resume work -------
   const onSelectVersion = async (datasetId: string) => {
     console.log('🔍 [DEBUG] onSelectVersion called for datasetId:', datasetId);
+
+    // Abort any in-flight fetches from a previous selection
+    if (datasetViewAbortControllerRef.current) {
+      datasetViewAbortControllerRef.current.abort();
+    }
+    const abortController = new AbortController();
+    datasetViewAbortControllerRef.current = abortController;
+    const signal = abortController.signal;
     
     try {
       setSelectedVersionDatasetId(datasetId);
@@ -1628,7 +1646,7 @@ const DatasetManager = () => {
         const headers = await getAuthHeaders();
         const metaUrl = apiUrl(`/dataset/${encodeURIComponent(datasetId)}`);
         console.log('🔍 [DEBUG] Fetching metadata from:', metaUrl);
-        const metaRes = await fetch(metaUrl, { headers });
+        const metaRes = await fetch(metaUrl, { headers, signal });
         if (metaRes.ok) {
           metaJson = await metaRes.json();
           setMetadata(metaJson);
@@ -1636,14 +1654,16 @@ const DatasetManager = () => {
           console.log('🔍 [DEBUG] Metadata fetched (using /files endpoint for file list)');
         }
       } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') throw err;
         console.warn("Failed to fetch metadata for selected version:", err);
       }
 
       // Also try folder summary for folder counts
       try {
-        const sum = await fetchFolderSummary(datasetId);
+        const sum = await fetchFolderSummary(datasetId, signal);
         if (sum) setMetadata((prev) => ({ ...(prev ?? {}), ...sum }));
       } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') throw err;
         console.warn("fetchFolderSummary failed for version select:", err);
       }
 
@@ -1673,9 +1693,10 @@ const DatasetManager = () => {
       if (allFiles.length === 0) {
         console.log('🔍 [DEBUG] Fetching files using GET /api/dataset/:datasetId/files endpoint');
         try {
-          const fetched = await fetchAllFiles(datasetId);
+          const fetched = await fetchAllFiles(datasetId, signal);
           allFiles = fetched || [];
         } catch (err) {
+          if (err instanceof Error && err.name === 'AbortError') throw err;
           console.warn("Failed to fetch files for selected version:", err);
         }
       }
@@ -1699,7 +1720,7 @@ const DatasetManager = () => {
       // optionally fetch current status for that version to show progress
       try {
         const headers = await getAuthHeaders();
-        const statusRes = await fetch(apiUrl(`/dataset/${encodeURIComponent(datasetId)}/status`), { method: "GET", headers });
+        const statusRes = await fetch(apiUrl(`/dataset/${encodeURIComponent(datasetId)}/status`), { method: "GET", headers, signal });
         if (statusRes.ok) {
           const sjson = await statusRes.json();
           setStatusProgress(sjson);
@@ -1708,9 +1729,11 @@ const DatasetManager = () => {
           setStatusMessage(sjson.status === "processing" ? "Processing dataset..." : `Status: ${sjson.status}`);
         }
       } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') throw err;
         // non-fatal
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') return;
       toast({
         title: "Error",
         description: "Could not load version contents",
@@ -1718,6 +1741,22 @@ const DatasetManager = () => {
       });
     }
   };
+
+  // ------- Close dataset view (dataset summary + file browser) and stop all fetches -------
+  const handleCloseDatasetView = useCallback(() => {
+    if (datasetViewAbortControllerRef.current) {
+      datasetViewAbortControllerRef.current.abort();
+      datasetViewAbortControllerRef.current = null;
+    }
+    setSelectedVersionDatasetId(null);
+    setMetadata(null);
+    setFileManifest([]);
+    setSelectedFolder(null);
+    setSelectedFolderInSidebar("all");
+    setSelectedImageFile(null);
+    setSelectedLabelFile(null);
+    setLabelFileContent(null);
+  }, []);
 
   // ------- Fetch version dependencies before deletion -------
   const fetchVersionDependencies = async (datasetId: string) => {
@@ -2631,8 +2670,9 @@ const DatasetManager = () => {
         {metadata && (
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                Dataset summary
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  Dataset summary
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -2648,6 +2688,16 @@ const DatasetManager = () => {
                   </Tooltip>
                 </TooltipProvider>
               </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={handleCloseDatasetView}
+                  title="Close dataset summary and file browser"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
               <CardDescription>ID: {metadata.id}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
@@ -2725,6 +2775,15 @@ const DatasetManager = () => {
                   title="List View"
                 >
                   <List className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={handleCloseDatasetView}
+                  title="Close dataset summary and file browser"
+                >
+                  <X className="h-4 w-4" />
                 </Button>
               </div>
             </div>
