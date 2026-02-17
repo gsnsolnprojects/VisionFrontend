@@ -163,6 +163,7 @@ const DatasetManager = () => {
 
   const [currentDatasetId, setCurrentDatasetId] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<DatasetMetadata | null>(null);
+  const [metadataLoading, setMetadataLoading] = useState(false);
   const [statusProgress, setStatusProgress] = useState<StatusResponse | null>(null);
 
   const [labelledOpen, setLabelledOpen] = useState<boolean>(false);
@@ -727,6 +728,7 @@ const DatasetManager = () => {
     // Clear version selection and details when project changes
     setSelectedVersionDatasetId(null);
     setMetadata(null);
+    setMetadataLoading(false);
     setFileManifest([]);
     setSelectedFolder(null);
     setSelectedFolderInSidebar("all");
@@ -1645,6 +1647,8 @@ const DatasetManager = () => {
     try {
       setSelectedVersionDatasetId(datasetId);
       setSelectedFolder(null); // Reset folder selection
+      setMetadata(null); // Clear stale metadata immediately to avoid showing previous dataset's info
+      setMetadataLoading(true);
 
       // Fetch full dataset metadata first (lightweight)
       let metaJson: any = null;
@@ -1740,6 +1744,8 @@ const DatasetManager = () => {
         description: "Could not load version contents",
         variant: "destructive",
       });
+    } finally {
+      setMetadataLoading(false);
     }
   };
 
@@ -1831,6 +1837,7 @@ const DatasetManager = () => {
       if (selectedVersionDatasetId === versionToDelete) {
         setSelectedVersionDatasetId(null);
         setMetadata(null);
+        setMetadataLoading(false);
         setFileManifest([]);
         setStatusProgress(null);
         setStatusPercent(null);
@@ -2641,7 +2648,7 @@ const DatasetManager = () => {
         </div>
 
         {/* Dataset Summary */}
-        {metadata && (
+        {selectedVersionDatasetId && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -2661,27 +2668,38 @@ const DatasetManager = () => {
                   </Tooltip>
                 </TooltipProvider>
               </CardTitle>
-              <CardDescription>ID: {metadata.id}</CardDescription>
+              <CardDescription>{metadata ? `ID: ${metadata.id}` : "Loading..."}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <div className="space-y-1">
-                {typeof metadata.totalImages === "number" && <p><span className="font-medium">Total files: </span>{metadata.totalImages}</p>}
-                {typeof metadata.sizeBytes === "number" && <p><span className="font-medium">Size: </span>{(metadata.sizeBytes / (1024 * 1024)).toFixed(2)} MB</p>}
-                {typeof metadata.thumbnailsGenerated === "boolean" && <p><span className="font-medium">Thumbnails: </span>{metadata.thumbnailsGenerated ? "Generated" : "Pending"}</p>}
-              </div>
-              
-              {metadata.folders && Object.keys(metadata.folders).length > 0 && (
-                <div className="pt-3 border-t">
-                  <p className="font-medium mb-2">Folder breakdown:</p>
-                  <div className="space-y-1.5 pl-2">
-                    {Object.entries(metadata.folders).map(([folderName, stats]) => (
-                      <p key={folderName} className="text-xs">
-                        <span className="font-medium">{folderName}: </span>
-                        {stats.images} image{stats.images !== 1 ? 's' : ''}, {stats.labels} label{stats.labels !== 1 ? 's' : ''}
-                      </p>
-                    ))}
-                  </div>
+              {metadataLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading dataset...
                 </div>
+              ) : metadata ? (
+                <>
+                  <div className="space-y-1">
+                    {typeof metadata.totalImages === "number" && <p><span className="font-medium">Total files: </span>{metadata.totalImages}</p>}
+                    {typeof metadata.sizeBytes === "number" && <p><span className="font-medium">Size: </span>{(metadata.sizeBytes / (1024 * 1024)).toFixed(2)} MB</p>}
+                    {typeof metadata.thumbnailsGenerated === "boolean" && <p><span className="font-medium">Thumbnails: </span>{metadata.thumbnailsGenerated ? "Generated" : "Pending"}</p>}
+                  </div>
+                  
+                  {metadata.folders && Object.keys(metadata.folders).length > 0 && (
+                    <div className="pt-3 border-t">
+                      <p className="font-medium mb-2">Folder breakdown:</p>
+                      <div className="space-y-1.5 pl-2">
+                        {Object.entries(metadata.folders).map(([folderName, stats]) => (
+                          <p key={folderName} className="text-xs">
+                            <span className="font-medium">{folderName}: </span>
+                            {stats.images} image{stats.images !== 1 ? 's' : ''}, {stats.labels} label{stats.labels !== 1 ? 's' : ''}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">No dataset details available.</p>
               )}
             </CardContent>
           </Card>
