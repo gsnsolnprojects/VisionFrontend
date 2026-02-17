@@ -131,6 +131,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   const [augmentMultiplierPreset, setAugmentMultiplierPreset] = useState<2 | 5 | "custom">(2);
   const [customTargetTrainTotal, setCustomTargetTrainTotal] = useState<number>(1000);
   const augmentationPollRef = useRef<number | null>(null);
+  const augmentationNotificationShownRef = useRef<string | null>(null);
 
   // Track image loading state
   const { loaded: imageLoaderLoaded, error: imageError } = useImageLoader(
@@ -306,6 +307,8 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
 
   // Cleanup augmentation polling when component unmounts or datasetId changes
   useEffect(() => {
+    // Reset notification tracking when dataset changes
+    augmentationNotificationShownRef.current = null;
     return () => {
       if (augmentationPollRef.current) {
         window.clearInterval(augmentationPollRef.current);
@@ -610,6 +613,8 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         window.clearInterval(augmentationPollRef.current);
         augmentationPollRef.current = null;
       }
+      // Reset notification tracking when starting new polling for a dataset
+      augmentationNotificationShownRef.current = null;
       augmentationPollRef.current = window.setInterval(async () => {
         try {
           const status = await datasetsApi.fetchDatasetStatus(id);
@@ -617,11 +622,17 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           if (!augStatus || augStatus === "not_started" || augStatus === "running") {
             return;
           }
-          // Once we reach a terminal state, clear polling and notify user
+          // Once we reach a terminal state, clear polling and notify user (only once)
           if (augmentationPollRef.current) {
             window.clearInterval(augmentationPollRef.current);
             augmentationPollRef.current = null;
           }
+          const notificationKey = `${id}-${augStatus}`;
+          // Only show notification if we haven't shown it for this dataset/status combination
+          if (augmentationNotificationShownRef.current === notificationKey) {
+            return;
+          }
+          augmentationNotificationShownRef.current = notificationKey;
           if (augStatus === "succeeded") {
             toast({
               title: "Augmentation completed",

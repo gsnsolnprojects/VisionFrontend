@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { getAuthHeaders } from "@/lib/api/config";
 import * as datasetsApi from "@/lib/api/datasets";
-import { useAugmentationStatus } from "@/hooks/useAugmentationStatus";
+import { useAugmentationStatus, type AugmentationStatusState } from "@/hooks/useAugmentationStatus";
 import { ProtectedComponent } from "@/components/permissions/ProtectedComponent";
 import { ModelDownloadButton } from "@/components/training/ModelDownloadButton";
 import { ModelDeployButton } from "@/components/training/ModelDeployButton";
@@ -185,6 +185,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
     startPolling: startAugmentationPolling,
     stopPolling: stopAugmentationPolling,
     syncFromStatus: syncAugmentationFromStatus,
+    resetToIdle: resetAugmentationToIdle,
   } = useAugmentationStatus(selectedDatasetId || null);
 
   // refs
@@ -336,25 +337,40 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
   }, [datasetDetails?.augmentation_status, datasetDetails?.augmentation_error, syncAugmentationFromStatus, augmentationIsPolling, startAugmentationPolling]);
 
   const augmentationHandledRef = useRef<string | null>(null);
+  const prevAugmentationStatusRef = useRef<AugmentationStatusState | null>(null);
+  /** Dataset ID that started the current augmentation (used for cancel so we cancel the correct job). */
+  const augmentationSourceDatasetIdRef = useRef<string | null>(null);
   useEffect(() => {
     const key = `${selectedDatasetId}-${augmentationStatus}`;
-    if (augmentationHandledRef.current === key) return;
-    if (augmentationStatus === "succeeded") {
+    const prevStatus = prevAugmentationStatusRef.current;
+
+    // Only show notification when transitioning from "running" to "succeeded" or "failed"
+    // This prevents showing notifications when viewing already-completed datasets
+    const isTransitionToSucceeded =
+      prevStatus === "running" && augmentationStatus === "succeeded";
+    const isTransitionToFailed =
+      prevStatus === "running" && augmentationStatus === "failed";
+
+    if (isTransitionToSucceeded) {
+      if (augmentationHandledRef.current === key) return;
       augmentationHandledRef.current = key;
+      augmentationSourceDatasetIdRef.current = null;
       toast({
         title: "Augmentation completed",
         description: "The dataset has been successfully augmented and replaced.",
-        variant: "success",
+        variant: "default",
       });
-      if (selectedDatasetId) {
+      if (selectedDatasetId && selectedProjectId) {
         stopAugmentationPolling();
         setTimeout(() => {
-          void fetchDatasets();
+          void fetchDatasets(selectedProjectId);
           void fetchDatasetDetails(selectedDatasetId);
         }, 100);
       }
-    } else if (augmentationStatus === "failed") {
+    } else if (isTransitionToFailed) {
+      if (augmentationHandledRef.current === key) return;
       augmentationHandledRef.current = key;
+      augmentationSourceDatasetIdRef.current = null;
       toast({
         title: "Augmentation failed",
         description:
@@ -363,16 +379,33 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
         variant: "destructive",
       });
     }
-  }, [augmentationStatus, augmentationError, selectedDatasetId, stopAugmentationPolling, toast]);
+
+    // Update previous status ref
+    prevAugmentationStatusRef.current = augmentationStatus;
+  }, [
+    augmentationStatus,
+    augmentationError,
+    selectedDatasetId,
+    // Intentionally omit selectedProjectId / fetchDatasets / fetchDatasetDetails
+    // to avoid TDZ runtime errors; this effect only cares about status transitions.
+    stopAugmentationPolling,
+    toast,
+  ]);
 
   const handleCancelAugmentation = async () => {
-    if (!selectedDatasetId) return;
+    const datasetIdToCancel = augmentationSourceDatasetIdRef.current ?? selectedDatasetId;
+    if (!datasetIdToCancel) return;
     setShowCancelAugmentDialog(false);
     setCancellingAugmentation(true);
     try {
-      await datasetsApi.cancelAugmentation(selectedDatasetId);
+      await datasetsApi.cancelAugmentation(datasetIdToCancel);
+      augmentationSourceDatasetIdRef.current = null;
       stopAugmentationPolling();
-      await fetchDatasetDetails(selectedDatasetId);
+      resetAugmentationToIdle();
+      await fetchDatasetDetails(datasetIdToCancel);
+      if (selectedProjectId) {
+        void fetchDatasets(selectedProjectId);
+      }
       toast({
         title: "Augmentation cancelled",
         description: "The augmentation process has been cancelled.",
@@ -2512,6 +2545,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                 setAugmentingDataset(true);
                 try {
                   await datasetsApi.augmentDataset(selectedDatasetId, versionName, options);
+                  augmentationSourceDatasetIdRef.current = selectedDatasetId;
                   toast({
                     title: "Augmentation started",
                     description:

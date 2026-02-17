@@ -19,6 +19,7 @@ export interface UseAugmentationStatusResult {
   startPolling: (overrideDatasetId?: string) => void;
   stopPolling: () => void;
   syncFromStatus: (augStatus: AugmentationStatus | undefined, augError?: string) => void;
+  resetToIdle: () => void;
 }
 
 /**
@@ -89,6 +90,20 @@ export function useAugmentationStatus(datasetId: string | null): UseAugmentation
     }
   }, [stopPolling]);
 
+  // Reset to idle (e.g. after user cancels augmentation) so progress UI disappears immediately
+  const resetToIdle = useCallback(() => {
+    if (pollRef.current) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    setIsPolling(false);
+    progressRef.current = 0;
+    setProgress(0);
+    setStatus("not_started");
+    setError(null);
+    setLastUpdated(null);
+  }, []);
+
   // Stop polling when datasetId changes
   useEffect(() => {
     if (prevDatasetIdRef.current !== null && prevDatasetIdRef.current !== datasetId) {
@@ -107,5 +122,6 @@ export function useAugmentationStatus(datasetId: string | null): UseAugmentation
     startPolling,
     stopPolling,
     syncFromStatus,
+    resetToIdle,
   };
 }

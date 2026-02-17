@@ -51,7 +51,7 @@ import { ProtectedComponent } from "@/components/permissions/ProtectedComponent"
 import { DeleteProjectModal } from "@/components/dashboard/DeleteProjectModal";
 import { Badge } from "@/components/ui/badge";
 import * as datasetsApi from "@/lib/api/datasets";
-import { useAugmentationStatus } from "@/hooks/useAugmentationStatus";
+import { useAugmentationStatus, type AugmentationStatusState } from "@/hooks/useAugmentationStatus";
 import { AugmentVersionNameModal } from "@/components/datasets/AugmentVersionNameModal";
 import {
   Tooltip,
@@ -186,6 +186,7 @@ const DatasetManager = () => {
     progress: augmentationProgress,
     startPolling: startAugmentationPolling,
     stopPolling: stopAugmentationPolling,
+    resetToIdle: resetAugmentationToIdle,
   } = useAugmentationStatus(selectedVersionDatasetId);
 
   // Start polling when selected version is augmenting
@@ -196,10 +197,18 @@ const DatasetManager = () => {
   }, [selectedVersionDatasetId, selectedVersionAugmenting, startAugmentationPolling]);
 
   const augmentationHandledRef = useRef<string | null>(null);
+  const prevAugmentationStatusRef = useRef<AugmentationStatusState | null>(null);
   useEffect(() => {
     const key = `${selectedVersionDatasetId}-${augmentationStatus}`;
-    if (augmentationHandledRef.current === key) return;
-    if (augmentationStatus === "succeeded") {
+    const prevStatus = prevAugmentationStatusRef.current;
+    
+    // Only show notification when transitioning from "running" to "succeeded" or "failed"
+    // This prevents showing notifications when viewing already-completed datasets
+    const isTransitionToSucceeded = prevStatus === "running" && augmentationStatus === "succeeded";
+    const isTransitionToFailed = prevStatus === "running" && augmentationStatus === "failed";
+    
+    if (isTransitionToSucceeded) {
+      if (augmentationHandledRef.current === key) return;
       augmentationHandledRef.current = key;
       toast({
         title: "Augmentation completed",
@@ -212,7 +221,8 @@ const DatasetManager = () => {
           onSelectVersion(active.datasetId);
         }
       });
-    } else if (augmentationStatus === "failed") {
+    } else if (isTransitionToFailed) {
+      if (augmentationHandledRef.current === key) return;
       augmentationHandledRef.current = key;
       toast({
         title: "Augmentation failed",
@@ -220,6 +230,9 @@ const DatasetManager = () => {
         variant: "destructive",
       });
     }
+    
+    // Update previous status ref
+    prevAugmentationStatusRef.current = augmentationStatus;
   }, [augmentationStatus, selectedVersionDatasetId, toast]);
   const [fileManifest, setFileManifest] = useState<FileEntry[]>([]);
   const [thumbnailCache, setThumbnailCache] = useState<Record<string, string>>({});
@@ -1864,6 +1877,7 @@ const DatasetManager = () => {
     try {
       await datasetsApi.cancelAugmentation(datasetId);
       stopAugmentationPolling();
+      resetAugmentationToIdle();
       toast({
         title: "Augmentation cancelled",
         description: "The augmentation process has been cancelled.",
@@ -2464,6 +2478,19 @@ const DatasetManager = () => {
                     <span className="text-muted-foreground">
                       {cancellingAugmentationId ? "Cancelling…" : "Augmenting dataset…"}
                     </span>
+                    <ProtectedComponent requiredPermission="annotateDatasets">
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={cancellingAugmentationId === selectedVersionDatasetId}
+                        onClick={() => {
+                          setCancelAugmentDatasetId(selectedVersionDatasetId);
+                          setShowCancelAugmentDialog(true);
+                        }}
+                      >
+                        {cancellingAugmentationId === selectedVersionDatasetId ? "Cancelling..." : "Cancel Augmentation"}
+                      </Button>
+                    </ProtectedComponent>
                   </div>
                   <Progress
                     value={augmentationProgress}
