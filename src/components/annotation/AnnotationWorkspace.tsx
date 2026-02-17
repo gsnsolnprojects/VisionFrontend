@@ -128,6 +128,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   // Augmentation confirmation state (shown after successful save + convert)
   const [showAugmentDialog, setShowAugmentDialog] = useState(false);
   const [augmenting, setAugmenting] = useState(false);
+  const [augmentDatasetVersion, setAugmentDatasetVersion] = useState<string | number | null>(null);
   const [augmentMultiplierPreset, setAugmentMultiplierPreset] = useState<2 | 5 | "custom">(2);
   const [customTargetTrainTotal, setCustomTargetTrainTotal] = useState<number>(1000);
   const augmentationPollRef = useRef<number | null>(null);

@@ -122,6 +122,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
       return;
     }
 
+    const cacheKey = normalizeImageUrl(imageUrl);
     let isMounted = true;
     setLoading(true);
     setError(false);
@@ -140,19 +141,21 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
     return () => {
       isMounted = false;
-      // Cleanup: If component unmounts before image loads, revoke any pending object URL
+      // Cleanup: revoke blob URL for this image and remove from cache so it can be re-fetched later
       const urlToCleanup = currentObjectUrlRef.current;
-      if (urlToCleanup && !imageObjectUrlCache.current.has(imageUrl)) {
+      if (urlToCleanup) {
         try {
+          if (imageObjectUrlCache.current.get(cacheKey) === urlToCleanup) {
+            imageObjectUrlCache.current.delete(cacheKey);
+          }
           URL.revokeObjectURL(urlToCleanup);
-          currentObjectUrlRef.current = null;
         } catch (err) {
-          // Ignore errors when revoking (e.g., already revoked)
           console.warn("Error revoking object URL:", err);
         }
+        currentObjectUrlRef.current = null;
       }
     };
-  }, [imageUrl, fetchImageAsObjectUrl]);
+  }, [imageUrl, fetchImageAsObjectUrl, normalizeImageUrl]);
 
   const handleLoad = () => {
     setError(false);
@@ -177,13 +180,17 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     setError(false);
     setLoading(true);
     if (imageUrl) {
-      // Clear cache entry and reload
-      if (imageObjectUrlCache.current.has(imageUrl)) {
-        const cachedUrl = imageObjectUrlCache.current.get(imageUrl);
+      const cacheKey = normalizeImageUrl(imageUrl);
+      if (imageObjectUrlCache.current.has(cacheKey)) {
+        const cachedUrl = imageObjectUrlCache.current.get(cacheKey);
         if (cachedUrl) {
-          URL.revokeObjectURL(cachedUrl);
+          try {
+            URL.revokeObjectURL(cachedUrl);
+          } catch {
+            // already revoked
+          }
         }
-        imageObjectUrlCache.current.delete(imageUrl);
+        imageObjectUrlCache.current.delete(cacheKey);
       }
       fetchImageAsObjectUrl(imageUrl).then((url) => {
         setObjectUrl(url);
