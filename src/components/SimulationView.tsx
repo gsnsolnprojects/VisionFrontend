@@ -609,10 +609,16 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
 
       console.info(`[fetchDatasets] filtered -> ${filtered.length} of ${rawList.length}`);
 
-      // normalize id to _id string for client usage
+      // normalize id to _id string for client usage and alias augmentation flags
       const normalized = filtered.map((d: any) => {
         const rawId = d._id ?? d.id ?? d.datasetId ?? d.uuid ?? d._id_str ?? "";
-        return { ...d, _id: rawId !== undefined && rawId !== null ? String(rawId) : "" };
+        return {
+          ...d,
+          _id: rawId !== undefined && rawId !== null ? String(rawId) : "",
+          // Ensure both camelCase and snake_case are available for augmentation flags
+          is_augmented: d.is_augmented ?? d.isAugmented ?? false,
+          augmentation_status: d.augmentation_status ?? d.augmentationStatus,
+        };
       });
 
       setDatasetList(normalized);
@@ -1861,13 +1867,6 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                                     Augmenting…
                                   </Badge>
                                 )}
-                                {dataset.is_augmented && (
-                                  <Badge variant="secondary" className="text-xs">
-                                    Augmented
-                                    {dataset.augmentationMultiplier != null && ` ${dataset.augmentationMultiplier}x`}
-                                    {dataset.augmentedFromVersion != null && ` from v${dataset.augmentedFromVersion}`}
-                                  </Badge>
-                                )}
                                 {!dataset.datasetType && (
                                   <Badge
                                     variant={
@@ -1899,6 +1898,17 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                                     Manually Labelled
                                   </Badge>
                                 )}
+                                {!dataset.datasetType &&
+                                  dataset.is_augmented &&
+                                  (dataset.augmentation_status === "succeeded" ||
+                                    dataset.augmentationStatus === "succeeded") && (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40"
+                                    >
+                                      Augmented
+                                    </Badge>
+                                  )}
                               </div>
                             </div>
                           </div>

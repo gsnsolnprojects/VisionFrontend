@@ -698,30 +698,6 @@ const DatasetManager = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyName, project]);
 
-  // Auto-select active version when none selected (ensures file browser shows augmented dataset after augmentation)
-  useEffect(() => {
-    if (
-      versions.length > 0 &&
-      !selectedVersionDatasetId &&
-      companyName &&
-      displayProjectName
-    ) {
-      const activeVersion = versions.find((v) => v.isActive || v.is_active);
-      if (activeVersion?.datasetId) {
-        onSelectVersion(activeVersion.datasetId);
-      } else {
-        // Fallback: try active endpoint if no isActive in versions list
-        datasetsApi.fetchActiveDataset(companyName, displayProjectName).then((active) => {
-          const id = active?.id ?? active?._id ?? (active as { datasetId?: string })?.datasetId;
-          if (id) {
-            onSelectVersion(id);
-          }
-        });
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [versions.length, selectedVersionDatasetId, companyName, displayProjectName]);
-
   // Clear version-related state when project changes
   useEffect(() => {
     // Clear version selection and details when project changes
@@ -2045,10 +2021,16 @@ const DatasetManager = () => {
       const isOurApiUrl = API_BASE_URL && thumbEndpoint.startsWith(API_BASE_URL);
       if (isOurApiUrl) {
         let cancelled = false;
-        fetchThumbnailAsObjectUrl(datasetId, fileId).then((url) => {
-          if (!cancelled && url) setImgSrc(url);
-          else if (!cancelled) setImgSrc(thumbEndpoint);
-        });
+        fetchThumbnailAsObjectUrl(datasetId, fileId)
+          .then((url) => {
+            if (!cancelled && url) setImgSrc(url);
+            else if (!cancelled) setImgSrc(thumbEndpoint);
+          })
+          .catch((err) => {
+            // Swallow cancellation - expected when user switches dataset before load completes
+            if (err?.message === 'Request cancelled due to dataset change') return;
+            throw err;
+          });
         return () => { cancelled = true; };
       }
       setImgSrc(thumbEndpoint);
@@ -2066,16 +2048,21 @@ const DatasetManager = () => {
           // Only attempt fallback if we haven't errored before and imgSrc matches thumbEndpoint
           if (!hasErrored && imgSrc === thumbEndpoint) {
             setHasErrored(true); // Mark as errored to prevent retries
-            const objUrl = await fetchThumbnailAsObjectUrl(datasetId, fileId);
-            if (objUrl) {
-              setImgSrc(objUrl); // Update React state
-              setHasErrored(false); // Reset error flag if fallback succeeds
-            } else {
-              // Both attempts failed - set placeholder in both React state and DOM
-              const placeholder = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='32'%3E%3Crect width='48' height='32' fill='%23f3f4f6'/%3E%3C/svg%3E";
-              setImgSrc(placeholder); // Update React state to prevent re-render resets
-              (e.target as HTMLImageElement).src = placeholder; // Update DOM immediately
-              (e.target as HTMLImageElement).style.opacity = "0.5";
+            try {
+              const objUrl = await fetchThumbnailAsObjectUrl(datasetId, fileId);
+              if (objUrl) {
+                setImgSrc(objUrl); // Update React state
+                setHasErrored(false); // Reset error flag if fallback succeeds
+              } else {
+                // Both attempts failed - set placeholder in both React state and DOM
+                const placeholder = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='32'%3E%3Crect width='48' height='32' fill='%23f3f4f6'/%3E%3C/svg%3E";
+                setImgSrc(placeholder); // Update React state to prevent re-render resets
+                (e.target as HTMLImageElement).src = placeholder; // Update DOM immediately
+                (e.target as HTMLImageElement).style.opacity = "0.5";
+              }
+            } catch (err) {
+              // Swallow cancellation - expected when user switches dataset before load completes
+              if ((err as Error)?.message !== 'Request cancelled due to dataset change') throw err;
             }
           }
         }}

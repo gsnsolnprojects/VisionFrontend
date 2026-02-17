@@ -11,7 +11,6 @@ import { BoundingBoxCanvas } from "@/components/annotation/BoundingBoxCanvas";
 import { AnnotationErrorBoundary } from "@/components/annotation/AnnotationErrorBoundary";
 import { ConvertToYOLOButton } from "@/components/annotation/ConvertToYOLOButton";
 import { AnnotationMetadata } from "@/components/annotation/AnnotationMetadata";
-import { AnnotationReviewToolbar } from "@/components/annotation/AnnotationReviewToolbar";
 import { AnnotationExportButton } from "@/components/annotation/AnnotationExportButton";
 import { AnnotationImportButton } from "@/components/annotation/AnnotationImportButton";
 import { AnnotationAnalytics } from "@/components/annotation/AnnotationAnalytics";
@@ -1502,17 +1501,6 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
             }}
           />
           
-          {/* Phase 6: Review Workflow */}
-          <div className="pt-3 border-t">
-            <AnnotationReviewToolbar
-              selectedState={stateFilter}
-              onStateFilterChange={setStateFilter}
-              selectedAnnotationIds={selection.selectedAnnotationIds}
-              onBulkStateChange={handleBulkStateChange}
-              annotationCounts={annotationCounts}
-            />
-          </div>
-
           {/* Phase 6: Annotation Metadata */}
           {selectedAnnotationId && (
             <div className="pt-3 border-t">
@@ -1521,14 +1509,6 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
               />
             </div>
           )}
-
-          {/* Phase 6: Analytics */}
-          <div className="pt-3 border-t">
-            <AnnotationAnalytics
-              annotations={annotations}
-              categories={categories}
-            />
-          </div>
 
           {/* Original Stats */}
           <div className="pt-3 border-t">
