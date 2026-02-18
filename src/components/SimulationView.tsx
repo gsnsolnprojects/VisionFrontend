@@ -963,6 +963,13 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDatasetId, sessionReady]);
 
+  // EfficientNet and Custom are disabled; ensure we never leave them selected
+  useEffect(() => {
+    if (modelType === "EfficientNet" || modelType === "Custom") {
+      setModelType("YOLO");
+    }
+  }, [modelType]);
+
   // when modelType changes => fetch defaults and base-models when YOLO
   useEffect(() => {
     // fetch default hyperparameters
@@ -1098,7 +1105,8 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
           setSelectedDatasetId(savedState.datasetId);
         }
         if (savedState.modelType && !modelType) {
-          setModelType(savedState.modelType as "YOLO" | "EfficientNet" | "Custom");
+          const restored = savedState.modelType as "YOLO" | "EfficientNet" | "Custom";
+          setModelType(restored === "EfficientNet" || restored === "Custom" ? "YOLO" : restored);
         }
 
         // Persist latest snapshot for this job
@@ -2627,8 +2635,8 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                 <Label>Model Type</Label>
                 <div className="mt-2 flex gap-2">
                   <Button variant={modelType === "YOLO" ? "default" : "ghost"} onClick={() => setModelType("YOLO")}>YOLO</Button>
-                  <Button variant={modelType === "EfficientNet" ? "default" : "ghost"} onClick={() => setModelType("EfficientNet")}>EfficientNet</Button>
-                  <Button variant={modelType === "Custom" ? "default" : "ghost"} onClick={() => setModelType("Custom")}>Custom</Button>
+                  <Button variant={modelType === "EfficientNet" ? "default" : "ghost"} onClick={() => setModelType("EfficientNet")} disabled>EfficientNet</Button>
+                  <Button variant={modelType === "Custom" ? "default" : "ghost"} onClick={() => setModelType("Custom")} disabled>Custom</Button>
                 </div>
               </div>
 
