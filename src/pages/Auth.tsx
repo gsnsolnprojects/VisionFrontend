@@ -885,7 +885,11 @@ useEffect(() => {
                     id="phone"
                     type="tel"
                     value={signupForm.values.phone}
-                    onChange={signupForm.handleChange("phone")}
+                    onChange={(e) => {
+                      // Only allow digits (0-9)
+                      const filteredValue = e.target.value.replace(/\D/g, "");
+                      signupForm.handleChange("phone")({ ...e, target: { ...e.target, value: filteredValue } });
+                    }}
                     onBlur={signupForm.handleBlur("phone")}
                     placeholder=""
                     className={signupForm.isFieldTouched("phone") && (signupForm.getFieldError("phone") || phoneError) ? "border-destructive" : ""}

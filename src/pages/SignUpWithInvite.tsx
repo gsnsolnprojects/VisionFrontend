@@ -233,8 +233,12 @@ export default function SignUpWithInvite() {
             <Input
               type="tel"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="e.g. +91 98765 43210"
+              onChange={(e) => {
+                // Only allow digits (0-9)
+                const filteredValue = e.target.value.replace(/\D/g, "");
+                setPhone(filteredValue);
+              }}
+              placeholder="e.g. 9876543210"
             />
           </div>
 
