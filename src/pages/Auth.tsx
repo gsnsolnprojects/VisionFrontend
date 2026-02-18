@@ -474,6 +474,41 @@ useEffect(() => {
     signupForm.setValue("countryCode", countryCode);
   }, [countryCode]);
 
+  // ---------------- SIGNUP FORM VALIDATION FOR BUTTON STATE ----------------
+  // Check if all required fields are filled and valid
+  const isSignupFormValid = () => {
+    // Check if all required fields have values
+    const hasAllFields = 
+      signupForm.values.name?.trim() &&
+      signupForm.values.email?.trim() &&
+      signupForm.values.phone?.trim() &&
+      signupForm.values.password?.trim();
+
+    if (!hasAllFields) {
+      return false;
+    }
+
+    // Check if form validation passes
+    if (!signupForm.isValid) {
+      return false;
+    }
+
+    // Check if phone validation passes (validate synchronously for immediate feedback)
+    if (signupForm.values.phone && countryCode) {
+      const currentPhoneError = validatePhoneNumber(signupForm.values.phone, countryCode);
+      if (currentPhoneError) {
+        return false;
+      }
+    }
+
+    // Check if password validation passes
+    if (!isPasswordValid()) {
+      return false;
+    }
+
+    return true;
+  };
+
   // ---------------- HANDLERS ----------------
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -927,7 +962,7 @@ useEffect(() => {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={loading || resendCooldown > 0}
+                disabled={loading || resendCooldown > 0 || !isSignupFormValid()}
               >
                 {loading
                   ? "Signing up..."
