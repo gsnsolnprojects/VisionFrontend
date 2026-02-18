@@ -303,21 +303,34 @@ export const apiRequest = async <T>(
     }
 
     // Try to refresh session
-    const { data: { session: newSession }, error: refreshError } =
-      await supabase.auth.refreshSession();
+    const {
+      data: { session: newSession },
+      error: refreshError,
+    } = await supabase.auth.refreshSession();
+
+    // Special-case invalid/missing refresh token errors so they behave like a clean expiry
+    const refreshMessage = (refreshError as any)?.message as string | undefined;
+    const isInvalidRefreshToken =
+      typeof refreshMessage === "string" &&
+      refreshMessage.toLowerCase().includes("invalid refresh token");
 
     if (newSession && !refreshError) {
       // Session refreshed, clear cache
       clearAuthCache();
       // Throw error to let caller handle retry if needed
       throw new Error("Session refreshed - please retry");
-    } else {
-      // Refresh failed, redirect to login
-      clearAuthCache();
-      await supabase.auth.signOut();
-      window.location.href = AUTH_ROUTE;
-      throw new Error("Unauthorized - please log in again");
     }
+
+    // Refresh failed (including invalid/missing refresh token) – treat as an expired session
+    clearAuthCache();
+    await supabase.auth.signOut();
+    window.location.href = AUTH_ROUTE;
+
+    if (isInvalidRefreshToken) {
+      throw new Error("Session expired - please sign in again");
+    }
+
+    throw new Error("Unauthorized - please log in again");
   }
 
   if (!response.ok) {

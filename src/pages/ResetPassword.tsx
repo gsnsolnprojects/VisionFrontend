@@ -123,6 +123,9 @@ const ResetPassword = () => {
         title: "Password updated successfully",
         description: "You can now sign in using your new password.",
       });
+      // End the temporary password-recovery session so we don't keep a stale/invalid refresh token around.
+      // This ensures the user returns to a clean sign-in state after updating their password.
+      await supabase.auth.signOut();
       navigate("/auth?mode=signin");
     }
 
