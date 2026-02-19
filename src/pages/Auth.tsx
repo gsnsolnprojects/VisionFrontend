@@ -621,6 +621,12 @@ useEffect(() => {
         description:
           "Please check your email inbox and confirm your email to sign in.",
       });
+
+      // Switch to signin form and update URL
+      setMode("signin");
+      const newParams = new URLSearchParams(searchParams);
+      newParams.set("mode", "signin");
+      setSearchParams(newParams);
     } catch (error: any) {
       const rawMessage: string = error?.message || "";
       let friendlyMessage = rawMessage;

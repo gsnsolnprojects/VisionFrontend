@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { List, X, FileText, Search, ZoomIn, ZoomOut, RotateCcw, Maximize2, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, Folder, ChevronRight as ChevronRightIcon, ChevronDown, Trash2, Loader2, Upload, ArrowRight, Info } from "lucide-react";
+import { List, X, FileText, Search, ZoomIn, ZoomOut, RotateCcw, Maximize2, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, Folder, ChevronRight as ChevronRightIcon, ChevronDown, Trash2, Loader2, Upload, ArrowRight, Info, Pencil } from "lucide-react";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { cn } from "@/lib/utils";
 import {
@@ -49,6 +49,7 @@ import { ClassNameDialog } from "@/components/dataset/ClassNameDialog";
 import { getDetectedClasses, type DetectedClassesResponse } from "@/lib/api/categories";
 import { ProtectedComponent } from "@/components/permissions/ProtectedComponent";
 import { DeleteProjectModal } from "@/components/dashboard/DeleteProjectModal";
+import { EditProjectModal } from "@/components/dashboard/EditProjectModal";
 import { Badge } from "@/components/ui/badge";
 import * as datasetsApi from "@/lib/api/datasets";
 import { useAugmentationStatus, type AugmentationStatusState } from "@/hooks/useAugmentationStatus";
@@ -317,6 +318,7 @@ const DatasetManager = () => {
 
   // Delete project state (modal uses dashboard API: GET summary, DELETE project)
   const [showDeleteProjectDialog, setShowDeleteProjectDialog] = useState<boolean>(false);
+  const [showEditProjectModal, setShowEditProjectModal] = useState<boolean>(false);
 
   // Delete version state
   const [versionToDelete, setVersionToDelete] = useState<string | null>(null);
@@ -430,7 +432,7 @@ const DatasetManager = () => {
       // Session is already ready and user exists (checked above)
       const { data: projectData, error: projectError } = await supabase
         .from("projects")
-        .select("id, name, company_id")
+        .select("id, name, description, company_id")
         .eq("id", projectId)
         .single();
 
@@ -2261,8 +2263,25 @@ const DatasetManager = () => {
         variants={fadeInUpVariants}
       >
         <div>
-          <h2 className="text-2xl font-bold">Upload dataset for {displayProjectName}</h2>
-          {companyName && <p className="text-sm text-muted-foreground">{companyName}</p>}
+          <div className="space-y-0.5">
+            <h2 className="text-2xl font-bold">{displayProjectName}</h2>
+            <div className="flex items-center gap-1.5">
+              {project?.description?.trim() ? (
+                <p className="text-xs text-muted-foreground">{project.description}</p>
+              ) : null}
+              {hasPermission("manageProjects") && project && (
+                <button
+                  type="button"
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded p-0 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  onClick={() => setShowEditProjectModal(true)}
+                  title="Edit project"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground font-medium pt-3">Upload datasets</p>
         </div>
       </motion.div>
 
@@ -3175,6 +3194,26 @@ const DatasetManager = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Project Modal */}
+      <EditProjectModal
+        open={showEditProjectModal}
+        onOpenChange={setShowEditProjectModal}
+        project={project ? { id: project.id, name: project.name ?? "", description: project.description } : null}
+        onSaved={() => {
+          // Reload project to get updated name/description
+          if (projectId) {
+            supabase
+              .from("projects")
+              .select("id, name, description, company_id")
+              .eq("id", projectId)
+              .single()
+              .then(({ data }) => {
+                if (data) setProject(data);
+              });
+          }
+        }}
+      />
 
       {/* Delete Project Confirmation Modal (GET summary, then DELETE via dashboard API) */}
       <DeleteProjectModal

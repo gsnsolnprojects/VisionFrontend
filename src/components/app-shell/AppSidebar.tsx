@@ -408,27 +408,40 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
                           )}
 
                           {!loadingProjects &&
-                            projects.map((p) => (
-                              <Button
-                                key={p.id}
-                                variant="ghost"
-                                size="sm"
-                                className={cn(
-                                  "w-full justify-start",
-                                  location.pathname === `/dataset/${p.id}` && cn(
-                                    "bg-primary/10 dark:bg-primary/20",
-                                    "bg-primary/15",
-                                    "border-l-2 border-l-primary"
-                                  )
-                                )}
-                                onClick={() => {
-                                  openProject(p.id);
-                                  onNavigate?.();
-                                }}
-                              >
-                                <span className="truncate">{p.name}</span>
-                              </Button>
-                            ))}
+                            projects.map((p) => {
+                              const projectButton = (
+                                <Button
+                                  key={p.id}
+                                  variant="ghost"
+                                  size="sm"
+                                  className={cn(
+                                    "w-full justify-start",
+                                    location.pathname === `/dataset/${p.id}` && cn(
+                                      "bg-primary/10 dark:bg-primary/20",
+                                      "bg-primary/15",
+                                      "border-l-2 border-l-primary"
+                                    )
+                                  )}
+                                  onClick={() => {
+                                    openProject(p.id);
+                                    onNavigate?.();
+                                  }}
+                                >
+                                  <span className="truncate">{p.name}</span>
+                                </Button>
+                              );
+                              const hasDescription = p.description?.trim();
+                              return hasDescription ? (
+                                <Tooltip key={p.id} delayDuration={300}>
+                                  <TooltipTrigger asChild>{projectButton}</TooltipTrigger>
+                                  <TooltipContent side="right" className="max-w-xs">
+                                    <p className="text-xs">{p.description}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : (
+                                <React.Fragment key={p.id}>{projectButton}</React.Fragment>
+                              );
+                            })}
                         </div>
                       )}
 

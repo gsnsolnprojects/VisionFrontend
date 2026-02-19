@@ -8,11 +8,12 @@ import { EmptyState } from "@/components/pages/EmptyState";
 import { LoadingState } from "@/components/pages/LoadingState";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, FolderKanban, Trash2 } from "lucide-react";
+import { Plus, FolderKanban, Trash2, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { fadeInUpVariants } from "@/utils/animations";
 import { ProtectedComponent } from "@/components/permissions/ProtectedComponent";
 import { DeleteProjectModal } from "@/components/dashboard/DeleteProjectModal";
+import { EditProjectModal } from "@/components/dashboard/EditProjectModal";
 
 export const ProjectsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -21,6 +22,7 @@ export const ProjectsPage: React.FC = () => {
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [projectToDelete, setProjectToDelete] = useState<{ companyName: string; projectName: string } | null>(null);
+  const [projectToEdit, setProjectToEdit] = useState<{ id: string; name: string; description?: string | null } | null>(null);
 
   useEffect(() => {
     // Early return if session not ready
@@ -146,27 +148,39 @@ export const ProjectsPage: React.FC = () => {
               >
                 <CardHeader className="flex flex-row items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <CardTitle className="line-clamp-1">{project.name}</CardTitle>
+                    <CardTitle className="truncate leading-normal pb-0.5">{project.name}</CardTitle>
                     <CardDescription className="line-clamp-2">
                       {project.description || "No description"}
                     </CardDescription>
                   </div>
-                  {hasPermission("deleteProjects") && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="shrink-0 text-muted-foreground hover:text-destructive"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setProjectToDelete({
-                          companyName: company?.name ?? "",
-                          projectName: project.name ?? "",
-                        });
-                      }}
-                      title="Delete project"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                  {(hasPermission("manageProjects") || hasPermission("deleteProjects")) && (
+                    <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      {hasPermission("manageProjects") && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+                          onClick={() => setProjectToEdit({ id: project.id, name: project.name ?? "", description: project.description })}
+                          title="Edit project"
+                        >
+                          <Pencil className="h-2.5 w-2.5" />
+                        </Button>
+                      )}
+                      {hasPermission("deleteProjects") && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-muted-foreground hover:text-destructive"
+                          onClick={() => setProjectToDelete({
+                            companyName: company?.name ?? "",
+                            projectName: project.name ?? "",
+                          })}
+                          title="Delete project"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </CardHeader>
                 <CardContent>
@@ -179,6 +193,15 @@ export const ProjectsPage: React.FC = () => {
           </div>
         )}
       </motion.div>
+
+      <EditProjectModal
+        open={projectToEdit != null}
+        onOpenChange={(open) => {
+          if (!open) setProjectToEdit(null);
+        }}
+        project={projectToEdit}
+        onSaved={loadProjects}
+      />
 
       <DeleteProjectModal
         open={projectToDelete != null}

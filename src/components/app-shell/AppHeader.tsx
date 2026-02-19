@@ -11,13 +11,21 @@ import { useBackendStatus } from "@/hooks/useBackendStatus";
 import { useTheme } from "@/hooks/useTheme";
 import { supabase } from "@/integrations/supabase/client";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { RoleBadge } from "@/components/RoleBadge";
 import { AppSidebar } from "./AppSidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
 
 export const AppHeader: React.FC = () => {
   const navigate = useNavigate();
-  const { profile, isAdmin, company, loading, sessionReady, hasPermission, user } = useProfile();
+  const { profile, isAdmin, company, loading, sessionReady, hasPermission, user, userRole } = useProfile();
+  const [hasPendingJoinRequest, setHasPendingJoinRequest] = useState(false);
   const { isOnline, isLoading: backendStatusLoading } = useBackendStatus();
   const { theme, toggleTheme } = useTheme();
   const { toast } = useToast();
@@ -213,6 +221,34 @@ export const AppHeader: React.FC = () => {
     };
   }, [user?.id, sessionReady, loading, toast]);
 
+  // When user has no company, check if they have a pending join request (to disable Create/Join buttons)
+  useEffect(() => {
+    if (!user?.id || profile?.company_id || !sessionReady || loading) {
+      setHasPendingJoinRequest(false);
+      return;
+    }
+
+    let cancelled = false;
+    supabase
+      .from("workspace_join_requests")
+      .select("id")
+      .eq("user_id", user.id)
+      .in("status", ["pending", "email_sent"])
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setHasPendingJoinRequest(!!data);
+      });
+
+    const onJoinRequestSent = () => setHasPendingJoinRequest(true);
+    window.addEventListener("visionm:join-request-sent", onJoinRequestSent);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("visionm:join-request-sent", onJoinRequestSent);
+    };
+  }, [user?.id, profile?.company_id, sessionReady, loading]);
+
   // Poll for pending requests (every 30 seconds) if admin
   useEffect(() => {
     if (profile && isAdmin && profile.email) {
@@ -284,9 +320,25 @@ export const AppHeader: React.FC = () => {
               <Building2 className="h-6 w-6 text-primary" />
               <span className="text-xl font-bold text-primary">VisionM</span>
               {profile?.companies?.name && (
-                <span className="hidden md:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground">
-                  {profile.companies.name}
-                </span>
+                <div className="hidden md:inline-flex items-center gap-2">
+                  <TooltipProvider>
+                    <Tooltip delayDuration={300}>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex items-center h-5 px-2 py-0.5 rounded-md border border-transparent text-xs font-medium leading-none bg-muted text-muted-foreground cursor-default">
+                          {profile.companies.name}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-xs">
+                        <p className="text-xs">
+                          {profile.companies.description?.trim()
+                            ? profile.companies.description
+                            : profile.companies.name}
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  {userRole && <RoleBadge role={userRole} />}
+                </div>
               )}
             </div>
           </div>
@@ -323,11 +375,12 @@ export const AppHeader: React.FC = () => {
                 <Button
                   variant="default"
                   size="sm"
+                  disabled={hasPendingJoinRequest}
                   onClick={() => navigate("/dashboard?action=create-company")}
                 >
                   Create Company
                 </Button>
-                <JoinCompanyDialog />
+                <JoinCompanyDialog disabled={hasPendingJoinRequest} />
               </>
             )}
 

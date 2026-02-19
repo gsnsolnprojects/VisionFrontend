@@ -153,13 +153,21 @@ export const companyNameSchema = z
     "Company name can only contain letters, numbers, spaces, and common business characters (-, _, &, ., ,, (, ))"
   );
 
-// Company Details Schema
+// Company Details Schema (Create Company - requires name, email, optional description)
 export const companyDetailsSchema = z.object({
   companyName: companyNameSchema,
   businessEmail: emailSchema,
+  description: z.string().max(500, "Description must be at most 500 characters").optional(),
 });
 
 export type CompanyDetailsFormData = z.infer<typeof companyDetailsSchema>;
+
+// Join Company Schema (only company name - used when joining existing company)
+export const joinCompanySchema = z.object({
+  companyName: companyNameSchema,
+});
+
+export type JoinCompanyFormData = z.infer<typeof joinCompanySchema>;
 
 // Project Schema
 export const projectSchema = z.object({
@@ -200,6 +208,7 @@ export const userProfileSchema = z.object({
   name: nameSchema,
   phone: phoneProfileSchema,
   companyName: z.string().max(100, "Company name must be at most 100 characters").optional(),
+  companyDescription: z.string().max(500, "Company description must be at most 500 characters").optional(),
 });
 
 export type UserProfileFormData = z.infer<typeof userProfileSchema>;

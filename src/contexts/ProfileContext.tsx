@@ -36,14 +36,14 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
         if (isDev) {
           console.log("[ProfileContext] No session.user.id, skipping profile fetch");
         }
-        setUser(null);
-        setProfile(null);
-        setCompany(null);
-        setIsAdmin(false);
-        setLoading(false);
-        lastProfileUserIdRef.current = null;
-        loadProfilePromiseRef.current = null;
-        return;
+          setUser(null);
+          setProfile(null);
+          setCompany(null);
+          setIsAdmin(false);
+          setLoading(false);
+          lastProfileUserIdRef.current = null;
+          loadProfilePromiseRef.current = null;
+          return;
       }
 
       // If a profile load is already in flight for the same user, reuse it

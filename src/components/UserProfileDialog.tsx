@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { isUserAdmin } from "@/lib/utils/adminUtils";
@@ -39,6 +40,7 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
     name: "",
     phone: "",
     companyName: "",
+    companyDescription: "",
   });
 
   const profileForm = useFormValidation({
@@ -47,6 +49,7 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
       name: "",
       phone: "",
       companyName: "",
+      companyDescription: "",
     },
     validateOnChange: false,
     validateOnBlur: true,
@@ -112,13 +115,16 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
           const nextName = profileData.name || session.user.user_metadata?.name || "";
           const nextPhone = profileData.phone || session.user.user_metadata?.phone || "";
           const nextCompanyName = companyData.name || "";
+          const nextCompanyDescription = companyData.description || "";
           profileForm.setValue("name", nextName);
           profileForm.setValue("phone", nextPhone);
           profileForm.setValue("companyName", nextCompanyName);
+          profileForm.setValue("companyDescription", nextCompanyDescription);
           setInitialValues({
             name: nextName,
             phone: nextPhone,
             companyName: nextCompanyName,
+            companyDescription: nextCompanyDescription,
           });
         } else {
           // Set form values without company
@@ -130,6 +136,7 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
             name: nextName,
             phone: nextPhone,
             companyName: "",
+            companyDescription: "",
           });
         }
       } else {
@@ -142,6 +149,7 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
           name: nextName,
           phone: nextPhone,
           companyName: "",
+          companyDescription: "",
         });
       }
     } catch (error: any) {
@@ -169,16 +177,19 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
       name: profileForm.values.name.trim(),
       phone: profileForm.values.phone.trim(),
       companyName: (profileForm.values.companyName || "").trim(),
+      companyDescription: (profileForm.values.companyDescription || "").trim(),
     };
     const initial = {
       name: initialValues.name.trim(),
       phone: initialValues.phone.trim(),
       companyName: (initialValues.companyName || "").trim(),
+      companyDescription: (initialValues.companyDescription || "").trim(),
     };
     return (
       current.name !== initial.name ||
       current.phone !== initial.phone ||
-      current.companyName !== initial.companyName
+      current.companyName !== initial.companyName ||
+      current.companyDescription !== initial.companyDescription
     );
   };
 
@@ -201,6 +212,7 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
     profileForm.setValue("name", initialValues.name);
     profileForm.setValue("phone", initialValues.phone);
     profileForm.setValue("companyName", initialValues.companyName);
+    profileForm.setValue("companyDescription", initialValues.companyDescription ?? "");
     setIsEditing(false);
   };
 
@@ -255,15 +267,19 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
 
       if (profileError) throw profileError;
 
-      // Update company name if user is admin and company name changed
-      if (isAdmin && company && profileForm.values.companyName) {
-        const companyName = profileForm.values.companyName.trim();
-        if (companyName !== company.name) {
+      // Update company (name and/or description) if user is admin and something changed
+      if (isAdmin && company) {
+        const companyName = (profileForm.values.companyName || "").trim();
+        const companyDescription = (profileForm.values.companyDescription || "").trim() || null;
+        const nameChanged = companyName && companyName !== company.name;
+        const descriptionChanged = companyDescription !== (company.description ?? "");
+        if (nameChanged || descriptionChanged) {
+          const updatePayload: Record<string, string | null> = {};
+          if (nameChanged) updatePayload.name = companyName;
+          if (descriptionChanged) updatePayload.description = companyDescription;
           const { error: companyError } = await supabase
             .from("companies")
-            .update({
-              name: companyName,
-            })
+            .update(updatePayload)
             .eq("id", company.id);
 
           if (companyError) {
@@ -410,6 +426,23 @@ export const UserProfileDialog: React.FC<UserProfileDialogProps> = ({
                   <p className="text-xs text-muted-foreground mt-1">
                     Only company admins can change the company name
                   </p>
+                )}
+                {isAdmin && (
+                  <div className="mt-4">
+                    <Label htmlFor="profile-company-description">Company Description (Optional)</Label>
+                    <Textarea
+                      id="profile-company-description"
+                      value={profileForm.values.companyDescription ?? ""}
+                      onChange={(e) => profileForm.setValue("companyDescription", e.target.value)}
+                      onBlur={(e) => {
+                        profileForm.handleBlur("companyDescription")(e as React.FocusEvent<HTMLTextAreaElement>);
+                      }}
+                      disabled={!isEditing}
+                      className={!isEditing ? "bg-muted mt-1" : "mt-1"}
+                      placeholder="Brief description of your company"
+                      rows={3}
+                    />
+                  </div>
                 )}
               </div>
             )}

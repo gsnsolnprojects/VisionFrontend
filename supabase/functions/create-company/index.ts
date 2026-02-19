@@ -58,11 +58,13 @@ serve(async (req) => {
     // Parse request body
     let companyName: string;
     let adminEmail: string;
+    let description: string | undefined;
     
     try {
       const body = await req.json();
       companyName = body.companyName;
       adminEmail = body.adminEmail;
+      description = typeof body.description === "string" && body.description.trim() ? body.description.trim() : undefined;
     } catch (parseError) {
       return new Response(
         JSON.stringify({
@@ -152,14 +154,19 @@ serve(async (req) => {
 
     // Create company (using service role, bypasses RLS)
     // Trim company name before inserting to ensure consistency
+    // Include both admin_email and email - some DB schemas have an email column (NOT NULL)
+    const insertPayload: Record<string, unknown> = {
+      name: companyName.trim(),
+      admin_email: adminEmail,
+      email: adminEmail,
+      created_by: user.id,
+    };
+    if (description) {
+      insertPayload.description = description;
+    }
     const { data: company, error: companyError } = await supabase
       .from("companies")
-      .insert({
-        name: companyName.trim(),
-        admin_email: adminEmail,
-        email: adminEmail, // Set email column to match admin_email
-        created_by: user.id,
-      })
+      .insert(insertPayload)
       .select()
       .single();
 

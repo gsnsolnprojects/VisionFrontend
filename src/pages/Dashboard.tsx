@@ -23,6 +23,7 @@ import { FormFieldWrapper } from "@/components/FormFieldWrapper";
 import { useFormValidation } from "@/hooks/useFormValidation";
 import {
   companyDetailsSchema,
+  joinCompanySchema,
   projectSchema,
   type CompanyDetailsFormData,
   type ProjectFormData,
@@ -31,11 +32,12 @@ import { useProfile } from "@/hooks/useProfile";
 import { PageHeader } from "@/components/pages/PageHeader";
 import { EmptyState } from "@/components/pages/EmptyState";
 import { LoadingState } from "@/components/pages/LoadingState";
-import { FolderKanban } from "lucide-react";
+import { FolderKanban, Building2, UserPlus } from "lucide-react";
 import ProfileCompletionDialog from "@/components/ProfileCompletionDialog";
 import { SimulationView } from "@/components/SimulationView";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
+import { RoleBadge } from "@/components/RoleBadge";
 
 type ViewMode = "overview" | "projects" | "simulation" | "members";
 
@@ -43,10 +45,11 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
-  const { sessionReady, profile, user, isAdmin: contextIsAdmin, company, reloadProfile, loading: profileLoading } = useProfile();
+  const { sessionReady, profile, user, isAdmin: contextIsAdmin, company, reloadProfile, loading: profileLoading, userRole } = useProfile();
 
   const [projects, setProjects] = useState<any[]>([]);
   const [showCompanyDialog, setShowCompanyDialog] = useState(false);
+  const [showCompanyChoiceDialog, setShowCompanyChoiceDialog] = useState(false);
   const [showProjectDialog, setShowProjectDialog] = useState(false);
   const [showCompanyExistsDialog, setShowCompanyExistsDialog] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -66,6 +69,7 @@ const Dashboard = () => {
     initialValues: {
       companyName: "",
       businessEmail: "",
+      description: "",
     },
     validateOnChange: false,
     validateOnBlur: true, // Validate on blur for better UX
@@ -162,7 +166,6 @@ const Dashboard = () => {
   }, [sessionReady, profileLoading, profile, user?.id]);
 
   // Fetch latest pending join request for the current user so they can see "pending" state
-  // across refreshes (supports CC_57: pending request state retained after refresh)
   useEffect(() => {
     if (!sessionReady || profileLoading || !user?.id) {
       setPendingJoinRequest(null);
@@ -410,22 +413,23 @@ const Dashboard = () => {
     }
   }, [sessionReady, user?.id, profile?.company_id]);
 
-  // Show company dialog if user has no company and no valid invite
+  // Show company choice dialog (Create or Join) if user has no company, no valid invite, and no pending join request
   useEffect(() => {
-    if (!profileLoading && !profile?.company_id) {
+    if (!profileLoading && !profile?.company_id && !pendingJoinRequest) {
       let cancelled = false;
       checkForValidInvite().then((hasValidInvite) => {
         if (!cancelled && !hasValidInvite) {
-          setDialogMode("create");
-          setShowCompanyDialog(true);
+          setShowCompanyChoiceDialog(true);
         }
       });
       return () => {
         cancelled = true;
       };
+    } else if (pendingJoinRequest) {
+      setShowCompanyChoiceDialog(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileLoading, profile?.company_id]);
+  }, [profileLoading, profile?.company_id, pendingJoinRequest]);
 
   // Listen for "Manage Members" button click from Sidebar (backward compatibility)
   useEffect(() => {
@@ -600,17 +604,22 @@ const Dashboard = () => {
         currentProfile = profileData;
       }
       
-      // Use email from profile
+      // Use Company Email from form (user's input) - required field, so it should be filled
+      // Fallback to profile email only if form value is empty (e.g. validation edge case)
+      const formEmail = (companyForm.values.businessEmail ?? "").trim();
       const profileEmail = currentProfile.email || userEmail;
-      if (!profileEmail) {
-        throw new Error("Unable to get email for company creation. Please ensure your profile has an email.");
+      const adminEmail = formEmail || profileEmail;
+      if (!adminEmail) {
+        throw new Error("Unable to get email for company creation. Please fill in the Company Email field.");
       }
       
       // Use Edge Function to create company (bypasses RLS issues)
+      const companyDescription = (companyForm.values.description ?? "").trim() || undefined;
       const { data: createCompanyData, error: invokeError } = await supabase.functions.invoke("create-company", {
         body: {
           companyName,
-          adminEmail: profileEmail,
+          adminEmail,
+          description: companyDescription,
         },
       });
 
@@ -874,6 +883,7 @@ const Dashboard = () => {
         status: "pending",
         created_at: new Date().toISOString(),
       });
+      window.dispatchEvent(new CustomEvent("visionm:join-request-sent"));
 
       setShowCompanyExistsDialog(false);
       // Keep company dialog open (user not yet in company)
@@ -890,10 +900,12 @@ const Dashboard = () => {
   };
 
   const handleJoinCompany = async () => {
-    if (!companyForm.validateForm()) {
+    const companyName = companyForm.values.companyName.trim();
+    const parseResult = joinCompanySchema.safeParse({ companyName });
+    if (!parseResult.success) {
       toast({
         title: "Please check your details",
-        description: "Fix the highlighted errors before joining company.",
+        description: "Enter a valid company name to continue.",
         variant: "destructive",
       });
       return;
@@ -948,9 +960,6 @@ const Dashboard = () => {
 
     setJoinRequestLoading(true);
     try {
-      // Trim and normalize company name for comparison
-      const companyName = companyForm.values.companyName.trim();
-      
       // Check if company exists by name using the SECURITY DEFINER function
       // This bypasses RLS to allow existence checks even if user is not a member
       const { data: existingCompanyData, error: fetchError } = await supabase
@@ -1004,6 +1013,7 @@ const Dashboard = () => {
         status: "pending",
         created_at: new Date().toISOString(),
       });
+      window.dispatchEvent(new CustomEvent("visionm:join-request-sent"));
 
       setShowCompanyDialog(false);
       companyForm.resetForm();
@@ -1128,6 +1138,7 @@ const Dashboard = () => {
         >
           <PageHeader
             title={`Welcome, ${displayName}`}
+            titleBadge={userRole ? <RoleBadge role={userRole} /> : null}
             description="Manage your projects, datasets, and simulation workspace from this dashboard."
           />
         </motion.div>
@@ -1232,6 +1243,54 @@ const Dashboard = () => {
         />
       )}
 
+      {/* Company Choice Dialog - Create or Join */}
+      <Dialog open={showCompanyChoiceDialog} onOpenChange={setShowCompanyChoiceDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Get started with VisionM</DialogTitle>
+            <DialogDescription>
+              Create a new workspace or join an existing one to get started.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4 sm:grid-cols-2">
+            <Button
+              variant="outline"
+              className="h-auto flex-col gap-3 p-6"
+              disabled={!!pendingJoinRequest}
+              onClick={() => {
+                setShowCompanyChoiceDialog(false);
+                setDialogMode("create");
+                companyForm.resetForm();
+                setShowCompanyDialog(true);
+              }}
+            >
+              <Building2 className="h-10 w-10 text-primary" />
+              <span className="font-semibold">Create Company</span>
+              <span className="text-xs text-muted-foreground font-normal">
+                Start a new workspace for your team
+              </span>
+            </Button>
+            <Button
+              variant="outline"
+              className="h-auto flex-col gap-3 p-6"
+              disabled={!!pendingJoinRequest}
+              onClick={() => {
+                setShowCompanyChoiceDialog(false);
+                setDialogMode("join");
+                companyForm.resetForm();
+                setShowCompanyDialog(true);
+              }}
+            >
+              <UserPlus className="h-10 w-10 text-primary" />
+              <span className="font-semibold">Join Company</span>
+              <span className="text-xs text-muted-foreground font-normal">
+                Request access to an existing workspace
+              </span>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Company Details Dialog */}
       <Dialog 
         open={showCompanyDialog} 
@@ -1244,7 +1303,7 @@ const Dashboard = () => {
             </DialogTitle>
             <DialogDescription>
               {dialogMode === "join" 
-                ? "Enter the company name and email to request access."
+                ? "Enter the company name to request access."
                 : "Please provide your company information to continue."}
             </DialogDescription>
           </DialogHeader>
@@ -1261,26 +1320,55 @@ const Dashboard = () => {
               placeholder="Enter company name"
               required
             />
-            <FormFieldWrapper
-              label="Company Email"
-              name="businessEmail"
-              type="email"
-              value={companyForm.values.businessEmail}
-              onChange={companyForm.handleChange("businessEmail")}
-              onBlur={companyForm.handleBlur("businessEmail")}
-              error={companyForm.getFieldError("businessEmail")}
-              touched={companyForm.isFieldTouched("businessEmail")}
-              placeholder="company@example.com"
-              required
-            />
+            {dialogMode === "create" && (
+              <FormFieldWrapper
+                label="Company Email"
+                name="businessEmail"
+                type="email"
+                value={companyForm.values.businessEmail}
+                onChange={companyForm.handleChange("businessEmail")}
+                onBlur={companyForm.handleBlur("businessEmail")}
+                error={companyForm.getFieldError("businessEmail")}
+                touched={companyForm.isFieldTouched("businessEmail")}
+                placeholder="company@example.com"
+                required
+              />
+            )}
+            {dialogMode === "create" && (
+              <div>
+                <Label htmlFor="company-description">Description (Optional)</Label>
+                <Textarea
+                  id="company-description"
+                  value={companyForm.values.description ?? ""}
+                  onChange={(e) => companyForm.setValue("description", e.target.value)}
+                  placeholder="Brief description of your company"
+                  className="mt-1"
+                  rows={3}
+                />
+              </div>
+            )}
           </div>
           <DialogFooter className="justify-end">
             {dialogMode === "join" ? (
-              <Button onClick={handleJoinCompany} disabled={joinRequestLoading}>
+              <Button
+                onClick={handleJoinCompany}
+                disabled={
+                  !!pendingJoinRequest ||
+                  joinRequestLoading ||
+                  !joinCompanySchema.safeParse({ companyName: companyForm.values.companyName.trim() }).success
+                }
+              >
                 {joinRequestLoading ? "Sending..." : "Join"}
               </Button>
             ) : (
-              <Button onClick={handleSaveCompany} disabled={loading}>
+              <Button
+                onClick={handleSaveCompany}
+                disabled={
+                  !!pendingJoinRequest ||
+                  loading ||
+                  !companyDetailsSchema.safeParse(companyForm.values).success
+                }
+              >
                 {loading ? "Saving..." : "Save"}
               </Button>
             )}

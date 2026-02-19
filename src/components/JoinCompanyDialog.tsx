@@ -1,10 +1,14 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { isUserAdmin } from "@/lib/utils/adminUtils";
 
-export function JoinCompanyDialog() {
+interface JoinCompanyDialogProps {
+  disabled?: boolean;
+}
+
+export const JoinCompanyDialog: React.FC<JoinCompanyDialogProps> = ({ disabled }) => {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<any>(null);
   const [company, setCompany] = useState<any>(null);
@@ -54,8 +58,8 @@ export function JoinCompanyDialog() {
   };
 
   return (
-    <Button variant="outline" size="sm" onClick={handleJoinCompany}>
+    <Button variant="outline" size="sm" disabled={disabled} onClick={handleJoinCompany}>
       Join Company
     </Button>
   );
-}
+};
