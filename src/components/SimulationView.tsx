@@ -542,13 +542,19 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
         (p) => String(p.id) === String(projectId) || String(p.name) === String(projectId)
       );
       const projectName = selectedProjectObj?.name ?? "";
+      const companyName =
+        (profile as any)?.companies?.name ??
+        (profile as any)?.company?.name ??
+        (userProfile as any)?.companies?.name ??
+        (userProfile as any)?.company?.name ??
+        "";
 
-      // request both projectId and project name as query params (server may accept either)
+      // Backend expects company and project; also send projectId for compatibility
       const qs = new URLSearchParams({
-        //status: "ready",
         includeInactive: "true",
-        ...(projectId ? { projectId: String(projectId) } : {}),
+        ...(companyName ? { company: String(companyName) } : {}),
         ...(projectName ? { project: String(projectName) } : {}),
+        ...(projectId ? { projectId: String(projectId) } : {}),
       });
       const url = `${API_BASE}/datasets?${qs.toString()}`;
       console.info("[fetchDatasets] url:", url, { selectedProjectObj });
@@ -618,6 +624,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
           // Ensure both camelCase and snake_case are available for augmentation flags
           is_augmented: d.is_augmented ?? d.isAugmented ?? false,
           augmentation_status: d.augmentation_status ?? d.augmentationStatus,
+          labelSource: d.labelSource ?? d.label_source ?? null,
         };
       });
 
@@ -1801,7 +1808,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                         </TooltipTrigger>
                         <TooltipContent side="top" align="start" className="max-w-sm">
                           <p className="text-xs">
-                            Pick a dataset version that has finished processing. Ready versions can be used for training. Pre-Labelled means annotations are included.
+                            Pick a dataset version that has finished processing. Ready versions can be used for training. Unlabeled = images only. Pre-Labelled = uploaded with labels. Manually Labelled = annotated in app. Augmented = created via augmentation.
                           </p>
                         </TooltipContent>
                       </Tooltip>
@@ -1860,11 +1867,6 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                                 </div>
                               </div>
                               <div className="flex items-center gap-2 flex-wrap">
-                                {dataset.datasetType && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {dataset.datasetType === "labeled" ? "Labeled" : "Unlabeled"}
-                                  </Badge>
-                                )}
                                 {dataset.annotationStatus && (
                                   <Badge variant="secondary" className="text-xs">
                                     {dataset.annotationStatus === "completed" ? "Completed" : "Pending"}
@@ -1875,7 +1877,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                                     Augmenting…
                                   </Badge>
                                 )}
-                                {!dataset.datasetType && (
+                                {(!dataset.datasetType || dataset.status) && (
                                   <Badge
                                     variant={
                                       dataset.status === "ready" || dataset.status === "ready_to_train"
@@ -1890,24 +1892,70 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                                       : (dataset.status ?? "unknown")}
                                   </Badge>
                                 )}
-                                {!dataset.datasetType && dataset.status === "ready" && (
-                                  <Badge
-                                    variant="outline"
-                                    className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40"
-                                  >
-                                    Pre-Labelled
-                                  </Badge>
-                                )}
-                                {!dataset.datasetType && dataset.status === "ready_to_train" && (
-                                  <Badge
-                                    variant="outline"
-                                    className="bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/40"
-                                  >
-                                    Manually Labelled
-                                  </Badge>
-                                )}
-                                {!dataset.datasetType &&
-                                  dataset.is_augmented &&
+                                {/* Source badge: Unlabeled | Pre-Labelled | Manually Labeled (one of these) */}
+                                {(() => {
+                                  const ls = dataset.labelSource ?? dataset.label_source;
+                                  let label: string | null =
+                                    ls === "manually_labeled"
+                                      ? "Manually Labelled"
+                                      : ls === "pre_labelled"
+                                        ? "Pre-Labelled"
+                                        : ls === "unlabeled"
+                                          ? "Unlabeled"
+                                          : null;
+                                  // When labelSource is missing (old datasets): for augmented, infer from source in list
+                                  if (!label && dataset.is_augmented && datasetList.length > 0) {
+                                    const v = dataset.augmentedFromVersion ?? dataset.augmented_from_version;
+                                    const sid = dataset.backup_dataset_id ?? dataset.sourceDatasetId ?? dataset.source_dataset_id;
+                                    const source = datasetList.find(
+                                      (s) =>
+                                        (v != null && (s.version === v || s.version === `v${v}` || String(s.version) === String(v))) ||
+                                        (sid && (s._id ?? s.id ?? s.datasetId) === sid)
+                                    );
+                                    if (source?.status === "ready_to_train") label = "Manually Labelled";
+                                    else if (source?.datasetType === "labeled" && source?.status === "ready") label = "Pre-Labelled";
+                                    else if (source?.datasetType === "unlabeled" || (!source?.datasetType && source?.status === "ready")) label = "Unlabeled";
+                                    else label = "Manually Labelled"; // default for augmented when source unknown (common: annotate → augment)
+                                  }
+                                  if (label) {
+                                    return (
+                                      <Badge
+                                        variant="outline"
+                                        className={
+                                          label === "Manually Labelled"
+                                            ? "bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/40"
+                                            : label === "Pre-Labelled"
+                                              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40"
+                                              : "text-xs"
+                                        }
+                                      >
+                                        {label}
+                                      </Badge>
+                                    );
+                                  }
+                                  // Fallback for non-augmented datasets without labelSource
+                                  return dataset.status === "ready_to_train" ? (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/40"
+                                    >
+                                      Manually Labelled
+                                    </Badge>
+                                  ) : dataset.datasetType === "labeled" && dataset.status === "ready" ? (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40"
+                                    >
+                                      Pre-Labelled
+                                    </Badge>
+                                  ) : (dataset.datasetType === "unlabeled" ||
+                                      (!dataset.datasetType && dataset.status === "ready")) ? (
+                                    <Badge variant="outline" className="text-xs">
+                                      Unlabeled
+                                    </Badge>
+                                  ) : null;
+                                })()}
+                                {dataset.is_augmented &&
                                   (dataset.augmentation_status === "succeeded" ||
                                     dataset.augmentationStatus === "succeeded") && (
                                     <Badge
@@ -1956,24 +2004,18 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
             </ProtectedComponent>
           )}
 
-        {/* Optional: Augment Dataset / Cancel Augmentation - strict: datasetType unlabeled, annotationStatus completed, unlabeledImagesCount 0 */}
+        {/* Augment Dataset / Cancel Augmentation - allow for any ready dataset with all images labeled */}
         {selectedDatasetId &&
           datasetDetails && (() => {
             const unlabeledCount = datasetDetails.unlabeledImagesCount ?? datasetDetails.unlabeledImages ?? datasetDetails.unlabeled_images ?? 0;
-            const hasNewFields = datasetDetails.datasetType != null || datasetDetails.annotationStatus != null;
-            const canAugment = hasNewFields
-              ? datasetDetails.datasetType === "unlabeled" && datasetDetails.annotationStatus === "completed" && unlabeledCount === 0
-              : (datasetDetails.status === "ready_to_train" && unlabeledCount === 0);
+            const isReady = datasetDetails.status === "ready" || datasetDetails.status === "ready_to_train";
+            const canAugment = isReady && unlabeledCount === 0;
             const disabledReason = !canAugment
-              ? datasetDetails.datasetType !== "unlabeled" && datasetDetails.datasetType != null
-                ? "Dataset must be unlabeled type"
-                : datasetDetails.annotationStatus !== "completed" && datasetDetails.annotationStatus != null
-                  ? "Complete annotation first"
-                  : unlabeledCount > 0
-                    ? "Complete annotation of all images before augmenting"
-                    : datasetDetails.status !== "ready_to_train" && !hasNewFields
-                      ? "Dataset not ready for augmentation"
-                      : undefined
+              ? unlabeledCount > 0
+                ? "Complete annotation of all images before augmenting"
+                : !isReady
+                  ? "Dataset not ready for augmentation"
+                  : undefined
               : undefined;
             return (
               <ProtectedComponent requiredPermission="annotateDatasets">

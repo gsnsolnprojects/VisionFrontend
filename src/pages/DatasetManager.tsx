@@ -178,40 +178,55 @@ const DatasetManager = () => {
   const [versions, setVersions] = useState<VersionEntry[]>([]);
   const [selectedVersionDatasetId, setSelectedVersionDatasetId] = useState<string | null>(null);
   const [augmentingDatasetId, setAugmentingDatasetId] = useState<string | null>(null);
+  const [augmentingSourceDatasetId, setAugmentingSourceDatasetId] = useState<string | null>(null);
   const [cancellingAugmentationId, setCancellingAugmentationId] = useState<string | null>(null);
   const [showCancelAugmentDialog, setShowCancelAugmentDialog] = useState(false);
   const [cancelAugmentDatasetId, setCancelAugmentDatasetId] = useState<string | null>(null);
 
-  const selectedVersionAugmenting = versions.find((v) => v.datasetId === selectedVersionDatasetId)?.augmentation_status === "running";
+  const augmentingVersion = versions.find((v) => v.augmentation_status === "running");
+  const datasetIdToPoll =
+    augmentingSourceDatasetId ??
+    augmentingVersion?.datasetId ??
+    (versions.find((v) => v.datasetId === selectedVersionDatasetId)?.augmentation_status === "running"
+      ? selectedVersionDatasetId
+      : null);
+
   const {
     status: augmentationStatus,
     progress: augmentationProgress,
     startPolling: startAugmentationPolling,
     stopPolling: stopAugmentationPolling,
     resetToIdle: resetAugmentationToIdle,
-  } = useAugmentationStatus(selectedVersionDatasetId);
+  } = useAugmentationStatus(datasetIdToPoll);
 
-  // Start polling when selected version is augmenting
+  // Start polling when any version is augmenting (so status bar shows even without selection)
   useEffect(() => {
-    if (selectedVersionDatasetId && selectedVersionAugmenting) {
-      startAugmentationPolling();
+    if (datasetIdToPoll) {
+      startAugmentationPolling(datasetIdToPoll);
     }
-  }, [selectedVersionDatasetId, selectedVersionAugmenting, startAugmentationPolling]);
+  }, [datasetIdToPoll, startAugmentationPolling]);
+
+  // Refresh versions list periodically while augmentation is running (keeps "Augmenting…" badge in sync)
+  useEffect(() => {
+    if (augmentationStatus !== "running") return;
+    const interval = setInterval(() => void fetchVersions(), 8000);
+    return () => clearInterval(interval);
+  }, [augmentationStatus]);
 
   const augmentationHandledRef = useRef<string | null>(null);
   const prevAugmentationStatusRef = useRef<AugmentationStatusState | null>(null);
   useEffect(() => {
-    const key = `${selectedVersionDatasetId}-${augmentationStatus}`;
+    const key = `${datasetIdToPoll}-${augmentationStatus}`;
     const prevStatus = prevAugmentationStatusRef.current;
-    
+
     // Only show notification when transitioning from "running" to "succeeded" or "failed"
-    // This prevents showing notifications when viewing already-completed datasets
     const isTransitionToSucceeded = prevStatus === "running" && augmentationStatus === "succeeded";
     const isTransitionToFailed = prevStatus === "running" && augmentationStatus === "failed";
-    
+
     if (isTransitionToSucceeded) {
       if (augmentationHandledRef.current === key) return;
       augmentationHandledRef.current = key;
+      setAugmentingSourceDatasetId(null);
       toast({
         title: "Augmentation completed",
         description: "The dataset has been successfully augmented and replaced.",
@@ -226,16 +241,16 @@ const DatasetManager = () => {
     } else if (isTransitionToFailed) {
       if (augmentationHandledRef.current === key) return;
       augmentationHandledRef.current = key;
+      setAugmentingSourceDatasetId(null);
       toast({
         title: "Augmentation failed",
         description: "Dataset augmentation failed. The original dataset is unchanged.",
         variant: "destructive",
       });
     }
-    
-    // Update previous status ref
+
     prevAugmentationStatusRef.current = augmentationStatus;
-  }, [augmentationStatus, selectedVersionDatasetId, toast]);
+  }, [augmentationStatus, datasetIdToPoll, toast]);
   const [fileManifest, setFileManifest] = useState<FileEntry[]>([]);
   const [thumbnailCache, setThumbnailCache] = useState<Record<string, string>>({});
   // Track in-flight thumbnail requests to prevent duplicate fetches
@@ -1817,6 +1832,16 @@ const DatasetManager = () => {
     setDeletingVersion(true);
 
     try {
+      // Clear selection before delete to stop file browser from loading images/thumbnails.
+      // This reduces EPERM (file in use) on Windows when backend serves files from disk.
+      if (selectedVersionDatasetId === versionToDelete) {
+        setSelectedVersionDatasetId(null);
+        setMetadata(null);
+        setFileManifest([]);
+      }
+      // Brief delay so backend can release file handles from any in-flight requests. Reduces EPERM.
+      await new Promise((r) => setTimeout(r, 1500));
+
       const headers = await getAuthHeaders();
       const deleteUrl = apiUrl(`/dataset/${encodeURIComponent(versionToDelete)}`);
       const res = await fetch(deleteUrl, {
@@ -1900,6 +1925,7 @@ const DatasetManager = () => {
     setCancellingAugmentationId(datasetId);
     try {
       await datasetsApi.cancelAugmentation(datasetId);
+      setAugmentingSourceDatasetId(null);
       stopAugmentationPolling();
       resetAugmentationToIdle();
       toast({
@@ -2524,23 +2550,26 @@ const DatasetManager = () => {
               <CardDescription>Click a version to view its stored subfolders & files</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
-              {augmentationStatus === "running" && selectedVersionDatasetId && (
-                <div className="mb-3 p-2 rounded-md bg-muted/50 space-y-1.5">
+              {augmentationStatus === "running" && (
+                <div className="mb-3 p-3 rounded-md bg-muted/50 space-y-2 border border-primary/20">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">
+                    <span className="font-medium text-foreground">
                       {cancellingAugmentationId ? "Cancelling…" : "Augmenting dataset…"}
                     </span>
                     <ProtectedComponent requiredPermission="annotateDatasets">
                       <Button
                         variant="destructive"
                         size="sm"
-                        disabled={cancellingAugmentationId === selectedVersionDatasetId}
+                        disabled={!!cancellingAugmentationId}
                         onClick={() => {
-                          setCancelAugmentDatasetId(selectedVersionDatasetId);
-                          setShowCancelAugmentDialog(true);
+                          const id = datasetIdToPoll ?? augmentingVersion?.datasetId;
+                          if (id) {
+                            setCancelAugmentDatasetId(id);
+                            setShowCancelAugmentDialog(true);
+                          }
                         }}
                       >
-                        {cancellingAugmentationId === selectedVersionDatasetId ? "Cancelling..." : "Cancel Augmentation"}
+                        {cancellingAugmentationId ? "Cancelling..." : "Cancel Augmentation"}
                       </Button>
                     </ProtectedComponent>
                   </div>
@@ -2549,6 +2578,11 @@ const DatasetManager = () => {
                     className="h-2"
                     indicatorClassName="progress-striped progress-animated"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    {augmentingVersion?.version
+                      ? `Augmenting ${augmentingVersion.version}… ${augmentationProgress}%`
+                      : `${augmentationProgress}% complete`}
+                  </p>
                 </div>
               )}
                   {versions.length === 0 ? (
@@ -2575,9 +2609,38 @@ const DatasetManager = () => {
                                     Augmenting…
                                   </Badge>
                                 )}
-                                {v.datasetType && (
+                                {(v.labelSource ?? v.label_source ?? v.datasetType ?? v.status) && (
                                   <Badge variant="outline" className="text-xs">
-                                    {v.datasetType === "labeled" ? "Labeled" : "Unlabeled"}
+                                    {(() => {
+                                      const ls = v.labelSource ?? v.label_source;
+                                      if (ls === "manually_labeled") return "Manually Labelled";
+                                      if (ls === "pre_labelled") return "Pre-Labelled";
+                                      if (ls === "unlabeled") return "Unlabeled";
+                                      // Fallback for augmented datasets without labelSource: infer from source in versions list
+                                      if (v.is_augmented && versions.length > 0) {
+                                        const av = v.augmentedFromVersion ?? v.augmented_from_version;
+                                        const sid = v.backup_dataset_id ?? v.sourceDatasetId ?? v.source_dataset_id;
+                                        const source = versions.find(
+                                          (s) =>
+                                            (av != null && (s.version === av || s.version === `v${av}` || String(s.version) === String(av))) ||
+                                            (sid && (s.datasetId ?? s.id) === sid)
+                                        );
+                                        if (source?.status === "ready_to_train") return "Manually Labelled";
+                                        if (source?.datasetType === "labeled" && source?.status === "ready") return "Pre-Labelled";
+                                        if (source?.datasetType === "unlabeled" || (!source?.datasetType && source?.status === "ready")) return "Unlabeled";
+                                        return "Manually Labelled"; // default for augmented when source unknown
+                                      }
+                                      // Fallback for non-augmented
+                                      return v.status === "ready_to_train"
+                                        ? "Manually Labelled"
+                                        : v.datasetType === "labeled" && v.status === "ready"
+                                          ? "Pre-Labelled"
+                                          : v.datasetType === "unlabeled" || (!v.datasetType && v.status === "ready")
+                                            ? "Unlabeled"
+                                            : v.datasetType === "labeled"
+                                              ? "Labeled"
+                                              : "Unlabeled";
+                                    })()}
                                   </Badge>
                                 )}
                                 {v.annotationStatus && (
@@ -3296,6 +3359,7 @@ const DatasetManager = () => {
             await datasetsApi.augmentDataset(datasetId, versionName, options);
             setShowAugmentOptionsDialog(false);
             setAugmentOptionsDatasetId(null);
+            setAugmentingSourceDatasetId(datasetId);
             toast({
               title: "Augmentation started",
               description: "Dataset augmentation has been started in the background. You can continue working while it finishes.",

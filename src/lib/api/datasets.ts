@@ -75,6 +75,8 @@ export interface DatasetStatusResponse {
   augmentedFromVersion?: string | number | null;
   currentDatasetId?: string | null;
   isActive?: boolean;
+  /** Source of labels: 'unlabeled' | 'pre_labelled' | 'manually_labeled'. For augmented datasets, reflects the source. */
+  labelSource?: "unlabeled" | "pre_labelled" | "manually_labeled" | null;
 }
 
 /**

@@ -27,6 +27,8 @@ import type { AnnotationState } from "@/types/annotation";
 import type { Category } from "@/types/annotation";
 import { Loader2, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAugmentationStatus, type AugmentationStatusState } from "@/hooks/useAugmentationStatus";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -130,8 +132,17 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   const [augmentDatasetVersion, setAugmentDatasetVersion] = useState<string | number | null>(null);
   const [augmentMultiplierPreset, setAugmentMultiplierPreset] = useState<2 | 5 | "custom">(2);
   const [customTargetTrainTotal, setCustomTargetTrainTotal] = useState<number>(1000);
-  const augmentationPollRef = useRef<number | null>(null);
-  const augmentationNotificationShownRef = useRef<string | null>(null);
+  const [augmentingDatasetId, setAugmentingDatasetId] = useState<string | null>(null);
+  const augmentationHandledRef = useRef<string | null>(null);
+  const prevAugmentationStatusRef = useRef<AugmentationStatusState | null>(null);
+
+  const {
+    status: augmentationStatus,
+    progress: augmentationProgress,
+    startPolling: startAugmentationPolling,
+    stopPolling: stopAugmentationPolling,
+    resetToIdle: resetAugmentationToIdle,
+  } = useAugmentationStatus(augmentingDatasetId);
 
   // Track image loading state
   const { loaded: imageLoaderLoaded, error: imageError } = useImageLoader(
@@ -305,16 +316,50 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     void initialize();
   }, [datasetId, loadImages, selectImage, setCategory, toast]);
 
-  // Cleanup augmentation polling when component unmounts or datasetId changes
+  // Start polling when augmentation is running
   useEffect(() => {
-    // Reset notification tracking when dataset changes
-    augmentationNotificationShownRef.current = null;
+    if (augmentingDatasetId) {
+      startAugmentationPolling(augmentingDatasetId);
+    }
     return () => {
-      if (augmentationPollRef.current) {
-        window.clearInterval(augmentationPollRef.current);
-        augmentationPollRef.current = null;
-      }
+      if (augmentingDatasetId) stopAugmentationPolling();
     };
+  }, [augmentingDatasetId, startAugmentationPolling, stopAugmentationPolling]);
+
+  // Handle augmentation completion (toast + clear state)
+  useEffect(() => {
+    const key = `${augmentingDatasetId}-${augmentationStatus}`;
+    const prevStatus = prevAugmentationStatusRef.current;
+    const isSucceeded = prevStatus === "running" && augmentationStatus === "succeeded";
+    const isFailed = prevStatus === "running" && augmentationStatus === "failed";
+
+    if (isSucceeded) {
+      if (augmentationHandledRef.current === key) return;
+      augmentationHandledRef.current = key;
+      setAugmentingDatasetId(null);
+      toast({
+        title: "Augmentation completed",
+        description: "The dataset has been successfully augmented and replaced.",
+        variant: "default",
+      });
+    } else if (isFailed) {
+      if (augmentationHandledRef.current === key) return;
+      augmentationHandledRef.current = key;
+      setAugmentingDatasetId(null);
+      toast({
+        title: "Augmentation failed",
+        description: "Dataset augmentation failed. The original dataset is unchanged.",
+        variant: "destructive",
+      });
+    }
+    prevAugmentationStatusRef.current = augmentationStatus;
+  }, [augmentationStatus, augmentingDatasetId, toast]);
+
+  // Cleanup when dataset changes
+  useEffect(() => {
+    setAugmentingDatasetId(null);
+    augmentationHandledRef.current = null;
+    prevAugmentationStatusRef.current = null;
   }, [datasetId]);
 
   // Keep annotations ref in sync with state (for conflict detection without dependency issues)
@@ -605,56 +650,6 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       setTimeout(() => setSaveStatus("idle"), 3000);
     }
   }, [annotations, datasetId, categories, hasCategories, markSaved, toast]);
-
-  // Lightweight augmentation status polling (for toast feedback only)
-  const startAugmentationStatusPolling = useCallback(
-    (id: string) => {
-      if (augmentationPollRef.current) {
-        window.clearInterval(augmentationPollRef.current);
-        augmentationPollRef.current = null;
-      }
-      // Reset notification tracking when starting new polling for a dataset
-      augmentationNotificationShownRef.current = null;
-      augmentationPollRef.current = window.setInterval(async () => {
-        try {
-          const status = await datasetsApi.fetchDatasetStatus(id);
-          const augStatus = status.augmentation_status;
-          if (!augStatus || augStatus === "not_started" || augStatus === "running") {
-            return;
-          }
-          // Once we reach a terminal state, clear polling and notify user (only once)
-          if (augmentationPollRef.current) {
-            window.clearInterval(augmentationPollRef.current);
-            augmentationPollRef.current = null;
-          }
-          const notificationKey = `${id}-${augStatus}`;
-          // Only show notification if we haven't shown it for this dataset/status combination
-          if (augmentationNotificationShownRef.current === notificationKey) {
-            return;
-          }
-          augmentationNotificationShownRef.current = notificationKey;
-          if (augStatus === "succeeded") {
-            toast({
-              title: "Augmentation completed",
-              description: "The dataset has been successfully augmented and replaced.",
-              variant: "success",
-            });
-          } else if (augStatus === "failed") {
-            toast({
-              title: "Augmentation failed",
-              description:
-                (status as any).augmentation_error ||
-                "Dataset augmentation failed. The original dataset is unchanged.",
-              variant: "destructive",
-            });
-          }
-        } catch (error) {
-          console.error("Failed to poll augmentation status:", error);
-        }
-      }, 5000);
-    },
-    [toast]
-  );
 
   // Handle image selection with unsaved changes confirmation
   const handleImageSelect = useCallback(
@@ -1290,6 +1285,21 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         </div>
       </div>
 
+      {/* Augmentation status bar - visible when augmenting from annotation flow */}
+      {augmentationStatus === "running" && (
+        <div className="mt-3 p-3 rounded-md bg-muted/50 space-y-2 border border-primary/20">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-medium text-foreground">Augmenting dataset…</span>
+          </div>
+          <Progress
+            value={augmentationProgress}
+            className="h-2"
+            indicatorClassName="progress-striped progress-animated"
+          />
+          <p className="text-xs text-muted-foreground">{augmentationProgress}% complete</p>
+        </div>
+      )}
+
       {/* Navigation controls */}
       <div className="flex items-center justify-between text-sm">
         <div className="flex items-center gap-2">
@@ -1599,12 +1609,12 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           setAugmenting(true);
           try {
             await datasetsApi.augmentDataset(datasetId, versionName, options);
+            setAugmentingDatasetId(datasetId);
             toast({
               title: "Augmentation started",
               description:
                 "Dataset augmentation has been started in the background. You can continue working while it finishes.",
             });
-            startAugmentationStatusPolling(datasetId);
             setShowAugmentDialog(false);
           } catch (error: unknown) {
             const msg = error instanceof Error ? error.message : String(error ?? "");
