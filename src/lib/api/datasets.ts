@@ -1,4 +1,4 @@
-import { apiRequest } from "./config";
+import { apiRequest, apiUrl, getAuthHeaders } from "./config";
 
 export type ThumbnailItem = {
   imageId: string;
@@ -162,4 +162,52 @@ export const cancelAugmentation = async (
   return apiRequest(path, {
     method: "POST",
   });
+};
+
+/**
+ * Download dataset as a ZIP file.
+ * Files use original names for user-friendly export (e.g. after labeling/augmentation).
+ * Triggers browser download; returns when download starts.
+ * @param flat - If true, request flat structure (images/, labels/). If false/omitted, full structure (images/train|val|test, etc.).
+ */
+export const downloadDataset = async (
+  datasetId: string,
+  options?: { flat?: boolean }
+): Promise<void> => {
+  const path = `/dataset/${encodeURIComponent(datasetId)}/download`;
+  const query = options?.flat ? "?flat=true" : "";
+  const url = apiUrl(path + query);
+  const headers = await getAuthHeaders();
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      ...headers,
+      "Content-Type": "application/zip",
+    },
+  });
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "");
+    let msg = `Download failed: ${response.status}`;
+    try {
+      const j = JSON.parse(errText);
+      msg = j.message || j.error || msg;
+    } catch {
+      if (errText) msg = errText;
+    }
+    throw new Error(msg);
+  }
+  const blob = await response.blob();
+  const contentDisposition = response.headers.get("Content-Disposition");
+  let filename = "dataset.zip";
+  if (contentDisposition) {
+    const match = contentDisposition.match(/filename="?([^";\n]+)"?/);
+    if (match) filename = match[1].trim();
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
 };

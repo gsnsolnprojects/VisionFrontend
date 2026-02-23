@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { List, X, FileText, Search, ZoomIn, ZoomOut, RotateCcw, Maximize2, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, Folder, ChevronRight as ChevronRightIcon, ChevronDown, Trash2, Loader2, Upload, ArrowRight, Info, Pencil } from "lucide-react";
+import { List, X, FileText, Search, ZoomIn, ZoomOut, RotateCcw, Maximize2, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, Folder, ChevronRight as ChevronRightIcon, ChevronDown, Trash2, Loader2, Upload, ArrowRight, Info, Pencil, Download, MoreVertical } from "lucide-react";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { cn } from "@/lib/utils";
 import {
@@ -50,7 +50,6 @@ import { getDetectedClasses, type DetectedClassesResponse } from "@/lib/api/cate
 import { ProtectedComponent } from "@/components/permissions/ProtectedComponent";
 import { DeleteProjectModal } from "@/components/dashboard/DeleteProjectModal";
 import { EditProjectModal } from "@/components/dashboard/EditProjectModal";
-import { Badge } from "@/components/ui/badge";
 import * as datasetsApi from "@/lib/api/datasets";
 import { useAugmentationStatus, type AugmentationStatusState } from "@/hooks/useAugmentationStatus";
 import { AugmentVersionNameModal } from "@/components/datasets/AugmentVersionNameModal";
@@ -60,6 +59,17 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
 const apiUrl = (path: string) => {
@@ -79,6 +89,10 @@ interface DatasetMetadata {
   trainCount?: number;
   valCount?: number;
   testCount?: number;
+  is_augmented?: boolean;
+  isAugmented?: boolean;
+  labelSource?: string;
+  label_source?: string;
   folders?: Record<string, { images: number; labels: number }>;
   previews?: Array<{ path: string; url?: string; thumbUrl?: string; thumbData?: string }>;
   files?: Array<{
@@ -182,6 +196,7 @@ const DatasetManager = () => {
   const [cancellingAugmentationId, setCancellingAugmentationId] = useState<string | null>(null);
   const [showCancelAugmentDialog, setShowCancelAugmentDialog] = useState(false);
   const [cancelAugmentDatasetId, setCancelAugmentDatasetId] = useState<string | null>(null);
+  const [downloadingDatasetId, setDownloadingDatasetId] = useState<string | null>(null);
 
   const augmentingVersion = versions.find((v) => v.augmentation_status === "running");
   const datasetIdToPoll =
@@ -1362,6 +1377,19 @@ const DatasetManager = () => {
       try {
         const detectedClasses = await getDetectedClasses(datasetId);
 
+        // Debug: log what backend returned (helps diagnose why popup may not show)
+        const willShow = detectedClasses.totalClasses > 0 && !detectedClasses.hasCategories;
+        console.log(
+          "[checkForDetectedClasses] totalClasses:",
+          detectedClasses.totalClasses,
+          "| hasCategories:",
+          detectedClasses.hasCategories,
+          "| classIds:",
+          detectedClasses.classIds,
+          "| willShowPopup:",
+          willShow
+        );
+
         // Only show popup if:
         // 1. Class IDs were detected (totalClasses > 0)
         // 2. Categories don't exist yet (hasCategories === false)
@@ -1437,10 +1465,11 @@ const DatasetManager = () => {
 
               // Check for detected class IDs (only for labeled datasets)
               if (!isUnlabeled) {
-                // Small delay to ensure backend has processed everything
+                // Delay to ensure backend has parsed labels and populated detected-classes
+                const delayMs = 2000;
                 setTimeout(() => {
                   checkForDetectedClasses(datasetId);
-                }, 1000);
+                }, delayMs);
               }
 
               // fetch full file manifest
@@ -1599,6 +1628,9 @@ const DatasetManager = () => {
         description: `Dataset ${datasetId} queued with ${json.totalImages} files.`,
       });
 
+      // Capture before clearing state — used for detected-classes popup (labeled vs unlabeled)
+      const isUnlabeledUpload = selectedFolderType === "unlabelled";
+
       // Clear folder selection after successful upload
       setFiles([]);
       setSelectedFolderName(null);
@@ -1630,7 +1662,7 @@ const DatasetManager = () => {
       }
 
       // start polling for server-side processing
-      await pollDatasetStatus(datasetId, selectedFolderType === "unlabelled");
+      await pollDatasetStatus(datasetId, isUnlabeledUpload);
     } catch (err: any) {
       setUploadStatus("failed");
       setStatusMessage("Upload failed.");
@@ -1816,6 +1848,27 @@ const DatasetManager = () => {
     // Fetch dependencies before showing dialog
     await fetchVersionDependencies(datasetId);
     setShowDeleteVersionDialog(true);
+  };
+
+  // ------- Download dataset handler (flat = true → single folder; false/omit → train/val/test) -------
+  const handleDownloadDataset = async (datasetId: string, flat: boolean) => {
+    setDownloadingDatasetId(datasetId);
+    try {
+      await datasetsApi.downloadDataset(datasetId, { flat });
+      toast({
+        title: "Download complete",
+        description: flat ? "Dataset downloaded as flat structure (images/, labels/)." : "Dataset downloaded with full structure (train/val/test).",
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Download failed";
+      toast({
+        title: "Download failed",
+        description: msg,
+        variant: "destructive",
+      });
+    } finally {
+      setDownloadingDatasetId(null);
+    }
   };
 
   // ------- Delete version handler -------
@@ -2604,57 +2657,6 @@ const DatasetManager = () => {
                             <button className="text-left" onClick={() => onSelectVersion(v.datasetId)}>
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-medium">{v.version || v.datasetId}</span>
-                                {v.augmentation_status === "running" && (
-                                  <Badge variant="secondary" className="text-xs animate-pulse">
-                                    Augmenting…
-                                  </Badge>
-                                )}
-                                {(v.labelSource ?? v.label_source ?? v.datasetType ?? v.status) && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {(() => {
-                                      const ls = v.labelSource ?? v.label_source;
-                                      if (ls === "manually_labeled") return "Manually Labelled";
-                                      if (ls === "pre_labelled") return "Pre-Labelled";
-                                      if (ls === "unlabeled") return "Unlabeled";
-                                      // Fallback for augmented datasets without labelSource: infer from source in versions list
-                                      if (v.is_augmented && versions.length > 0) {
-                                        const av = v.augmentedFromVersion ?? v.augmented_from_version;
-                                        const sid = v.backup_dataset_id ?? v.sourceDatasetId ?? v.source_dataset_id;
-                                        const source = versions.find(
-                                          (s) =>
-                                            (av != null && (s.version === av || s.version === `v${av}` || String(s.version) === String(av))) ||
-                                            (sid && (s.datasetId ?? s.id) === sid)
-                                        );
-                                        if (source?.status === "ready_to_train") return "Manually Labelled";
-                                        if (source?.datasetType === "labeled" && source?.status === "ready") return "Pre-Labelled";
-                                        if (source?.datasetType === "unlabeled" || (!source?.datasetType && source?.status === "ready")) return "Unlabeled";
-                                        return "Manually Labelled"; // default for augmented when source unknown
-                                      }
-                                      // Fallback for non-augmented
-                                      return v.status === "ready_to_train"
-                                        ? "Manually Labelled"
-                                        : v.datasetType === "labeled" && v.status === "ready"
-                                          ? "Pre-Labelled"
-                                          : v.datasetType === "unlabeled" || (!v.datasetType && v.status === "ready")
-                                            ? "Unlabeled"
-                                            : v.datasetType === "labeled"
-                                              ? "Labeled"
-                                              : "Unlabeled";
-                                    })()}
-                                  </Badge>
-                                )}
-                                {v.annotationStatus && (
-                                  <Badge variant="secondary" className="text-xs">
-                                    {v.annotationStatus === "completed" ? "Completed" : "Pending"}
-                                  </Badge>
-                                )}
-                                {v.is_augmented && (
-                                  <Badge variant="secondary" className="text-xs">
-                                    Augmented
-                                    {v.augmentationMultiplier != null && ` ${v.augmentationMultiplier}x`}
-                                    {v.augmentedFromVersion != null && ` from v${v.augmentedFromVersion}`}
-                                  </Badge>
-                                )}
                               </div>
                               <div className="text-xs text-muted-foreground">
                                 {v.createdAt ? new Date(v.createdAt).toLocaleString() : ""}
@@ -2665,7 +2667,7 @@ const DatasetManager = () => {
                               <span className="text-xs text-primary"> (selected)</span>
                             )}
                           </div>
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2">
                             <Button
                               variant="outline"
                               size="sm"
@@ -2676,65 +2678,90 @@ const DatasetManager = () => {
                             >
                               View
                             </Button>
-                            <ProtectedComponent requiredPermission="annotateDatasets">
-                              {v.augmentation_status === "running" ? (
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  disabled={cancellingAugmentationId === v.datasetId}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setCancelAugmentDatasetId(v.datasetId);
-                                    setShowCancelAugmentDialog(true);
-                                  }}
-                                >
-                                  {cancellingAugmentationId === v.datasetId ? (
-                                    <>
-                                      <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                                      Cancelling...
-                                    </>
-                                  ) : (
-                                    "Cancel Augmentation"
-                                  )}
-                                </Button>
-                              ) : v.status === "processing" ? null : (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
                                 <Button
                                   variant="outline"
-                                  size="sm"
-                                  disabled={augmentingDatasetId === v.datasetId}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openAugmentOptionsDialog(v.datasetId);
-                                  }}
+                                  size="icon"
+                                  className="h-8 w-8 shrink-0"
+                                  onClick={(e) => e.stopPropagation()}
+                                  title="More actions"
+                                  disabled={downloadingDatasetId === v.datasetId}
                                 >
-                                  {augmentingDatasetId === v.datasetId ? (
-                                    <>
-                                      <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                                      Augmenting...
-                                    </>
+                                  {downloadingDatasetId === v.datasetId ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
                                   ) : (
-                                    "Augment"
+                                    <MoreVertical className="h-4 w-4" />
                                   )}
                                 </Button>
-                              )}
-                            </ProtectedComponent>
-                            <ProtectedComponent requiredPermission="deleteDatasets">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="border-destructive/40 text-destructive hover:bg-destructive/5"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteVersionClick(v.datasetId);
-                                }}
-                                disabled={
-                                  (deletingVersion || loadingDependencies) &&
-                                  versionToDelete === v.datasetId
-                                }
-                              >
-                                Delete
-                              </Button>
-                            </ProtectedComponent>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                                <DropdownMenuSub>
+                                  <DropdownMenuSubTrigger disabled={downloadingDatasetId === v.datasetId}>
+                                    <Download className="mr-2 h-4 w-4" />
+                                    Download
+                                  </DropdownMenuSubTrigger>
+                                  <DropdownMenuSubContent>
+                                    <DropdownMenuItem
+                                      onClick={() => handleDownloadDataset(v.datasetId, false)}
+                                      disabled={downloadingDatasetId === v.datasetId}
+                                    >
+                                      Full structure (train/val/test)
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => handleDownloadDataset(v.datasetId, true)}
+                                      disabled={downloadingDatasetId === v.datasetId}
+                                    >
+                                      Flat (single folder)
+                                    </DropdownMenuItem>
+                                  </DropdownMenuSubContent>
+                                </DropdownMenuSub>
+                                <DropdownMenuSeparator />
+                                <ProtectedComponent requiredPermission="annotateDatasets">
+                                  {v.augmentation_status === "running" ? (
+                                    <DropdownMenuItem
+                                      className="text-destructive focus:text-destructive"
+                                      disabled={cancellingAugmentationId === v.datasetId}
+                                      onClick={() => {
+                                        setCancelAugmentDatasetId(v.datasetId);
+                                        setShowCancelAugmentDialog(true);
+                                      }}
+                                    >
+                                      {cancellingAugmentationId === v.datasetId ? (
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                      ) : null}
+                                      Cancel Augmentation
+                                    </DropdownMenuItem>
+                                  ) : v.status !== "processing" ? (
+                                    <DropdownMenuItem
+                                      disabled={augmentingDatasetId === v.datasetId}
+                                      onClick={() => openAugmentOptionsDialog(v.datasetId)}
+                                    >
+                                      {augmentingDatasetId === v.datasetId ? (
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                      ) : null}
+                                      Augment
+                                    </DropdownMenuItem>
+                                  ) : null}
+                                </ProtectedComponent>
+                                <ProtectedComponent requiredPermission="deleteDatasets">
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="text-destructive focus:text-destructive"
+                                      disabled={
+                                        (deletingVersion || loadingDependencies) &&
+                                        versionToDelete === v.datasetId
+                                      }
+                                      onClick={() => handleDeleteVersionClick(v.datasetId)}
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </>
+                                </ProtectedComponent>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </div>
                       ))}
@@ -2801,15 +2828,70 @@ const DatasetManager = () => {
                 </div>
               ) : metadata ? (
                 <>
+                  {/* Badges: Status, Type, Augmented, Active */}
+                  {(() => {
+                    const sel = versions.find((v) => v.datasetId === selectedVersionDatasetId);
+                    const status = metadata.status ?? sel?.status;
+                    const isAugmented = metadata.is_augmented ?? metadata.isAugmented ?? sel?.is_augmented ?? sel?.isAugmented;
+                    const isActive = sel?.isActive ?? sel?.is_active;
+                    const ls = metadata.labelSource ?? metadata.label_source ?? sel?.labelSource ?? sel?.label_source ?? sel?.datasetType;
+                    let labelLabel: string | null = null;
+                    if (ls === "manually_labeled") labelLabel = "Manually Labelled";
+                    else if (ls === "pre_labelled") labelLabel = "Pre-Labelled";
+                    else if (ls === "unlabeled" || ls === "labeled") labelLabel = ls === "unlabeled" ? "Unlabeled" : "Labeled";
+                    else if (status === "ready_to_train" || sel?.status === "ready_to_train") labelLabel = "Manually Labelled";
+                    else if (isAugmented && sel) {
+                      const src = versions.find((s) => s.datasetId === (sel.backup_dataset_id ?? sel.sourceDatasetId ?? sel.source_dataset_id));
+                      labelLabel = src?.datasetType === "labeled" ? "Pre-Labelled" : "Manually Labelled";
+                    }
+                    const badges: { label: string; variant?: "default" | "secondary" | "outline" | "destructive"; className?: string }[] = [];
+                    if (status === "ready" || status === "ready_to_train") badges.push({ label: "Ready", variant: "default" });
+                    else if (status === "processing") badges.push({ label: "Processing", className: "border-amber-500/50 bg-amber-500/20 text-amber-400" });
+                    if (labelLabel) {
+                      const labelClass = labelLabel === "Manually Labelled" ? "border-teal-500/50 bg-teal-500/20 text-teal-400"
+                        : labelLabel === "Pre-Labelled" ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-400"
+                        : labelLabel === "Unlabeled" ? "border-slate-500/50 bg-slate-500/20 text-slate-400"
+                        : "border-blue-500/50 bg-blue-500/20 text-blue-400";
+                      badges.push({ label: labelLabel, className: labelClass });
+                    }
+                    if (isAugmented) badges.push({ label: "Augmented", className: "border-violet-500/50 bg-violet-500/20 text-violet-400" });
+                    if (isActive) badges.push({ label: "Active", className: "border-emerald-500/50 bg-emerald-500/20 text-emerald-400" });
+                    if (badges.length === 0) return null;
+                    return (
+                      <div className="flex flex-wrap gap-1.5 pb-2">
+                        {badges.map((b) => (
+                          <Badge key={b.label} variant={b.variant ?? "outline"} className={cn("text-xs", b.className)}>
+                            {b.label}
+                          </Badge>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   <div className="space-y-1">
-                    {typeof metadata.totalImages === "number" && <p><span className="font-medium">Total files: </span>{metadata.totalImages}</p>}
+                    {typeof metadata.totalImages === "number" && <p><span className="font-medium">Total images: </span>{metadata.totalImages}</p>}
                     {typeof metadata.sizeBytes === "number" && <p><span className="font-medium">Size: </span>{(metadata.sizeBytes / (1024 * 1024)).toFixed(2)} MB</p>}
                     {typeof metadata.thumbnailsGenerated === "boolean" && <p><span className="font-medium">Thumbnails: </span>{metadata.thumbnailsGenerated ? "Generated" : "Pending"}</p>}
                   </div>
                   
                   {metadata.folders && Object.keys(metadata.folders).length > 0 && (
                     <div className="pt-3 border-t">
-                      <p className="font-medium mb-2">Folder breakdown:</p>
+                      <p className="font-medium mb-2 flex items-center gap-2">
+                        Folder breakdown:
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex cursor-help">
+                                <Info className="h-4 w-4 text-muted-foreground shrink-0" />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" align="start" className="max-w-sm">
+                              <p className="text-xs">
+                                Shows how your dataset is split into train, val, and test folders. Train is used for model learning, val for tuning during training, and test for final evaluation. Each folder contains images and their corresponding YOLO-format label files.
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </p>
                       <div className="space-y-1.5 pl-2">
                         {Object.entries(metadata.folders).map(([folderName, stats]) => (
                           <p key={folderName} className="text-xs">
