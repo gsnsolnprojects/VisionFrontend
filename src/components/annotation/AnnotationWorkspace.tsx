@@ -977,6 +977,14 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const activeElement = document.activeElement as HTMLElement | null;
+      const isTypingInInput =
+        !!target?.closest('input, textarea, select, [contenteditable="true"], [role="combobox"]') ||
+        !!activeElement?.closest('input, textarea, select, [contenteditable="true"], [role="combobox"]');
+
+      if (isTypingInInput) return;
+
       // D → draw mode
       if ((e.key === "d" || e.key === "D") && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();

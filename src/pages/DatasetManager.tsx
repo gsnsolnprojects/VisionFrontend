@@ -152,7 +152,7 @@ interface FileEntry {
   mime?: string;
 }
 
-const MAX_FILES = 5000;
+const MAX_FILES = 10000;
 const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024; // 200 MB - adjust if needed
 
 const DatasetManager = () => {

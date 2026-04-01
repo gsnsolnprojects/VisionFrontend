@@ -142,6 +142,10 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
   const [learningRate, setLearningRate] = useState<number>(0.01);
   const [workers, setWorkers] = useState<number>(4);
 
+  /** User-facing name for the new trained model (sent as `modelVersion` to POST /train). */
+  const [trainingModelName, setTrainingModelName] = useState<string>("");
+  const userEditedTrainingNameRef = useRef(false);
+
   // UI / loading / job state
   const [loadingDatasets, setLoadingDatasets] = useState(false);
   const [loadingDatasetDetails, setLoadingDatasetDetails] = useState(false);
@@ -910,7 +914,11 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
     }
   };
 
-  // when project changes, load datasets
+  // Stable company name so we refetch when profile loads (fixes "no models" when profile was late)
+  const companyNameForModels =
+    (profile as any)?.companies?.name ?? (profile as any)?.company?.name ?? "";
+
+  // when project changes, load datasets and trained models
   useEffect(() => {
     // Don't reset training state if training is active
     const isTrainingActive = isSimulating || (jobId && ["queued", "running"].includes(simulationStatus));
@@ -935,8 +943,23 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
       setDatasetList([]);
       setTrainedModels([]);
     }
+    // Refetch when company name becomes available (profile may load after first run)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProjectId, sessionReady]);
+  }, [selectedProjectId, sessionReady, companyNameForModels]);
+
+  // When the Trained Models card is visible but list is empty, refetch once (handles late profile or stale state)
+  useEffect(() => {
+    if (
+      selectedProjectId &&
+      selectedDatasetId &&
+      trainedModels.length === 0 &&
+      !trainedModelsLoading &&
+      companyNameForModels
+    ) {
+      void fetchTrainedModels();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDatasetId]);
 
   // when dataset changes, fetch details
   useEffect(() => {
@@ -969,6 +992,29 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDatasetId, sessionReady]);
+
+  // Reset custom-name edit flag when switching dataset
+  useEffect(() => {
+    if (!selectedDatasetId) {
+      setTrainingModelName("");
+      userEditedTrainingNameRef.current = false;
+      return;
+    }
+    userEditedTrainingNameRef.current = false;
+  }, [selectedDatasetId]);
+
+  // Default trained model name: `<dataset version>-<YYYY-MM-DD>` (until user edits)
+  useEffect(() => {
+    if (!selectedDatasetId || userEditedTrainingNameRef.current) return;
+    const fromList = datasetList.find(
+      (d) => String(d._id ?? d.id ?? d.datasetId ?? "") === String(selectedDatasetId)
+    );
+    const verRaw = fromList?.version ?? datasetDetails?.version;
+    const base =
+      verRaw != null && String(verRaw).trim() !== "" ? String(verRaw).trim() : "model";
+    const stamp = new Date().toISOString().slice(0, 10);
+    setTrainingModelName(`${base}-${stamp}`);
+  }, [selectedDatasetId, datasetList, datasetDetails?.version]);
 
   // EfficientNet and Custom are disabled; ensure we never leave them selected
   useEffect(() => {
@@ -1243,6 +1289,16 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
       return;
     }
 
+    const trimmedModelName = trainingModelName.trim();
+    if (trimmedModelName.length > 120) {
+      toast({
+        title: "Model name too long",
+        description: "Please use 120 characters or fewer.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Prepare payload based on selected model option
     const selectedModel = baseModels.find((m) => m.key === selectedModelSize);
 
@@ -1250,6 +1306,11 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
       datasetId: selectedDatasetId,
       ...(selectedProjectId ? { projectId: selectedProjectId } : {}),
     };
+
+    if (trimmedModelName.length > 0) {
+      // Backend: optional display/version string for the resulting trained model (matches list UI `modelVersion`).
+      payload.modelVersion = trimmedModelName;
+    }
 
     if (selectedModel && selectedModel.type === "trained" && selectedModel.modelId) {
       // Continue/improve an existing trained model
@@ -1867,11 +1928,6 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                                 </div>
                               </div>
                               <div className="flex items-center gap-2 flex-wrap">
-                                {dataset.annotationStatus && (
-                                  <Badge variant="secondary" className="text-xs">
-                                    {dataset.annotationStatus === "completed" ? "Completed" : "Pending"}
-                                  </Badge>
-                                )}
                                 {dataset.augmentation_status === "running" && (
                                   <Badge variant="secondary" className="text-xs animate-pulse">
                                     Augmenting…
@@ -2290,6 +2346,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                                         ? "destructive"
                                         : "secondary"
                                     }
+                                    className="justify-center leading-none shrink-0 translate-y-px"
                                   >
                                     {model.status}
                                   </Badge>
@@ -2672,6 +2729,24 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
               <CardDescription>Choose a model and tune hyperparameters</CardDescription>
             </CardHeader>
             <CardContent>
+              <div className="mb-4 space-y-2">
+                <Label htmlFor="training-model-name">Trained model name</Label>
+                <Input
+                  id="training-model-name"
+                  value={trainingModelName}
+                  onChange={(e) => {
+                    userEditedTrainingNameRef.current = true;
+                    setTrainingModelName(e.target.value);
+                  }}
+                  placeholder="e.g. my-detector-v1"
+                  autoComplete="off"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Shown as the model version after training. Default uses your dataset version and today&apos;s date.
+                  Clear the field to let the server choose a name.
+                </p>
+              </div>
+
               {/* Model type selector */}
               <div className="mb-4">
                 <Label>Model Type</Label>
@@ -3314,6 +3389,12 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
             <div className="flex justify-between"><span className="text-sm text-muted-foreground">Train / Val / Test:</span><span className="text-sm font-medium">{[datasetDetails?.trainCount ?? 0, datasetDetails?.valCount ?? 0, datasetDetails?.testCount ?? 0].join(" / ")}</span></div>
             <div className="flex justify-between"><span className="text-sm text-muted-foreground">Model Type:</span><span className="text-sm font-medium">{modelType}</span></div>
             {modelType === "YOLO" && (<div className="flex justify-between"><span className="text-sm text-muted-foreground">YOLO Size:</span><span className="text-sm font-medium">{selectedModelSize || "not selected"}</span></div>)}
+            <div className="flex justify-between gap-4">
+              <span className="text-sm text-muted-foreground shrink-0">Model name:</span>
+              <span className="text-sm font-medium text-right">
+                {trainingModelName.trim() || "(server default)"}
+              </span>
+            </div>
             <div className="flex justify-between"><span className="text-sm text-muted-foreground">Epochs:</span><span className="text-sm font-medium">{epochs}</span></div>
           </div>
           <DialogFooter>
