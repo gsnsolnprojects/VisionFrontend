@@ -141,6 +141,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
   const [imgSize, setImgSize] = useState<number>(640);
   const [learningRate, setLearningRate] = useState<number>(0.01);
   const [workers, setWorkers] = useState<number>(4);
+  const [augmentationPreset, setAugmentationPreset] = useState<string>("none");
 
   /** User-facing name for the new trained model (sent as `modelVersion` to POST /train). */
   const [trainingModelName, setTrainingModelName] = useState<string>("");
@@ -1306,6 +1307,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
       datasetId: selectedDatasetId,
       ...(selectedProjectId ? { projectId: selectedProjectId } : {}),
     };
+    payload.augmentationPreset = augmentationPreset;
 
     if (trimmedModelName.length > 0) {
       // Backend: optional display/version string for the resulting trained model (matches list UI `modelVersion`).
@@ -1341,6 +1343,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
     }
 
     console.info("[startTraining] payload:", payload);
+    console.log("Training with augmentation preset:", augmentationPreset);
 
     // Clear any existing persisted training state before starting new training
     clearTrainingState();
@@ -2742,8 +2745,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                   autoComplete="off"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Shown as the model version after training. Default uses your dataset version and today&apos;s date.
-                  Clear the field to let the server choose a name.
+                  Change the name or leave it as default
                 </p>
               </div>
 
@@ -2821,9 +2823,6 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                   <div className="flex items-center justify-between gap-4">
                   <div>
                     <div className="font-medium">Default Training Parameters</div>
-                      <div className="text-xs text-muted-foreground">
-                        These are fetched from the backend for the selected model type.
-                      </div>
                   </div>
                   <div className="flex items-center gap-2">
                       <label className="flex items-center gap-2 text-sm">
@@ -3047,6 +3046,36 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                   </div>
                 </div>
               )}
+
+              <div className="mt-3 max-w-sm">
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-sm font-medium">Augmentation Preset</Label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 cursor-help text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent side="top" align="start" className="max-w-sm">
+                        <p className="text-xs">
+                          Improve model robustness for specific conditions like color variation or low light.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                <Select value={augmentationPreset} onValueChange={setAugmentationPreset}>
+                  <SelectTrigger className="mt-1 w-full">
+                    <SelectValue placeholder="Select preset" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    <SelectItem value="color_invariant">Color Invariant Detection</SelectItem>
+                    <SelectItem value="small_defect">Small Defect Detection</SelectItem>
+                    <SelectItem value="low_light">Low Light Optimization</SelectItem>
+                    <SelectItem value="robust">Industrial Robust Mode</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </CardContent>
           </Card>
             </motion.div>
