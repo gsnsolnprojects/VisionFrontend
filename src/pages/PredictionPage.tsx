@@ -434,6 +434,8 @@ const PredictionPage = () => {
   const [annotatedFrame, setAnnotatedFrame] = useState<string | null>(null); // base64 image URL
   const [frameKey, setFrameKey] = useState<number>(0); // Key to force image re-render
   const [currentDetections, setCurrentDetections] = useState<number>(0);
+  const [currentDefectDetections, setCurrentDefectDetections] = useState<number>(0);
+  const [verdict, setVerdict] = useState<"NO_PRODUCT" | "OK" | "NOT_OK">("NO_PRODUCT");
   const [isProcessingFrame, setIsProcessingFrame] = useState<boolean>(false);
   const [fps, setFps] = useState<number>(0); // Optional: FPS counter
   const [liveSessionConfidenceThreshold, setLiveSessionConfidenceThreshold] = useState<number | null>(null); // Value returned from live/start (optional display)
@@ -447,6 +449,7 @@ const PredictionPage = () => {
   const captureIntervalRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef<number>(0);
   const pendingFrameRequestRef = useRef<boolean>(false);
+  const verdictHistoryRef = useRef<string[]>([]);
   const liveInferenceIdRef = useRef<string | null>(null);
   const isLiveInferenceRunningRef = useRef<boolean>(false);
   const cameraStreamRef = useRef<MediaStream | null>(null);
@@ -1146,6 +1149,52 @@ const PredictionPage = () => {
       }
 
       const data: LiveFrameResponse = await res.json();
+      const detections = data.detections || [];
+      const defectDetectionsCount = detections.filter((d) => d.class !== "product").length;
+
+      // Detect product
+      const productDetected = detections.some(
+        (d) => d.class === "product" && d.confidence >= 0.45
+      );
+
+      // Detect defects
+      const defectDetected = detections.some(
+        (d) => d.class !== "product" && d.confidence >= 0.35
+      );
+
+      // Frame verdict
+      let frameVerdict: "NO_PRODUCT" | "OK" | "NOT_OK";
+
+      if (!productDetected) {
+        frameVerdict = "NO_PRODUCT";
+      } else if (defectDetected) {
+        frameVerdict = "NOT_OK";
+      } else {
+        frameVerdict = "OK";
+      }
+
+      const history = verdictHistoryRef.current;
+      history.push(frameVerdict);
+      if (history.length > 7) history.shift();
+
+      // Count values
+      const counts = history.reduce((acc, v) => {
+        acc[v] = (acc[v] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      let finalVerdict = verdict;
+
+      // Rules
+      if (counts["NOT_OK"] >= 2) {
+        finalVerdict = "NOT_OK";
+      } else if (counts["OK"] >= 5) {
+        finalVerdict = "OK";
+      } else if (counts["NO_PRODUCT"] >= 5) {
+        finalVerdict = "NO_PRODUCT";
+      }
+
+      setVerdict(finalVerdict);
       console.log("Frame processed successfully (overlay mode):", {
         totalDetections: data.totalDetections,
         detectionsCount: data.detections?.length ?? 0,
@@ -1280,6 +1329,7 @@ const PredictionPage = () => {
       setFrameKey(prev => prev + 1);
       setAnnotatedFrame(null); // no longer used for live overlay
       setCurrentDetections(data.totalDetections ?? (data.detections?.length ?? 0));
+      setCurrentDefectDetections(defectDetectionsCount);
       
       // Update FPS calculation
       const now = Date.now();
@@ -1507,6 +1557,7 @@ const PredictionPage = () => {
       setLiveSessionConfidenceThreshold(sessionThreshold);
       setAnnotatedFrame(null);
       setCurrentDetections(0);
+      setCurrentDefectDetections(0);
 
       toast({
         title: "Live inference started",
@@ -1571,6 +1622,7 @@ const PredictionPage = () => {
     setAnnotatedFrame(null);
     setFrameKey(0);
     setCurrentDetections(0);
+    setCurrentDefectDetections(0);
     setFps(0);
     pendingFrameRequestRef.current = false;
     liveInferenceIdRef.current = null;
@@ -2817,7 +2869,6 @@ const PredictionPage = () => {
               <CardContent className="space-y-4">
                 {/* Camera feed with overlay canvas for detections */}
                 <div className="space-y-2">
-                  <Label>Live Camera with Annotations</Label>
                   <div className="relative aspect-video bg-black rounded-md overflow-hidden">
                     <video
                       ref={videoRef}
@@ -2854,6 +2905,32 @@ const PredictionPage = () => {
                       ref={annotatedCanvasRef}
                       className="absolute inset-0 w-full h-full pointer-events-none"
                     />
+                    <div
+                      className={cn(
+                        "absolute top-2 left-2 rounded-md border px-3 py-2 backdrop-blur-sm",
+                        verdict === "OK" && "bg-green-50/95 text-green-700 border-green-200",
+                        verdict === "NOT_OK" && "bg-red-50/95 text-red-700 border-red-200",
+                        verdict === "NO_PRODUCT" && "bg-gray-50/95 text-gray-700 border-gray-200"
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={cn(
+                            "inline-block h-3.5 w-3.5 rounded-full border shadow-[0_0_10px_rgba(0,0,0,0.18)]",
+                            verdict === "OK" && "bg-green-500 border-green-600 shadow-green-500/70",
+                            verdict === "NOT_OK" &&
+                              "bg-red-500 border-red-600 shadow-red-500/80 animate-pulse",
+                            verdict === "NO_PRODUCT" && "bg-gray-400 border-gray-500 shadow-gray-400/60"
+                          )}
+                        />
+                        <span className="text-sm font-semibold tracking-wide">
+                          {verdict === "NO_PRODUCT" ? "NO PRODUCT" : verdict}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-xs font-medium opacity-90">
+                        Detections: {currentDefectDetections}
+                      </div>
+                    </div>
                     {cameraPermission === 'requesting' && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/50">
                         <Loader2 className="h-8 w-8 animate-spin text-white" />
@@ -2866,14 +2943,6 @@ const PredictionPage = () => {
                           <p className="text-sm">Camera access denied</p>
                         </div>
                       </div>
-                    )}
-                    {currentDetections > 0 && (
-                      <Badge
-                        variant="outline"
-                        className="absolute top-2 right-2 bg-red-50 text-red-700 border-red-200"
-                      >
-                        {currentDetections} detection{currentDetections !== 1 ? 's' : ''}
-                      </Badge>
                     )}
                   </div>
                 </div>

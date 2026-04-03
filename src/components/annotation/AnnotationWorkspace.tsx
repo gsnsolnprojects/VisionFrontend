@@ -701,11 +701,74 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
 
   // Handle delete annotation
   const handleDeleteAnnotation = useCallback(
-    (annotationId: string) => {
+    async (annotationId: string) => {
+      const annotationToDelete = annotations.find((ann) => ann.id === annotationId);
+      if (!annotationToDelete) return;
+
+      // Remove immediately for responsive UI
       deleteAnnotation(annotationId);
-      // Auto-save will trigger via useEffect
+
+      // Local temporary annotations are not persisted yet
+      const isLocalOnly = annotationId.startsWith("ann_");
+      if (isLocalOnly) return;
+
+      try {
+        const persistedAnnotationId =
+          String((annotationToDelete as any)?._id ?? annotationToDelete.id ?? annotationId);
+
+        // Some backend environments expect a dataset version identifier shape different
+        // from the route param used to open this page. Try known candidates safely.
+        const datasetCandidates = Array.from(
+          new Set(
+            [
+              datasetId,
+              (annotationToDelete as any)?.datasetId,
+              (annotationToDelete as any)?.datasetVersionId,
+              (currentImage as any)?.datasetId,
+              (currentImage as any)?.datasetVersionId,
+            ]
+              .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+              .map((v) => v.trim())
+          )
+        );
+
+        let deleteSucceeded = false;
+        let lastError: unknown = null;
+        for (const dsId of datasetCandidates) {
+          try {
+            await annotationsApi.deleteAnnotation(dsId, persistedAnnotationId);
+            deleteSucceeded = true;
+            break;
+          } catch (candidateError) {
+            lastError = candidateError;
+          }
+        }
+
+        if (!deleteSucceeded) {
+          throw (lastError ?? new Error("Delete failed"));
+        }
+        // Keep UX consistent with other immediately-persisted actions
+        markSaved();
+      } catch (error) {
+        console.error("Failed to delete annotation:", error);
+        toast({
+          title: "Failed to delete annotation",
+          description: error instanceof Error ? error.message : "The annotation could not be deleted.",
+          variant: "destructive",
+        });
+
+        // Roll back to backend state so deleted box does not disappear temporarily
+        if (currentImage?.id) {
+          try {
+            const data = await annotationsApi.getAnnotations(datasetId, currentImage.id);
+            loadAnnotations(data.annotations);
+          } catch (reloadError) {
+            console.error("Failed to reload annotations after delete error:", reloadError);
+          }
+        }
+      }
     },
-    [deleteAnnotation]
+    [annotations, deleteAnnotation, datasetId, markSaved, toast, currentImage, loadAnnotations]
   );
 
   // Calculate annotated images count across dataset
