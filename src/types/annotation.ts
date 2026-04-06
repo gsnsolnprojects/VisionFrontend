@@ -14,6 +14,8 @@ export interface Image {
   size?: number;
   // Optional annotation metadata from backend (used for filtering/progress)
   hasAnnotations?: boolean;
+  /** True when YOLO label file exists on disk (may not yet have DB annotation rows). */
+  hasLabels?: boolean;
   annotationStatus?: "unannotated" | "annotated" | "in_review" | "approved";
 }
 

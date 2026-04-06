@@ -2037,31 +2037,68 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
           )}
         </AnimatePresence>
 
-        {/* Phase 2: Annotate Data button - show for unlabeled datasets */}
+        {/* Annotate / edit labels — any ready dataset with images (unlabeled, pre-labeled, or fully labeled) */}
         {selectedDatasetId &&
-          datasetDetails?.unlabeledImages > 0 && (
-            <ProtectedComponent requiredPermission="annotateDatasets">
-              <motion.div
-                key="annotation-toggle"
-                variants={fadeInUpVariants}
-                initial="hidden"
-                animate="visible"
-              >
-                <div className="flex justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    type="button"
-                    onClick={() => {
-                      // Phase 2: Navigate to annotation page for this dataset version
-                      navigate(`/annotation/${selectedDatasetId}`);
-                    }}
-                  >
-                    Annotate Data
-                  </Button>
-                </div>
-              </motion.div>
-            </ProtectedComponent>
-          )}
+          datasetDetails &&
+          (() => {
+            const isReady =
+              datasetDetails.status === "ready" || datasetDetails.status === "ready_to_train";
+            const unlabeled =
+              Number(
+                datasetDetails.unlabeledImagesCount ??
+                  datasetDetails.unlabeledImages ??
+                  datasetDetails.unlabeled_images ??
+                  0
+              ) || 0;
+            const labeled =
+              Number(datasetDetails.labeledImages ?? datasetDetails.labeled_images ?? 0) || 0;
+            const totalImages =
+              Number(datasetDetails.totalImages ?? 0) ||
+              (unlabeled + labeled > 0 ? unlabeled + labeled : 0) ||
+              Number(datasetDetails.trainCount ?? 0) +
+                Number(datasetDetails.valCount ?? datasetDetails.validationCount ?? 0) +
+                Number(datasetDetails.testCount ?? 0);
+            const canOpenAnnotation = isReady && totalImages > 0;
+            if (!canOpenAnnotation) return null;
+            const label =
+              unlabeled > 0 ? "Annotate Data" : "Edit annotations";
+            return (
+              <ProtectedComponent requiredPermission="annotateDatasets">
+                <motion.div
+                  key="annotation-toggle"
+                  variants={fadeInUpVariants}
+                  initial="hidden"
+                  animate="visible"
+                >
+                  <div className="flex justify-end gap-2">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex">
+                            <Button
+                              variant="outline"
+                              type="button"
+                              onClick={() => {
+                                navigate(`/annotation/${selectedDatasetId}`);
+                              }}
+                            >
+                              {label}
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-sm">
+                          <p className="text-xs">
+                            Open the annotation workspace for this dataset version. Pre-labeled
+                            images load boxes from label files when you open each image.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </motion.div>
+              </ProtectedComponent>
+            );
+          })()}
 
         {/* Augment Dataset / Cancel Augmentation - allow for any ready dataset with all images labeled */}
         {selectedDatasetId &&

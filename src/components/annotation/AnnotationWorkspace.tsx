@@ -23,8 +23,7 @@ import { supabase } from "@/integrations/supabase/client";
 import * as annotationsApi from "@/lib/api/annotations";
 import * as categoriesApi from "@/lib/api/categories";
 import * as modelsApi from "@/lib/api/models";
-import type { AnnotationState } from "@/types/annotation";
-import type { Category } from "@/types/annotation";
+import type { AnnotationState, Category, Image } from "@/types/annotation";
 import { Loader2, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAugmentationStatus, type AugmentationStatusState } from "@/hooks/useAugmentationStatus";
@@ -36,6 +35,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Tooltip,
   TooltipContent,
@@ -50,6 +59,30 @@ interface AnnotationWorkspaceProps {
 }
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+/** Normalize dataset image payloads from API (snake_case / _id) for editor + thumbnails */
+function normalizeDatasetImage(raw: Record<string, unknown>): Image {
+  const id = String(raw.id ?? raw._id ?? "");
+  return {
+    id,
+    filename: String(raw.filename ?? raw.name ?? ""),
+    url: String(raw.url ?? ""),
+    thumbnailUrl:
+      raw.thumbnailUrl != null
+        ? String(raw.thumbnailUrl)
+        : raw.thumbnail_url != null
+          ? String(raw.thumbnail_url)
+          : undefined,
+    folder: raw.folder != null ? String(raw.folder) : undefined,
+    size: typeof raw.size === "number" ? raw.size : undefined,
+    hasAnnotations:
+      raw.hasAnnotations === true ||
+      raw.has_annotations === true ||
+      raw.has_annotation === true,
+    hasLabels: raw.hasLabels === true || raw.has_labels === true,
+    annotationStatus: raw.annotationStatus as Image["annotationStatus"] | undefined,
+  };
+}
 
 export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   datasetId,
@@ -128,6 +161,8 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   const hasRestoredSessionRef = useRef(false);
   // Augmentation confirmation state (shown after successful save + convert)
   const [showAugmentDialog, setShowAugmentDialog] = useState(false);
+  /** Confirm destructive re-import from YOLO .txt (replace DB rows for current image) */
+  const [replaceLabelsConfirmOpen, setReplaceLabelsConfirmOpen] = useState(false);
   const [augmenting, setAugmenting] = useState(false);
   const [augmentDatasetVersion, setAugmentDatasetVersion] = useState<string | number | null>(null);
   const [augmentMultiplierPreset, setAugmentMultiplierPreset] = useState<2 | 5 | "custom">(2);
@@ -245,8 +280,12 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         if (!imagesData || !imagesData.images) {
           throw new Error("Invalid response from images endpoint");
         }
-        
-        loadImages(imagesData.images);
+
+        loadImages(
+          imagesData.images.map((img) =>
+            normalizeDatasetImage(img as unknown as Record<string, unknown>)
+          )
+        );
         console.log("[AnnotationWorkspace] Loaded", imagesData.images.length, "images");
 
         // Auto-select first image if nothing will restore from session
@@ -367,16 +406,52 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     annotationsRef.current = annotations;
   }, [annotations]);
 
-  // Fetch annotations when image changes (with debouncing)
+  // Fetch annotations when image changes (with debouncing).
+  // If image has YOLO .txt on disk but no DB rows yet, import first so the canvas can show boxes.
   useEffect(() => {
     if (!currentImage) return;
 
     const imageId = currentImage.id;
+    const hasLabels = currentImage.hasLabels === true;
+    const hasDbAnnotations = currentImage.hasAnnotations === true;
 
-    // Debounce fetch to prevent rapid requests when navigating quickly between images
+    let cancelled = false;
+
     const timeoutId = setTimeout(async () => {
       try {
+        if (hasLabels && !hasDbAnnotations) {
+          // ✅ pre-labeled images only have .txt until import — hydrate Mongo rows for canvas
+          const importResult = await annotationsApi.importLabelsToAnnotations(datasetId, {
+            imageIds: [imageId],
+            replace: false,
+          });
+          if (cancelled) return;
+
+          const details = importResult.details ?? [];
+          const allWarnings = details.flatMap((d) => d.warnings ?? []);
+          if (allWarnings.length > 0) {
+            const preview = allWarnings.slice(0, 8).join(" · ");
+            toast({
+              title: "Label import warnings",
+              description:
+                preview + (allWarnings.length > 8 ? ` (+${allWarnings.length - 8} more)` : ""),
+              variant: "default",
+            });
+          }
+
+          const myDetail = details.find((d) => d.imageId === imageId) ?? details[0];
+          if (myDetail?.status === "skipped" && myDetail.reason) {
+            toast({
+              title: "Labels import skipped",
+              description: myDetail.reason,
+              variant: "default",
+            });
+          }
+        }
+
         const data = await annotationsApi.getAnnotations(datasetId, imageId);
+        if (cancelled) return;
+
         console.log("[AnnotationWorkspace] FETCHED ANNS", {
           datasetId,
           imageId,
@@ -384,24 +459,46 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           anns: data.annotations,
         });
         loadAnnotations(data.annotations);
-        setSelectedAnnotation(null); // Clear selection on image change
-        selection.clearSelection(); // Phase 6: Clear multi-select
-        setLastUpdateTime(new Date()); // Phase 6: Track update time
-      } catch (error) {
-        console.error("Failed to fetch annotations:", error);
-        toast({
-          title: "Failed to load annotations",
-          description: error instanceof Error ? error.message : "Unknown error",
-          variant: "destructive",
-        });
-      } finally {
-        // no-op
+        setSelectedAnnotation(null);
+        selection.clearSelection();
+        setLastUpdateTime(new Date());
+      } catch (error: unknown) {
+        if (cancelled) return;
+        console.error("Failed to fetch/import annotations:", error);
+        const msg = error instanceof Error ? error.message : String(error ?? "");
+        const lower = msg.toLowerCase();
+        if (
+          lower.includes("401") ||
+          lower.includes("403") ||
+          lower.includes("unauthorized") ||
+          lower.includes("forbidden")
+        ) {
+          toast({
+            title: "Access denied",
+            description: msg || "You may not have permission to load or import labels.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Failed to load annotations",
+            description: msg || "Unknown error",
+            variant: "destructive",
+          });
+        }
       }
-    }, 100); // Small debounce (100ms) to batch rapid image changes
+    }, 100);
 
-    return () => clearTimeout(timeoutId);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentImage?.id, datasetId]); // ✅ FIXED: Removed unstable dependencies
+  }, [
+    currentImage?.id,
+    datasetId,
+    currentImage?.hasLabels,
+    currentImage?.hasAnnotations,
+  ]);
 
   // Phase 6: Conflict detection - poll for updates (CRITICAL FIX: Only depend on imageId)
   useEffect(() => {
@@ -953,6 +1050,56 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     }
   }, [currentImage, datasetId, loadAnnotations, toast]);
 
+  /** Replace Mongo annotations for current image from on-disk YOLO .txt (user-confirmed) */
+  const handleReloadFromLabelFile = useCallback(async () => {
+    if (!currentImage) return;
+    setReplaceLabelsConfirmOpen(false);
+    try {
+      const importResult = await annotationsApi.importLabelsToAnnotations(datasetId, {
+        imageIds: [currentImage.id],
+        replace: true,
+      });
+      const allWarnings = (importResult.details ?? []).flatMap((d) => d.warnings ?? []);
+      if (allWarnings.length > 0) {
+        const preview = allWarnings.slice(0, 8).join(" · ");
+        toast({
+          title: "Label import warnings",
+          description:
+            preview + (allWarnings.length > 8 ? ` (+${allWarnings.length - 8} more)` : ""),
+          variant: "default",
+        });
+      }
+      const data = await annotationsApi.getAnnotations(datasetId, currentImage.id);
+      loadAnnotations(data.annotations);
+      setLastUpdateTime(new Date());
+      toast({
+        title: "Reloaded from label file",
+        description: "Database annotations for this image were replaced from disk labels.",
+      });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error ?? "");
+      const lower = msg.toLowerCase();
+      if (
+        lower.includes("401") ||
+        lower.includes("403") ||
+        lower.includes("unauthorized") ||
+        lower.includes("forbidden")
+      ) {
+        toast({
+          title: "Access denied",
+          description: msg,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Failed to reload from label file",
+          description: msg || "Unknown error",
+          variant: "destructive",
+        });
+      }
+    }
+  }, [currentImage, datasetId, loadAnnotations, toast]);
+
   // Category CRUD handlers
   const handleCategoryCreate = useCallback(
     async (category: Omit<Category, "id">) => {
@@ -1194,7 +1341,11 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
                   if (!imagesData || !imagesData.images) {
                     throw new Error("Invalid response from images endpoint");
                   }
-                  loadImages(imagesData.images);
+                  loadImages(
+                    imagesData.images.map((img) =>
+                      normalizeDatasetImage(img as unknown as Record<string, unknown>)
+                    )
+                  );
                   if (imagesData.images.length > 0) {
                     selectImage(0);
                   }
@@ -1244,7 +1395,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     return (
       <div className="mt-6 border rounded-lg p-8 text-center">
         <p className="text-sm text-muted-foreground">
-          No unlabeled images found for this dataset.
+          No images found for this dataset.
         </p>
         <Button variant="outline" size="sm" onClick={onClose} className="mt-4">
           Close
@@ -1269,6 +1420,10 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">Annotation Workspace</h3>
+          <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
+            Edit any image in this dataset. Pre-labeled images may load boxes from label files when you
+            open them; check toasts if something could not be imported.
+          </p>
           <p className="text-xs text-muted-foreground">
             Dataset: <span className="font-mono">{datasetId}</span>
             {unsavedChanges && (
@@ -1581,7 +1736,18 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
               }
             }}
           />
-          
+          {currentImage?.hasLabels && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => setReplaceLabelsConfirmOpen(true)}
+            >
+              Reload from label file
+            </Button>
+          )}
+
           {/* Phase 6: Annotation Metadata */}
           {selectedAnnotationId && (
             <div className="pt-3 border-t">
@@ -1601,6 +1767,28 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           </div>
         </div>
       </div>
+
+      <AlertDialog open={replaceLabelsConfirmOpen} onOpenChange={setReplaceLabelsConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Replace annotations from disk?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This discards current database annotations for this image and re-imports boxes from the
+              YOLO label file on disk. Use this if the canvas and files are out of sync.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                void handleReloadFromLabelFile();
+              }}
+            >
+              Replace from disk
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Category Manager Dialog */}
       <Dialog open={showCategoryManager} onOpenChange={setShowCategoryManager}>

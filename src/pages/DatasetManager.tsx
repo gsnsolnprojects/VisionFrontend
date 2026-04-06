@@ -78,10 +78,37 @@ const apiUrl = (path: string) => {
   return base ? `${base}/${p}` : `/${p}`;
 };
 
+// ✅ Resolves display id when GET /dataset/:id returns `_id` or `datasetId` but not `id`
+function resolveDatasetRecordId(
+  meta: DatasetMetadata | null | undefined,
+  fallbackDatasetId: string | null | undefined
+): string {
+  if (!meta && !fallbackDatasetId) return "";
+  const m = meta as DatasetMetadata & { _id?: unknown; datasetId?: unknown };
+  const fromMeta =
+    (m?.id != null && String(m.id) !== "" ? String(m.id) : null) ??
+    (m?.datasetId != null && String(m.datasetId) !== "" ? String(m.datasetId) : null) ??
+    (m?._id != null && String(m._id) !== "" ? String(m._id) : null);
+  if (fromMeta) return fromMeta;
+  return fallbackDatasetId != null && String(fallbackDatasetId) !== ""
+    ? String(fallbackDatasetId)
+    : "";
+}
+
+function sumFolderLabelFiles(folders: DatasetMetadata["folders"] | undefined): number {
+  if (!folders) return 0;
+  return Object.values(folders).reduce(
+    (acc, s) => acc + (typeof s?.labels === "number" ? s.labels : 0),
+    0
+  );
+}
+
 type UploadStatus = "idle" | "uploading" | "processing" | "ready" | "failed";
 
 interface DatasetMetadata {
-  id: string;
+  id?: string;
+  _id?: string;
+  datasetId?: string;
   status?: string;
   totalImages?: number;
   sizeBytes?: number;
@@ -213,6 +240,21 @@ const DatasetManager = () => {
     stopPolling: stopAugmentationPolling,
     resetToIdle: resetAugmentationToIdle,
   } = useAugmentationStatus(datasetIdToPoll);
+
+  const datasetSummaryDisplay = useMemo(() => {
+    const displayId = resolveDatasetRecordId(metadata, selectedVersionDatasetId);
+    const labelFilesOnDisk = sumFolderLabelFiles(metadata?.folders);
+    const selVersion = versions.find((v) => v.datasetId === selectedVersionDatasetId);
+    const looksManuallyLabeled =
+      !!metadata &&
+      (metadata.labelSource === "manually_labeled" ||
+        metadata.label_source === "manually_labeled" ||
+        metadata.status === "ready_to_train" ||
+        selVersion?.status === "ready_to_train");
+    const showAnnotationStorageHint =
+      !!metadata && labelFilesOnDisk === 0 && looksManuallyLabeled;
+    return { displayId, labelFilesOnDisk, showAnnotationStorageHint };
+  }, [metadata, versions, selectedVersionDatasetId]);
 
   // Start polling when any version is augmenting (so status bar shows even without selection)
   useEffect(() => {
@@ -2798,7 +2840,7 @@ const DatasetManager = () => {
                     </TooltipTrigger>
                     <TooltipContent side="top" align="start" className="max-w-sm">
                       <p className="text-xs">
-                        Overview of your dataset: total files, size, and folder breakdown. Labels folders contain YOLO-format annotations; images folders contain the corresponding image files.
+                        Overview of your dataset: total files, size, and folder breakdown. The numbers under each folder count image files and YOLO <span className="font-medium">.txt label files on disk</span>—not boxes stored only in the annotation database.
                       </p>
                     </TooltipContent>
                   </Tooltip>
@@ -2816,7 +2858,9 @@ const DatasetManager = () => {
 </div>
 
 <CardDescription>
-  {metadata ? `ID: ${metadata.id}` : "Loading..."}
+  {metadataLoading && !metadata
+    ? "Loading..."
+    : `ID: ${datasetSummaryDisplay.displayId || "—"}`}
 </CardDescription>
 
             </CardHeader>
@@ -2886,7 +2930,7 @@ const DatasetManager = () => {
                             </TooltipTrigger>
                             <TooltipContent side="top" align="start" className="max-w-sm">
                               <p className="text-xs">
-                                Shows how your dataset is split into train, val, and test folders. Train is used for model learning, val for tuning during training, and test for final evaluation. Each folder contains images and their corresponding YOLO-format label files.
+                                Shows how your dataset is split (e.g. train/val/test or a single upload folder). The label number counts YOLO <span className="font-medium">.txt files on disk</span>. If you labeled in the app but have not exported or converted to label files yet, you can see 0 here while the project still shows Manually Labelled.
                               </p>
                             </TooltipContent>
                           </Tooltip>
@@ -2896,10 +2940,17 @@ const DatasetManager = () => {
                         {Object.entries(metadata.folders).map(([folderName, stats]) => (
                           <p key={folderName} className="text-xs">
                             <span className="font-medium">{folderName}: </span>
-                            {stats.images} image{stats.images !== 1 ? 's' : ''}, {stats.labels} label{stats.labels !== 1 ? 's' : ''}
+                            {stats.images} image{stats.images !== 1 ? 's' : ''},{' '}
+                            {stats.labels} label file{stats.labels !== 1 ? 's' : ''} on disk
                           </p>
                         ))}
                       </div>
+                      {datasetSummaryDisplay.showAnnotationStorageHint ? (
+                        <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
+                          {/* ✅ Explains why Manually Labelled can coexist with 0 .txt counts */}
+                          This row counts YOLO .txt files in storage. Boxes you saved only in the annotation editor live in the database until you export or convert them—so 0 label files here does not mean your work is missing.
+                        </p>
+                      ) : null}
                     </div>
                   )}
                 </>

@@ -18,8 +18,9 @@ export const getDatasetImages = async (
   const queryParams = new URLSearchParams();
   if (params?.page) queryParams.append("page", String(params.page));
   if (params?.limit) queryParams.append("limit", String(params.limit));
-  if (params?.status && params.status !== "all") {
-    queryParams.append("status", params.status);
+  // Send status=all explicitly so labeled + unlabeled images are returned (edit pre-labeled datasets).
+  if (params?.status != null && params.status !== "") {
+    queryParams.append("status", String(params.status));
   }
 
   const path = `/dataset/${encodeURIComponent(datasetId)}/images${
@@ -63,6 +64,43 @@ export const getAnnotations = async (
   }`;
 
   return apiRequest(path);
+};
+
+/** Per-image result from import-labels-to-annotations */
+export type ImportLabelsToAnnotationsDetail = {
+  imageId?: string;
+  status?: string;
+  annotationsCreated?: number;
+  warnings?: string[];
+  reason?: string;
+};
+
+/** Response from POST .../import-labels-to-annotations */
+export type ImportLabelsToAnnotationsResponse = {
+  imported?: number;
+  skipped?: number;
+  imageProcessed?: number;
+  details?: ImportLabelsToAnnotationsDetail[];
+  message?: string;
+};
+
+/**
+ * Import existing YOLO .txt label files into Mongo annotation rows (for canvas editing).
+ * POST /api/dataset/:datasetId/import-labels-to-annotations
+ */
+export const importLabelsToAnnotations = async (
+  datasetId: string,
+  body: {
+    imageIds?: string[];
+    replace?: boolean;
+  }
+): Promise<ImportLabelsToAnnotationsResponse> => {
+  const path = `/dataset/${encodeURIComponent(datasetId)}/import-labels-to-annotations`;
+
+  return apiRequest(path, {
+    method: "POST",
+    body: JSON.stringify(body ?? {}),
+  });
 };
 
 /**

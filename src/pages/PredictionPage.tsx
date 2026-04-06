@@ -434,7 +434,6 @@ const PredictionPage = () => {
   const [annotatedFrame, setAnnotatedFrame] = useState<string | null>(null); // base64 image URL
   const [frameKey, setFrameKey] = useState<number>(0); // Key to force image re-render
   const [currentDetections, setCurrentDetections] = useState<number>(0);
-  const [currentDefectDetections, setCurrentDefectDetections] = useState<number>(0);
   const [verdict, setVerdict] = useState<"NO_PRODUCT" | "OK" | "NOT_OK">("NO_PRODUCT");
   const [isProcessingFrame, setIsProcessingFrame] = useState<boolean>(false);
   const [fps, setFps] = useState<number>(0); // Optional: FPS counter
@@ -1150,7 +1149,6 @@ const PredictionPage = () => {
 
       const data: LiveFrameResponse = await res.json();
       const detections = data.detections || [];
-      const defectDetectionsCount = detections.filter((d) => d.class !== "product").length;
 
       // Detect product
       const productDetected = detections.some(
@@ -1329,8 +1327,7 @@ const PredictionPage = () => {
       setFrameKey(prev => prev + 1);
       setAnnotatedFrame(null); // no longer used for live overlay
       setCurrentDetections(data.totalDetections ?? (data.detections?.length ?? 0));
-      setCurrentDefectDetections(defectDetectionsCount);
-      
+
       // Update FPS calculation
       const now = Date.now();
       const elapsed = now - lastFrameTimeRef.current;
@@ -1557,7 +1554,6 @@ const PredictionPage = () => {
       setLiveSessionConfidenceThreshold(sessionThreshold);
       setAnnotatedFrame(null);
       setCurrentDetections(0);
-      setCurrentDefectDetections(0);
 
       toast({
         title: "Live inference started",
@@ -1622,7 +1618,6 @@ const PredictionPage = () => {
     setAnnotatedFrame(null);
     setFrameKey(0);
     setCurrentDetections(0);
-    setCurrentDefectDetections(0);
     setFps(0);
     pendingFrameRequestRef.current = false;
     liveInferenceIdRef.current = null;
@@ -2907,28 +2902,25 @@ const PredictionPage = () => {
                     />
                     <div
                       className={cn(
-                        "absolute top-2 left-2 rounded-md border px-3 py-2 backdrop-blur-sm",
+                        "absolute top-3 left-3 rounded-xl border-2 px-5 py-3.5 shadow-lg backdrop-blur-sm sm:top-4 sm:left-4 sm:px-2 sm:py-1",
                         verdict === "OK" && "bg-green-50/95 text-green-700 border-green-200",
                         verdict === "NOT_OK" && "bg-red-50/95 text-red-700 border-red-200",
                         verdict === "NO_PRODUCT" && "bg-gray-50/95 text-gray-700 border-gray-200"
                       )}
                     >
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-4 sm:gap-5">
                         <span
                           className={cn(
-                            "inline-block h-3.5 w-3.5 rounded-full border shadow-[0_0_10px_rgba(0,0,0,0.18)]",
+                            "inline-block h-12 w-12 shrink-0 rounded-full border-[3px] shadow-[0_0_18px_rgba(0,0,0,0.25)] sm:h-14 sm:w-14",
                             verdict === "OK" && "bg-green-500 border-green-600 shadow-green-500/70",
                             verdict === "NOT_OK" &&
                               "bg-red-500 border-red-600 shadow-red-500/80 animate-pulse",
                             verdict === "NO_PRODUCT" && "bg-gray-400 border-gray-500 shadow-gray-400/60"
                           )}
                         />
-                        <span className="text-sm font-semibold tracking-wide">
+                        <span className="text-xl font-bold tracking-wide sm:text-2xl">
                           {verdict === "NO_PRODUCT" ? "NO PRODUCT" : verdict}
                         </span>
-                      </div>
-                      <div className="mt-1 text-xs font-medium opacity-90">
-                        Detections: {currentDefectDetections}
                       </div>
                     </div>
                     {cameraPermission === 'requesting' && (

@@ -26,9 +26,7 @@ const ThumbnailButton = React.memo<{
       aria-label={`Select image ${index + 1}: ${image.filename}`}
     >
       Image {index + 1}
-      <div className="block text-[9px] text-muted-foreground truncate">
-        {image.filename}
-      </div>
+      <div className="block text-[9px] text-muted-foreground truncate">{image.filename}</div>
     </button>
   );
 }, (prev, next) => {
@@ -75,5 +73,3 @@ export const ImageThumbnailGrid: React.FC<ImageThumbnailGridProps> = ({
     </div>
   );
 };
-
-
