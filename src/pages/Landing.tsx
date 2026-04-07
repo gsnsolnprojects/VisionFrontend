@@ -187,6 +187,7 @@ const Landing = () => {
         .trusted-row {
           margin-top: 1rem;
           position: relative;
+          --belt-speed: 18s;
           overflow: hidden;
           border: 1px solid rgba(71, 85, 105, 0.55);
           border-radius: 1rem;
@@ -196,10 +197,10 @@ const Landing = () => {
             inset 0 10px 18px rgba(148, 163, 184, 0.08),
             inset 0 -12px 20px rgba(2, 6, 23, 0.65),
             0 12px 26px rgba(2, 6, 23, 0.35);
-          min-height: 104px;
+          min-height: 118px;
           display: flex;
           align-items: center;
-          padding: 1rem 0;
+          padding: 1.2rem 0;
         }
         .trusted-row::before,
         .trusted-row::after {
@@ -215,27 +216,49 @@ const Landing = () => {
             linear-gradient(270deg, rgba(4, 9, 24, 0.97) 0%, rgba(4, 9, 24, 0) 10%);
         }
         .trusted-row::after {
-          inset: 11px 0 11px 0;
-          border-top: 2px solid rgba(148, 163, 184, 0.38);
-          border-bottom: 2px solid rgba(30, 41, 59, 0.95);
-          box-shadow:
-            inset 0 1px 0 rgba(226, 232, 240, 0.08),
-            inset 0 -1px 0 rgba(2, 6, 23, 0.8);
+          inset: 10px 0;
+          border-top: 2px solid rgba(148, 163, 184, 0.35);
+          border-bottom: 2px solid rgba(30, 41, 59, 0.92);
+          box-shadow: inset 0 1px 0 rgba(226, 232, 240, 0.08), inset 0 -1px 0 rgba(2, 6, 23, 0.84);
         }
         .trusted-row .belt-texture {
           position: absolute;
-          inset: 13px 0;
+          inset: 12px 0;
           z-index: 0;
           background:
+            linear-gradient(180deg, rgba(148, 163, 184, 0.12), rgba(15, 23, 42, 0.08) 28%, rgba(2, 6, 23, 0.34) 100%),
             repeating-linear-gradient(
               90deg,
-              rgba(51, 65, 85, 0.34) 0px,
-              rgba(51, 65, 85, 0.34) 12px,
-              rgba(30, 41, 59, 0.6) 12px,
-              rgba(30, 41, 59, 0.6) 24px
+              rgba(71, 85, 105, 0.28) 0px,
+              rgba(71, 85, 105, 0.28) 18px,
+              rgba(30, 41, 59, 0.68) 18px,
+              rgba(30, 41, 59, 0.68) 36px
             );
-          animation: beltMove 1.15s linear infinite;
-          opacity: 0.8;
+          transform: perspective(520px) rotateX(16deg) scaleY(1.08);
+          transform-origin: center;
+          animation: beltTextureMove var(--belt-speed, 18s) linear infinite;
+          opacity: 0.9;
+          box-shadow:
+            inset 0 12px 18px rgba(148, 163, 184, 0.08),
+            inset 0 -14px 20px rgba(2, 6, 23, 0.66);
+        }
+        .trusted-row .belt-rollers-bottom {
+          position: absolute;
+          left: 14px;
+          right: 14px;
+          bottom: 6px;
+          height: 10px;
+          z-index: 1;
+          opacity: 0.62;
+          background-image: radial-gradient(
+            circle,
+            rgba(148, 163, 184, 0.52) 0 27%,
+            rgba(71, 85, 105, 0.95) 28% 62%,
+            rgba(15, 23, 42, 0.98) 63% 100%
+          );
+          background-size: 18px 10px;
+          background-repeat: repeat-x;
+          animation: beltRollersMove var(--belt-speed, 18s) linear infinite;
         }
         .trusted-track {
           position: relative;
@@ -245,7 +268,7 @@ const Landing = () => {
           align-items: center;
           gap: 1.4rem;
           padding: 0 0.75rem;
-          animation: conveyorRight 26s linear infinite;
+          animation: conveyorLogosMove var(--belt-speed, 18s) linear infinite;
         }
         .trusted-pill {
           display: inline-flex;
@@ -273,13 +296,17 @@ const Landing = () => {
           width: 88px;
           height: 88px;
         }
-        @keyframes conveyorRight {
+        @keyframes conveyorLogosMove {
           0% { transform: translateX(-50%); }
           100% { transform: translateX(0%); }
         }
-        @keyframes beltMove {
-          0% { background-position-x: 0; }
-          100% { background-position-x: 24px; }
+        @keyframes beltTextureMove {
+          0% { background-position-x: -540px; }
+          100% { background-position-x: 0; }
+        }
+        @keyframes beltRollersMove {
+          0% { background-position-x: -540px; }
+          100% { background-position-x: 0; }
         }
         .bbox {
           position: absolute;
@@ -451,6 +478,7 @@ const Landing = () => {
             <p className="small text-light-emphasis mt-4 mb-2">Trusted by industrial teams worldwide</p>
             <div className="trusted-row">
               <div className="belt-texture" />
+              <div className="belt-rollers-bottom" />
               <div className="trusted-track">
                 {[...trustedCompanies, ...trustedCompanies].map((company, index) => (
                   <span className="trusted-pill" key={`${company.name}-${index}`}>
