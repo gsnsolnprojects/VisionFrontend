@@ -55,6 +55,8 @@ export const getModelInfo = async (
   size: number;
   createdAt: string;
   availableFormats: string[];
+  /** Ordered YOLO class names (same strings as inference `class`); may be [] */
+  classNames?: string[];
 }> => {
   const path = `/models/${encodeURIComponent(modelId)}`;
 

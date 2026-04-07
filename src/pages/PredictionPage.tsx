@@ -20,6 +20,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -50,6 +51,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Info,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -76,8 +78,47 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
+
+/** Default "good" classes for live verdict when user hasn't customized yet */
+function defaultLiveGoodClasses(classNames: string[] | undefined): string[] {
+  const names = classNames ?? [];
+  if (names.includes("product")) return ["product"];
+  if (names.length > 0) return [names[0]];
+  return ["product"];
+}
+
+/**
+ * Unwrap /api/inference/models rows: stable modelId, classNames from classNames or class_names.
+ */
+function normalizeInferenceModelFromApi(raw: unknown): Model {
+  const r = raw as Record<string, unknown> & Partial<Model> & {
+    id?: string;
+    class_names?: unknown;
+  };
+  const modelId = String(r.modelId ?? r.id ?? r._id ?? "");
+  const cn = r.classNames ?? r.class_names;
+  const classNames = Array.isArray(cn) ? cn.map((x) => String(x)) : undefined;
+  return {
+    ...(r as Model),
+    modelId,
+    classNames,
+  };
+}
+
+function modelRowMatchesId(m: Model, selectedId: string | null): boolean {
+  if (!selectedId) return false;
+  const idField = (m as Model & { id?: string }).id;
+  return m.modelId === selectedId || m._id === selectedId || idField === selectedId;
+}
+
+function canonicalInferenceRowId(m: Model): string {
+  const idField = (m as Model & { id?: string }).id;
+  return String(m.modelId || idField || m._id || "");
+}
+
 const apiUrl = (path: string) => {
   const base = API_BASE_URL.replace(/\/+$/, "");
   const p = path.replace(/^\/+/, "");
@@ -98,11 +139,14 @@ interface Dataset {
 }
 
 interface Model {
-  modelId: string; // MongoDB _id from backend
+  modelId: string; // Canonical id from backend (modelId or id)
   _id?: string; // Fallback for compatibility
+  id?: string; // Some responses use `id` instead of modelId
   modelVersion?: string;
   modelType?: string;
   name?: string;
+  /** From backend: class index order, matches inference detection `class` strings */
+  classNames?: string[];
   metrics?: {
     mAP50?: number;
     precision?: number;
@@ -438,6 +482,10 @@ const PredictionPage = () => {
   const [isProcessingFrame, setIsProcessingFrame] = useState<boolean>(false);
   const [fps, setFps] = useState<number>(0); // Optional: FPS counter
   const [liveSessionConfidenceThreshold, setLiveSessionConfidenceThreshold] = useState<number | null>(null); // Value returned from live/start (optional display)
+  /** Classes treated as "good product present" for live camera verdict (subset of model.classNames) */
+  const [liveGoodClassNames, setLiveGoodClassNames] = useState<string[]>(["product"]);
+  /** Live frame returned detection.class values not listed on the selected model (possible wrong model or stale class list) */
+  const [liveDetectionClassMismatch, setLiveDetectionClassMismatch] = useState<string | null>(null);
 
   // Refs
   const pollIntervalRef = useRef<number | null>(null);
@@ -449,6 +497,11 @@ const PredictionPage = () => {
   const lastFrameTimeRef = useRef<number>(0);
   const pendingFrameRequestRef = useRef<boolean>(false);
   const verdictHistoryRef = useRef<string[]>([]);
+  const liveGoodClassNamesRef = useRef<string[]>(["product"]);
+  const liveGoodClassesInitForModelIdRef = useRef<string | null>(null);
+  /** When classNames for the same modelId change after refetch, re-sync good-class defaults */
+  const liveGoodClassNamesSigRef = useRef<string | null>(null);
+  const selectedModelSnapshotRef = useRef<Model | null>(null);
   const liveInferenceIdRef = useRef<string | null>(null);
   const isLiveInferenceRunningRef = useRef<boolean>(false);
   const cameraStreamRef = useRef<MediaStream | null>(null);
@@ -466,6 +519,54 @@ const PredictionPage = () => {
     (p) => String(p.id) === String(selectedProjectId) || String(p.name) === String(selectedProjectId)
   );
   const projectName = selectedProject?.name || "";
+
+  useEffect(() => {
+    liveGoodClassNamesRef.current = liveGoodClassNames;
+  }, [liveGoodClassNames]);
+
+  // When the selected model changes — or its classNames payload changes after a refetch — reset live "good classes".
+  useEffect(() => {
+    if (!selectedModelId) {
+      liveGoodClassesInitForModelIdRef.current = null;
+      liveGoodClassNamesSigRef.current = null;
+      return;
+    }
+    const m = models.find((x) => modelRowMatchesId(x, selectedModelId));
+    if (!m) return;
+    const sig = JSON.stringify({ id: selectedModelId, names: m.classNames ?? [] });
+    const modelBecameSelected = liveGoodClassesInitForModelIdRef.current !== selectedModelId;
+    const classListChanged = liveGoodClassNamesSigRef.current !== sig;
+    if (modelBecameSelected || classListChanged) {
+      liveGoodClassesInitForModelIdRef.current = selectedModelId;
+      liveGoodClassNamesSigRef.current = sig;
+      setLiveGoodClassNames(defaultLiveGoodClasses(m.classNames));
+    }
+  }, [selectedModelId, models]);
+
+  // Snapshot for processFrame (avoids stale closure; includes latest classNames).
+  useEffect(() => {
+    if (!selectedModelId) {
+      selectedModelSnapshotRef.current = null;
+      return;
+    }
+    selectedModelSnapshotRef.current =
+      models.find((x) => modelRowMatchesId(x, selectedModelId)) ?? null;
+  }, [selectedModelId, models]);
+
+  useEffect(() => {
+    setLiveDetectionClassMismatch(null);
+  }, [selectedModelId]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || !selectedModelId) return;
+    const m = models.find((x) => modelRowMatchesId(x, selectedModelId));
+    if (!m) return;
+    console.info("[PredictionPage] live model binding:", {
+      selectedModelId,
+      resolvedModelId: m.modelId,
+      classNames: m.classNames,
+    });
+  }, [selectedModelId, models]);
 
   // Persistence helpers
   const saveToStorage = (key: string, value: any) => {
@@ -707,15 +808,16 @@ const PredictionPage = () => {
       }
 
       const json = await res.json();
-      const modelsList = Array.isArray(json) ? json : json.models || [];
+      const rawList: unknown[] = Array.isArray(json)
+        ? json
+        : json.models || json.data?.models || [];
+      const modelsList = rawList.map(normalizeInferenceModelFromApi);
       setModels(modelsList);
-      
+
       // Validate that selected model still exists in the list
       setSelectedModelId((currentId) => {
         if (currentId) {
-          const modelExists = modelsList.some(
-            (m) => m.modelId === currentId || m._id === currentId
-          );
+          const modelExists = modelsList.some((m) => modelRowMatchesId(m, currentId));
           if (!modelExists) {
             saveToStorage("modelId", null);
             return null;
@@ -860,6 +962,13 @@ const PredictionPage = () => {
     const clamped = Math.max(0, Math.min(1, value));
     setConfidenceThreshold(clamped);
     saveToStorage("confidenceThreshold", clamped);
+  };
+
+  const toggleLiveGoodClass = (className: string, checked: boolean) => {
+    setLiveGoodClassNames((prev) => {
+      if (checked) return prev.includes(className) ? prev : [...prev, className];
+      return prev.filter((c) => c !== className);
+    });
   };
 
   // Request camera access
@@ -1150,14 +1259,30 @@ const PredictionPage = () => {
       const data: LiveFrameResponse = await res.json();
       const detections = data.detections || [];
 
-      // Detect product
-      const productDetected = detections.some(
-        (d) => d.class === "product" && d.confidence >= 0.45
-      );
+      const snap = selectedModelSnapshotRef.current;
+      const expectedNames = snap?.classNames;
+      if (expectedNames && expectedNames.length > 0) {
+        const seen = new Set(detections.map((d) => d.class));
+        const unknown = [...seen].filter((c) => !expectedNames.includes(c));
+        if (unknown.length > 0) {
+          setLiveDetectionClassMismatch(unknown.slice(0, 12).join(", ") + (unknown.length > 12 ? "…" : ""));
+        } else {
+          setLiveDetectionClassMismatch(null);
+        }
+      } else {
+        setLiveDetectionClassMismatch(null);
+      }
 
-      // Detect defects
+      const goodClasses = liveGoodClassNamesRef.current;
+
+      const productDetected =
+        goodClasses.length > 0 &&
+        detections.some(
+          (d) => goodClasses.includes(d.class) && d.confidence >= 0.45
+        );
+
       const defectDetected = detections.some(
-        (d) => d.class !== "product" && d.confidence >= 0.35
+        (d) => !goodClasses.includes(d.class) && d.confidence >= 0.35
       );
 
       // Frame verdict
@@ -1196,7 +1321,10 @@ const PredictionPage = () => {
       console.log("Frame processed successfully (overlay mode):", {
         totalDetections: data.totalDetections,
         detectionsCount: data.detections?.length ?? 0,
-        timestamp: new Date().toISOString()
+        detectionClassesSample: detections.slice(0, 8).map((d) => d.class),
+        expectedModelClassNames: snap?.classNames,
+        modelRowId: snap?.modelId,
+        timestamp: new Date().toISOString(),
       });
 
       // Treat successful live frame processing as user activity for inactivity tracking
@@ -1484,6 +1612,22 @@ const PredictionPage = () => {
       return;
     }
 
+    const modelForLive = models.find((x) => modelRowMatchesId(x, selectedModelId));
+    if (
+      modelForLive?.classNames &&
+      modelForLive.classNames.length > 0 &&
+      liveGoodClassNames.length === 0
+    ) {
+      toast({
+        title: "Good classes required",
+        description: "Select at least one class that counts as a good product for the live verdict.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLiveDetectionClassMismatch(null);
+
     // Request camera access first and wait for video to be ready
     const cameraGranted = await requestCameraAccess();
     if (!cameraGranted) {
@@ -1621,6 +1765,7 @@ const PredictionPage = () => {
     setFps(0);
     pendingFrameRequestRef.current = false;
     liveInferenceIdRef.current = null;
+    setLiveDetectionClassMismatch(null);
 
     toast({
       title: "Live inference stopped",
@@ -2670,7 +2815,7 @@ const PredictionPage = () => {
   };
 
   const selectedDataset = datasets.find((d) => d.datasetId === selectedDatasetId || d._id === selectedDatasetId || d.id === selectedDatasetId);
-  const selectedModel = models.find((m) => m.modelId === selectedModelId || m._id === selectedModelId);
+  const selectedModel = models.find((m) => modelRowMatchesId(m, selectedModelId));
 
   return (
     <motion.div
@@ -3000,13 +3145,67 @@ const PredictionPage = () => {
                   )}
                 </div>
 
+                {liveDetectionClassMismatch && (
+                  <Alert variant="destructive" className="py-3">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Detection labels don&apos;t match this model&apos;s class list</AlertTitle>
+                    <AlertDescription>
+                      Live frames include: <span className="font-mono">{liveDetectionClassMismatch}</span>
+                      , which are not in the selected model&apos;s{" "}
+                      <span className="font-mono">classNames</span>. Confirm the correct model is selected,
+                      hard-refresh if you updated the backend, and check the Network tab for{" "}
+                      <span className="font-mono">inference/models</span> for this row.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Good classes for live verdict (matches inference `class` strings from model) */}
+                <div className="space-y-2 pt-2 border-t">
+                  <div className="flex items-start gap-2">
+                    <Label className="text-sm font-medium leading-tight shrink-0 pt-0.5">
+                      Good classes
+                    </Label>
+                    <p className="text-xs text-muted-foreground leading-snug">
+                      Detections of these classes (≥ 0.45 conf.) count as product present. Other classes
+                      (≥ 0.35 conf.) count as defects for the OK / NOT OK / NO PRODUCT verdict.
+                    </p>
+                  </div>
+                  {selectedModel?.classNames && selectedModel.classNames.length > 0 ? (
+                    <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-md border bg-muted/30 p-3">
+                      {selectedModel.classNames.map((cls) => (
+                        <label
+                          key={cls}
+                          className="flex items-center gap-2 text-sm cursor-pointer"
+                        >
+                          <Checkbox
+                            checked={liveGoodClassNames.includes(cls)}
+                            onCheckedChange={(v) => toggleLiveGoodClass(cls, v === true)}
+                            disabled={!hasPermission("runInference") || isLiveInferenceRunning}
+                          />
+                          <span className="font-mono text-xs">{cls}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground rounded-md border border-dashed p-3 bg-muted/20">
+                      This model did not return a class list yet. Verdict uses the default &quot;product&quot;
+                      only. Re-fetch models after backend deploy, or pick another model.
+                    </p>
+                  )}
+                </div>
+
                 {/* Control Buttons */}
                 <div className="flex items-center gap-2 pt-2 border-t">
                   {!isLiveInferenceRunning ? (
                     hasPermission("runInference") ? (
                       <Button
                         onClick={handleStartLiveInference}
-                        disabled={!selectedModelId || startingInference || cameraPermission === 'denied'}
+                        disabled={
+                          !selectedModelId ||
+                          startingInference ||
+                          cameraPermission === "denied" ||
+                          (!!(selectedModel?.classNames?.length) && liveGoodClassNames.length === 0)
+                        }
                         className="flex-1"
                       >
                         {startingInference ? (
@@ -3309,8 +3508,8 @@ const PredictionPage = () => {
               ) : (
                 <div className="space-y-2 max-h-60 overflow-auto">
                   {models.map((model, idx) => {
-                    const modelId = model.modelId || model._id || "";
-                    const isSelected = modelId === selectedModelId;
+                    const modelId = canonicalInferenceRowId(model);
+                    const isSelected = modelRowMatchesId(model, selectedModelId);
                     const modelKey = modelId || `model-${idx}`;
                     return (
                       <button
