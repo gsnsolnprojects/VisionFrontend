@@ -1,13 +1,162 @@
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { fadeInUpVariants } from "@/utils/animations";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { useGLTF } from "@react-three/drei";
+import { FaBrain, FaSearch } from "react-icons/fa";
+import * as THREE from "three";
+
+const FloatingCameraModel = () => {
+  const groupRef = useRef<THREE.Group>(null);
+  const pointerTarget = useRef({ x: 0, y: 0 });
+  const { scene } = useGLTF("/surveillance_camera.glb");
+  const modelRef = useRef<THREE.Object3D | null>(null);
+
+  useEffect(() => {
+    const clamp = (value: number, min: number, max: number) =>
+      Math.min(max, Math.max(min, value));
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const widget = document.querySelector<HTMLElement>(".floating-camera-wrap");
+
+      if (!widget) {
+        const x = (event.clientX / window.innerWidth) * 2 - 1;
+        const y = (event.clientY / window.innerHeight) * 2 - 1;
+        pointerTarget.current = { x, y };
+        return;
+      }
+
+      const rect = widget.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+
+      // Use widget center as reference so motion feels local and stable.
+      const localX = (event.clientX - centerX) / (rect.width * 1.6);
+      const localY = (event.clientY - centerY) / (rect.height * 1.6);
+
+      pointerTarget.current = {
+        x: clamp(localX, -1, 1),
+        y: clamp(localY, -1, 1),
+      };
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => window.removeEventListener("mousemove", handleMouseMove);
+  }, []);
+
+  useEffect(() => {
+    const cloned = scene.clone();
+    const box = new THREE.Box3().setFromObject(cloned);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    const fitScale = 1.6 / maxDim;
+
+    cloned.position.set(-center.x * fitScale, -center.y * fitScale, -center.z * fitScale);
+    cloned.scale.setScalar(fitScale);
+    modelRef.current = cloned;
+  }, [scene]);
+
+  useFrame(() => {
+    if (!groupRef.current) return;
+
+    // Subtle follow behavior so the camera "looks" toward cursor.
+    const targetRotX = pointerTarget.current.y * 0.2;
+    const targetRotY = pointerTarget.current.x * 0.35;
+
+    groupRef.current.rotation.x += (targetRotX - groupRef.current.rotation.x) * 0.08;
+    groupRef.current.rotation.y += (targetRotY - groupRef.current.rotation.y) * 0.08;
+  });
+
+  return (
+    <group ref={groupRef} rotation={[0.1, -0.35, 0]}>
+      {modelRef.current ? <primitive object={modelRef.current} /> : null}
+    </group>
+  );
+};
+
+const UploadStepIcon = () => (
+  <svg
+    width="22"
+    height="22"
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden="true"
+  >
+    <path
+      d="M12 15V6M12 6L8.7 9.3M12 6L15.3 9.3"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M4 17.5V19C4 19.55 4.45 20 5 20H19C19.55 20 20 19.55 20 19V17.5"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+const AnnotateStepIcon = () => (
+  <svg
+    width="22"
+    height="22"
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden="true"
+  >
+    <path
+      d="M6 5H18L20 9L16 15H8L4 9L6 5Z"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinejoin="round"
+    />
+    <circle cx="6" cy="5" r="1.2" fill="currentColor" />
+    <circle cx="18" cy="5" r="1.2" fill="currentColor" />
+    <circle cx="20" cy="9" r="1.2" fill="currentColor" />
+    <circle cx="16" cy="15" r="1.2" fill="currentColor" />
+    <circle cx="8" cy="15" r="1.2" fill="currentColor" />
+    <circle cx="4" cy="9" r="1.2" fill="currentColor" />
+  </svg>
+);
 
 const Landing = () => {
   const navigate = useNavigate();
   const [activeBoxIndex, setActiveBoxIndex] = useState(0);
   const [confidences, setConfidences] = useState([92, 89, 86]);
+  const workflowFlowSteps = [
+    {
+      title: "Upload Dataset",
+      icon: "upload",
+      heading: "Upload Dataset",
+      description: "Import and organize inspection images for your workflow.",
+    },
+    {
+      title: "Annotate & Augment",
+      icon: "annotate",
+      heading: "Annotate & Augment",
+      description: "Label defects and strengthen data quality for robust training.",
+    },
+    {
+      title: "Select & Train Model",
+      icon: "brain",
+      heading: "Select & Train Model",
+      description: "Choose the best model setup and train it with optimized settings.",
+    },
+    {
+      title: "Run Inference",
+      icon: "inference",
+      heading: "Run Inference",
+      description: "Deploy and detect defects in real time on production lines.",
+    },
+  ];
+  const [activeFlowIndex, setActiveFlowIndex] = useState(2);
   const performanceStats = [
     { value: "99.2%", label: "Defect Detection Accuracy" },
     { value: "30%", label: "Faster Inspection Cycle" },
@@ -280,6 +429,25 @@ const Landing = () => {
           border: none;
           background: transparent;
           box-shadow: none;
+          position: relative;
+          animation: logoBob 2.8s ease-in-out infinite;
+          animation-delay: var(--bob-delay, 0s);
+          will-change: transform;
+        }
+        .trusted-pill::after {
+          content: "";
+          position: absolute;
+          left: 50%;
+          bottom: 4px;
+          width: 56px;
+          height: 10px;
+          transform: translateX(-50%);
+          border-radius: 999px;
+          background: radial-gradient(ellipse at center, rgba(2, 6, 23, 0.5) 0%, rgba(2, 6, 23, 0.04) 72%);
+          filter: blur(0.4px);
+          opacity: 0.55;
+          animation: logoShadow 2.8s ease-in-out infinite;
+          animation-delay: var(--bob-delay, 0s);
         }
         .trusted-logo {
           width: 74px;
@@ -290,14 +458,231 @@ const Landing = () => {
           padding: 0;
           filter: none;
           opacity: 1;
+          transform: translateZ(0);
+          filter: drop-shadow(0 3px 4px rgba(2, 6, 23, 0.45));
         }
         .trusted-logo.is-white {
-          filter: brightness(0) invert(1) contrast(1.08);
+          filter: brightness(0) invert(1) contrast(1.08) drop-shadow(0 3px 4px rgba(2, 6, 23, 0.45));
           width: 88px;
           height: 88px;
         }
+        .automation-story {
+          margin-top: 2.25rem;
+          border: 1px solid rgba(56, 189, 248, 0.24);
+          border-radius: 1rem;
+          overflow: hidden;
+          background: rgba(2, 6, 23, 0.65);
+          box-shadow: 0 18px 38px rgba(2, 6, 23, 0.42);
+          position: relative;
+        }
+        .automation-story-video {
+          width: 100%;
+          min-height: 320px;
+          max-height: 420px;
+          object-fit: cover;
+          display: block;
+          filter: saturate(0.95) contrast(1.04);
+        }
+        .automation-story-overlay {
+          position: absolute;
+          inset: 0;
+          background:
+            linear-gradient(180deg, rgba(2, 6, 23, 0.22) 0%, rgba(2, 6, 23, 0.76) 72%, rgba(2, 6, 23, 0.92) 100%),
+            linear-gradient(120deg, rgba(14, 165, 233, 0.18), rgba(59, 130, 246, 0.08));
+          display: flex;
+          align-items: flex-end;
+        }
+        .automation-story-content {
+          max-width: 62ch;
+          padding: 1.2rem 1.35rem 1.3rem;
+        }
+        .automation-story-badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 0.2rem 0.58rem;
+          border-radius: 999px;
+          border: 1px solid rgba(103, 232, 249, 0.45);
+          background: rgba(8, 47, 73, 0.44);
+          color: #a5f3fc;
+          font-size: 0.7rem;
+          font-weight: 700;
+          letter-spacing: 0.07em;
+          text-transform: uppercase;
+          margin-bottom: 0.55rem;
+        }
+        .automation-story-title {
+          margin: 0;
+          font-size: clamp(1.2rem, 2.1vw, 1.8rem);
+          line-height: 1.2;
+          color: #f8fafc;
+        }
+        .automation-story-subtext {
+          margin-top: 0.55rem;
+          margin-bottom: 0;
+          color: rgba(226, 232, 240, 0.95);
+          font-size: 0.95rem;
+          line-height: 1.5;
+        }
+        .workflow-flow-section {
+          margin-top: 2.25rem;
+          padding: 1.25rem;
+          border-radius: 1rem;
+          border: 1px solid rgba(100, 116, 139, 0.32);
+          background: rgba(2, 6, 23, 0.42);
+          background-size: cover;
+          background-position: center;
+          background-repeat: no-repeat;
+        }
+        .workflow-flow-section.step-1-active {
+          background:
+            linear-gradient(180deg, rgba(2, 6, 23, 0.78) 0%, rgba(2, 6, 23, 0.68) 100%),
+            url('/upload_dataset.png');
+        }
+        .workflow-flow-section.step-2-active {
+          background:
+            linear-gradient(180deg, rgba(2, 6, 23, 0.78) 0%, rgba(2, 6, 23, 0.68) 100%),
+            url('/annotate.png');
+        }
+        .workflow-flow-section.step-3-active {
+          background:
+            linear-gradient(180deg, rgba(2, 6, 23, 0.78) 0%, rgba(2, 6, 23, 0.68) 100%),
+            url('/model.png');
+        }
+        .workflow-flow-section.step-4-active {
+          background:
+            linear-gradient(180deg, rgba(2, 6, 23, 0.78) 0%, rgba(2, 6, 23, 0.68) 100%),
+            url('/inference.png');
+        }
+        .workflow-flow-heading {
+          font-size: clamp(1.45rem, 2.5vw, 2.05rem);
+          color: #f8fafc;
+          margin-bottom: 0.35rem;
+        }
+        .workflow-flow-subheading {
+          margin-bottom: 1.25rem;
+          color: rgba(203, 213, 225, 0.92);
+          font-size: 0.95rem;
+        }
+        .workflow-flow-track {
+          --flow-card-top: 14px;
+          --flow-card-height: 175px;
+          position: relative;
+          height: 245px;
+          margin-top: 0.2rem;
+        }
+        .workflow-flow-node {
+          position: absolute;
+          top: var(--flow-card-top);
+          left: 50%;
+          width: clamp(190px, 19vw, 235px);
+          border: 1px solid rgba(100, 116, 139, 0.35);
+          border-radius: 0.85rem;
+          background: rgba(15, 23, 42, 0.55);
+          padding: 0.72rem 0.9rem 0.8rem;
+          color: #e2e8f0;
+          min-height: var(--flow-card-height);
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+          text-align: center;
+          transition: transform 0.32s ease, opacity 0.32s ease, border-color 0.25s ease, background 0.25s ease;
+          will-change: transform, opacity;
+        }
+        .workflow-flow-node.active {
+          border-color: rgba(245, 158, 11, 0.9);
+          background: linear-gradient(180deg, rgba(245, 158, 11, 0.2), rgba(120, 53, 15, 0.75));
+          box-shadow: 0 10px 22px rgba(2, 6, 23, 0.34);
+        }
+        .workflow-flow-step {
+          font-size: 0.72rem;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          color: #67e8f9;
+          font-weight: 700;
+          margin-bottom: 0.24rem;
+          margin-top: 0.2rem;
+        }
+        .workflow-flow-title {
+          margin: 0;
+          font-weight: 700;
+          font-size: 0.95rem;
+          color: #f8fafc;
+        }
+        .workflow-flow-icon {
+          width: 56px;
+          height: 56px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #e2e8f0;
+          margin-bottom: 0.7rem;
+          opacity: 0.92;
+          transform: translateY(-2px);
+        }
+        .workflow-flow-icon svg {
+          width: 44px;
+          height: 44px;
+        }
+        .workflow-flow-node.active .workflow-flow-icon {
+          color: #ffffff;
+          opacity: 1;
+        }
+        .workflow-flow-controls {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 5;
+        }
+        .workflow-flow-btn {
+          pointer-events: auto;
+          position: absolute;
+          top: calc(var(--flow-card-top) + (var(--flow-card-height) / 2));
+          border: none;
+          background: transparent;
+          color: rgba(241, 245, 249, 0.98);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 2.6rem;
+          line-height: 1;
+          padding: 0.2rem 0.35rem;
+          font-weight: 700;
+          text-shadow: 0 2px 10px rgba(2, 6, 23, 0.5);
+          transform: translate(-50%, -50%);
+          transition: color 0.2s ease;
+        }
+        .workflow-flow-btn.prev {
+          left: calc(50% - clamp(95px, 9.5vw, 118px) - 22px);
+        }
+        .workflow-flow-btn.next {
+          left: calc(50% + clamp(95px, 9.5vw, 118px) + 22px);
+        }
+        .workflow-flow-btn:hover {
+          color: #ffffff;
+        }
+        .workflow-flow-track-mobile {
+          display: none;
+        }
+        .floating-camera-wrap {
+          position: absolute;
+          right: 22px;
+          top: calc(100% + 12px);
+          transform: none;
+          width: 140px;
+          height: 140px;
+          z-index: 60;
+          pointer-events: none;
+          background: transparent;
+          border: none;
+          box-shadow: none;
+        }
+        .floating-camera-canvas {
+          width: 100%;
+          height: 100%;
+        }
         @keyframes conveyorLogosMove {
-          0% { transform: translateX(-50%); }
+          0% { transform: translateX(-25%); }
           100% { transform: translateX(0%); }
         }
         @keyframes beltTextureMove {
@@ -307,6 +692,14 @@ const Landing = () => {
         @keyframes beltRollersMove {
           0% { background-position-x: -540px; }
           100% { background-position-x: 0; }
+        }
+        @keyframes logoBob {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-2px); }
+        }
+        @keyframes logoShadow {
+          0%, 100% { opacity: 0.58; transform: translateX(-50%) scaleX(1); }
+          50% { opacity: 0.42; transform: translateX(-50%) scaleX(0.88); }
         }
         .bbox {
           position: absolute;
@@ -375,6 +768,44 @@ const Landing = () => {
           }
           .social-proof-wrap {
             margin-top: 2.8rem;
+          }
+          .automation-story-content {
+            padding: 1rem;
+          }
+          .automation-story-video {
+            min-height: 280px;
+          }
+          .automation-story-title {
+            font-size: clamp(1.05rem, 4.9vw, 1.45rem);
+          }
+          .workflow-flow-section {
+            padding: 1rem;
+          }
+          .workflow-flow-track {
+            display: none;
+          }
+          .workflow-flow-track-mobile {
+            display: flex;
+            gap: 0.55rem;
+            overflow-x: auto;
+            padding-bottom: 0.35rem;
+            scrollbar-width: thin;
+          }
+          .workflow-flow-track-mobile .workflow-flow-node {
+            position: static;
+            transform: none !important;
+            opacity: 1 !important;
+            width: 210px;
+            min-height: 150px;
+            flex: 0 0 auto;
+          }
+          .workflow-flow-track-mobile .workflow-flow-node.active {
+            border-color: rgba(34, 211, 238, 0.82);
+            background: linear-gradient(120deg, rgba(6, 182, 212, 0.17), rgba(15, 23, 42, 0.72) 52%);
+            box-shadow: none;
+          }
+          .floating-camera-wrap {
+            display: none;
           }
           .stats-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -480,8 +911,12 @@ const Landing = () => {
               <div className="belt-texture" />
               <div className="belt-rollers-bottom" />
               <div className="trusted-track">
-                {[...trustedCompanies, ...trustedCompanies].map((company, index) => (
-                  <span className="trusted-pill" key={`${company.name}-${index}`}>
+                {[...trustedCompanies, ...trustedCompanies, ...trustedCompanies, ...trustedCompanies].map((company, index) => (
+                  <span
+                    className="trusted-pill"
+                    key={`${company.name}-${index}`}
+                    style={{ ["--bob-delay" as string]: `${(index % trustedCompanies.length) * 0.16}s` }}
+                  >
                     <img
                       className={`trusted-logo ${company.logo === "/logos/company-1.png" ? "is-white" : ""}`}
                       src={company.logo}
@@ -492,10 +927,144 @@ const Landing = () => {
               </div>
             </div>
           </div>
+
+          <section className="automation-story" aria-label="VisionM automation story">
+            <video
+              className="automation-story-video"
+              src="/automation_bg.mp4"
+              autoPlay
+              muted
+              loop
+              playsInline
+            />
+            <div className="automation-story-overlay">
+              <div className="automation-story-content">
+                <span className="automation-story-badge">VISIONM INTELLIGENCE LAYER</span>
+                <h3 className="automation-story-title">
+                  From Camera Feed to Defect Decisions in Real Time
+                </h3>
+                <p className="automation-story-subtext">
+                  VisionM helps factories catch defects early, reduce manual inspection load, and keep
+                  quality consistent across every shift.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section
+            className={`workflow-flow-section ${activeFlowIndex === 0 ? "step-1-active" : ""} ${activeFlowIndex === 1 ? "step-2-active" : ""} ${activeFlowIndex === 2 ? "step-3-active" : ""} ${activeFlowIndex === 3 ? "step-4-active" : ""}`}
+            aria-label="VisionM end-to-end workflow flowchart"
+          >
+            <h2 className="workflow-flow-heading">{workflowFlowSteps[activeFlowIndex].heading}</h2>
+            <p className="workflow-flow-subheading">
+              {workflowFlowSteps[activeFlowIndex].description}
+            </p>
+
+            <div className="workflow-flow-track" role="list">
+              <div className="workflow-flow-controls">
+                <button
+                  type="button"
+                  className="workflow-flow-btn prev"
+                  aria-label="Previous workflow step"
+                  onClick={() =>
+                    setActiveFlowIndex((prev) =>
+                      prev === 0 ? workflowFlowSteps.length - 1 : prev - 1
+                    )
+                  }
+                >
+                  &#8249;
+                </button>
+                <button
+                  type="button"
+                  className="workflow-flow-btn next"
+                  aria-label="Next workflow step"
+                  onClick={() =>
+                    setActiveFlowIndex((prev) =>
+                      prev === workflowFlowSteps.length - 1 ? 0 : prev + 1
+                    )
+                  }
+                >
+                  &#8250;
+                </button>
+              </div>
+
+              {workflowFlowSteps.map((step, index) => {
+                if (index !== activeFlowIndex) return null;
+
+                return (
+                  <button
+                    type="button"
+                    key={step.title}
+                    role="listitem"
+                    className={`workflow-flow-node ${index === activeFlowIndex ? "active" : ""}`}
+                    style={{
+                      transform: "translateX(-50%) scale(1)",
+                      opacity: 1,
+                      zIndex: 30,
+                    }}
+                    onClick={() => setActiveFlowIndex(index)}
+                  >
+                    <div className="workflow-flow-step">Step {index + 1}</div>
+                    {step.icon ? (
+                      <div className="workflow-flow-icon">
+                        {step.icon === "upload" ? <UploadStepIcon /> : null}
+                        {step.icon === "annotate" ? <AnnotateStepIcon /> : null}
+                        {step.icon === "brain" ? <FaBrain aria-hidden="true" /> : null}
+                        {step.icon === "inference" ? <FaSearch aria-hidden="true" /> : null}
+                      </div>
+                    ) : null}
+                    <p className="workflow-flow-title">{step.title}</p>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="workflow-flow-track-mobile" role="list">
+              {workflowFlowSteps.map((step, index) => (
+                index === activeFlowIndex ? (
+                <button
+                  type="button"
+                  key={`${step.title}-mobile`}
+                  role="listitem"
+                  className={`workflow-flow-node ${index === activeFlowIndex ? "active" : ""}`}
+                  onClick={() => setActiveFlowIndex(index)}
+                >
+                  <div className="workflow-flow-step">Step {index + 1}</div>
+                  {step.icon ? (
+                    <div className="workflow-flow-icon">
+                      {step.icon === "upload" ? <UploadStepIcon /> : null}
+                      {step.icon === "annotate" ? <AnnotateStepIcon /> : null}
+                      {step.icon === "brain" ? <FaBrain aria-hidden="true" /> : null}
+                      {step.icon === "inference" ? <FaSearch aria-hidden="true" /> : null}
+                    </div>
+                  ) : null}
+                  <p className="workflow-flow-title">{step.title}</p>
+                </button>
+                ) : null
+              ))}
+            </div>
+          </section>
         </div>
       </motion.section>
+
+      <div className="floating-camera-wrap" aria-hidden="true">
+        <Canvas
+          className="floating-camera-canvas"
+          camera={{ position: [0, 0, 2.8], fov: 38 }}
+          dpr={[1, 1.5]}
+        >
+          <ambientLight intensity={1.1} />
+          <directionalLight position={[3, 3, 5]} intensity={1.2} />
+          <directionalLight position={[-3, 2, -4]} intensity={0.55} />
+          <Suspense fallback={null}>
+            <FloatingCameraModel />
+          </Suspense>
+        </Canvas>
+      </div>
     </div>
   );
 };
+
+useGLTF.preload("/surveillance_camera.glb");
 
 export default Landing;
