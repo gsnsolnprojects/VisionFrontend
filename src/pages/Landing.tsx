@@ -157,6 +157,81 @@ const Landing = () => {
     },
   ];
   const [activeFlowIndex, setActiveFlowIndex] = useState(2);
+  const industryShowcases = [
+    {
+      name: "Pharma",
+      image: "/industry/pharma.png",
+      summary: "AI-powered quality inspection for medicine packaging lines.",
+      useCases: [
+        {
+          title: "Blister Defect Detection",
+          description: "Detect seal issues, broken cavities, and missing tablets.",
+          tags: ["Defect Detection", "Seal Check"],
+        },
+        {
+          title: "Medicine Classification",
+          description: "Classify pills by shape, color, and imprint consistency.",
+          tags: ["Classification", "SKU Validation"],
+        },
+      ],
+      kpis: ["99%+ detection precision", "Lower batch rejection risk", "24/7 edge-ready monitoring"],
+    },
+    {
+      name: "PCB Manufacturing",
+      image: "/industry/pcb.png",
+      summary: "Inline electronics inspection for high-throughput PCB lines.",
+      useCases: [
+        {
+          title: "Component Presence Check",
+          description: "Identify missing or misaligned parts before dispatch.",
+          tags: ["Presence Check", "Alignment"],
+        },
+        {
+          title: "Solder Joint Analysis",
+          description: "Flag weak or inconsistent solder joints in real time.",
+          tags: ["Solder QA", "Anomaly Detection"],
+        },
+      ],
+      kpis: ["Fewer field failures", "Faster QA feedback loops", "Consistent board quality"],
+    },
+    {
+      name: "Automotive",
+      image: "/industry/automobile.png",
+      summary: "Reliable visual inspection across assembly and finishing stages.",
+      useCases: [
+        {
+          title: "Part Surface Inspection",
+          description: "Detect scratches, dents, and finish defects on components.",
+          tags: ["Surface QA", "Visual Defects"],
+        },
+        {
+          title: "Assembly Validation",
+          description: "Validate fitment and part placement before next station.",
+          tags: ["Assembly Check", "Process Control"],
+        },
+      ],
+      kpis: ["Reduced rework costs", "Higher throughput consistency", "Shift-independent accuracy"],
+    },
+    {
+      name: "Ports & Logistics",
+      image: "/industry/port.png",
+      summary: "Container and yard inspection for safer, faster operations.",
+      useCases: [
+        {
+          title: "Container Damage Detection",
+          description: "Spot dents, cracks, and structural anomalies quickly.",
+          tags: ["Damage Detection", "Safety"],
+        },
+        {
+          title: "Container ID Verification",
+          description: "Read and validate markings for tracking and compliance.",
+          tags: ["OCR Validation", "Tracking"],
+        },
+      ],
+      kpis: ["Faster gate operations", "Improved inspection consistency", "Audit-ready traceability"],
+    },
+  ];
+  const [activeIndustryIndex, setActiveIndustryIndex] = useState(0);
   const performanceStats = [
     { value: "99.2%", label: "Defect Detection Accuracy" },
     { value: "30%", label: "Faster Inspection Cycle" },
@@ -261,6 +336,12 @@ const Landing = () => {
           max-width: 54ch;
           color: rgba(226, 232, 240, 0.96);
           text-shadow: 0 4px 16px rgba(2, 6, 23, 0.45);
+        }
+        .hero-cta-row {
+          row-gap: 0.75rem;
+        }
+        .hero-cta-row > * + * {
+          margin-left: 0.9rem;
         }
         .preview-shell {
           background: linear-gradient(160deg, rgba(11, 18, 32, 0.92) 0%, rgba(17, 24, 39, 0.95) 55%, rgba(15, 23, 42, 0.94) 100%);
@@ -664,6 +745,310 @@ const Landing = () => {
         .workflow-flow-track-mobile {
           display: none;
         }
+        .industry-section {
+          margin-top: 3.1rem;
+          padding: 0.45rem 0 0.6rem;
+          border: none;
+          border-radius: 0;
+          background: transparent;
+        }
+        .industry-heading {
+          margin: 0;
+          font-size: clamp(1.4rem, 2.3vw, 1.95rem);
+          color: #f8fafc;
+          text-align: center;
+        }
+        .industry-subheading {
+          margin: 0.42rem 0 1rem;
+          color: rgba(203, 213, 225, 0.92);
+          font-size: 0.95rem;
+          text-align: center;
+        }
+        .industry-tabs {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.5rem;
+          margin-bottom: 1.35rem;
+          justify-content: center;
+        }
+        .industry-tab {
+          border: 1px solid rgba(100, 116, 139, 0.45);
+          background: rgba(15, 23, 42, 0.6);
+          color: rgba(226, 232, 240, 0.95);
+          border-radius: 999px;
+          padding: 0.38rem 0.82rem;
+          font-size: 0.84rem;
+          font-weight: 600;
+          transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+        }
+        .industry-tab.active {
+          border-color: rgba(34, 211, 238, 0.75);
+          background: rgba(8, 47, 73, 0.52);
+          color: #cffafe;
+        }
+        .industry-layout {
+          display: grid;
+          grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+          gap: 1rem;
+          align-items: stretch;
+        }
+        .industry-showcase-wrap {
+          display: flex;
+          justify-content: center;
+          align-items: stretch;
+        }
+        .industry-showcase-card {
+          width: min(100%, 360px);
+          min-height: 238px;
+          border: 1px solid rgba(100, 116, 139, 0.45);
+          border-radius: 0.95rem;
+          background:
+            linear-gradient(180deg, rgba(2, 6, 23, 0.35), rgba(2, 6, 23, 0.72)),
+            linear-gradient(120deg, rgba(56, 189, 248, 0.16), rgba(30, 41, 59, 0.45));
+          box-shadow: 0 14px 28px rgba(2, 6, 23, 0.3);
+          padding: 1rem 1rem 1.05rem;
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-end;
+          align-items: center;
+          text-align: center;
+        }
+        .industry-showcase-eyebrow {
+          font-size: 0.72rem;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          font-weight: 700;
+          color: #67e8f9;
+          margin-bottom: 0.3rem;
+        }
+        .industry-showcase-title {
+          margin: 0;
+          color: #f8fafc;
+          font-size: 1.2rem;
+          font-weight: 800;
+        }
+        .industry-description-title {
+          margin: 0;
+          font-size: 1.03rem;
+          font-weight: 700;
+          color: #f8fafc;
+        }
+        .industry-description-subtext {
+          margin: 0.35rem 0 0.7rem;
+          color: rgba(203, 213, 225, 0.92);
+          font-size: 0.9rem;
+        }
+        .industry-usecase-list {
+          margin: 0;
+          padding-left: 0;
+          display: grid;
+          gap: 0.48rem;
+          list-style-position: inside;
+        }
+        .industry-usecase-item-title {
+          color: #f8fafc;
+          font-size: 0.9rem;
+          font-weight: 600;
+        }
+        .industry-preview {
+          border: 1px solid rgba(100, 116, 139, 0.38);
+          border-radius: 0.95rem;
+          background:
+            radial-gradient(130% 95% at 100% 0%, rgba(14, 165, 233, 0.15), rgba(15, 23, 42, 0) 55%),
+            rgba(15, 23, 42, 0.65);
+          padding: 0.9rem 0.95rem;
+          min-height: 238px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          text-align: center;
+        }
+        .industry-preview-summary {
+          margin: 0;
+          color: rgba(226, 232, 240, 0.96);
+          font-size: 0.92rem;
+          line-height: 1.45;
+        }
+        .industry-kpi-list {
+          margin: 0.75rem 0 0;
+          padding-left: 0;
+          display: grid;
+          gap: 0.36rem;
+          color: rgba(207, 250, 254, 0.96);
+          font-size: 0.84rem;
+          list-style-position: inside;
+        }
+        .landing-footer {
+          margin-top: 3rem;
+          border-top: none;
+          background: rgba(3, 12, 33, 0.94);
+          border-radius: 1rem 1rem 0 0;
+          padding: 2.35rem 1.2rem 1.35rem;
+          margin-bottom: 0;
+        }
+        .footer-brand {
+          color: #f8fafc;
+          font-size: 1.05rem;
+          font-weight: 700;
+          margin-bottom: 0.65rem;
+          letter-spacing: 0.01em;
+        }
+        .footer-description {
+          color: rgba(203, 213, 225, 0.88);
+          font-size: 0.88rem;
+          max-width: 38ch;
+          margin-bottom: 0;
+        }
+        .footer-col-title {
+          color: #f8fafc;
+          font-size: 0.88rem;
+          font-weight: 700;
+          margin-bottom: 0.7rem;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .footer-links {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+          display: grid;
+          gap: 0.45rem;
+        }
+        .footer-link {
+          color: rgba(203, 213, 225, 0.88);
+          font-size: 0.86rem;
+          text-decoration: none;
+          transition: color 0.2s ease;
+        }
+        .footer-link:hover {
+          color: #67e8f9;
+        }
+        .footer-request-title {
+          color: #f8fafc;
+          font-size: clamp(1.3rem, 2.1vw, 1.75rem);
+          font-weight: 700;
+          line-height: 1.15;
+          margin-bottom: 0.8rem;
+        }
+        .footer-request-subtitle {
+          margin-bottom: 0.65rem;
+          color: rgba(148, 163, 184, 0.95);
+          font-size: 0.8rem;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          font-weight: 700;
+        }
+        .footer-request-form {
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          border: 1px solid rgba(100, 116, 139, 0.5);
+          border-radius: 999px;
+          padding: 0.25rem 0.25rem 0.25rem 0.9rem;
+          background: rgba(15, 23, 42, 0.88);
+          max-width: 390px;
+        }
+        .footer-request-input {
+          flex: 1;
+          background: transparent;
+          border: none;
+          outline: none;
+          color: #e2e8f0;
+          font-size: 0.86rem;
+        }
+        .footer-request-input::placeholder {
+          color: rgba(148, 163, 184, 0.82);
+        }
+        .footer-request-btn {
+          border: none;
+          width: 30px;
+          height: 30px;
+          border-radius: 999px;
+          background: linear-gradient(135deg, #f97316, #fb923c);
+          color: #fff;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 1rem;
+          line-height: 1;
+        }
+        .footer-bottom {
+          margin-top: 1.35rem;
+          padding-top: 0.85rem;
+          border-top: none;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.8rem;
+          flex-wrap: wrap;
+          color: rgba(148, 163, 184, 0.86);
+          font-size: 0.8rem;
+        }
+        .footer-bottom-links {
+          display: flex;
+          align-items: center;
+          gap: 0.9rem;
+        }
+        .footer-signature-strip {
+          position: relative;
+          margin-top: 0;
+          border-top: none;
+          background: rgba(3, 12, 33, 0.94);
+          overflow: hidden;
+        }
+        .footer-signature-word {
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: 18px;
+          width: 100%;
+          margin: 0;
+          text-align: center;
+          font-size: clamp(5rem, 22vw, 13.5rem);
+          font-weight: 800;
+          letter-spacing: 0.03em;
+          line-height: 0.8;
+          text-transform: lowercase;
+          color: rgba(56, 189, 248, 0.12);
+          pointer-events: none;
+          user-select: none;
+          white-space: nowrap;
+        }
+        .footer-signature-slab {
+          position: relative;
+          z-index: 1;
+          margin-top: 138px;
+          background: rgba(3, 12, 33, 0.94);
+          border-top: none;
+          padding: 1.15rem 0.9rem 1.2rem;
+        }
+        .footer-signature-content {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.8rem;
+          flex-wrap: wrap;
+          color: rgba(226, 232, 240, 0.82);
+          font-size: 0.8rem;
+          width: 100%;
+          padding-inline: clamp(1rem, 4vw, 4rem);
+          transform: translateY(-3px);
+        }
+        .footer-top-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr) minmax(0, 1fr);
+          gap: 1.4rem;
+          align-items: start;
+        }
+        .footer-nav-columns {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 1rem;
+        }
+        .footer-cta-col {
+          justify-self: end;
+          width: min(100%, 390px);
+        }
         .floating-camera-wrap {
           position: absolute;
           right: 22px;
@@ -759,6 +1144,9 @@ const Landing = () => {
             max-width: 100%;
             font-size: clamp(2rem, 8.2vw, 3rem);
           }
+          .hero-cta-row > * + * {
+            margin-left: 0;
+          }
           .detection-screen {
             min-height: 340px;
           }
@@ -804,6 +1192,55 @@ const Landing = () => {
             background: linear-gradient(120deg, rgba(6, 182, 212, 0.17), rgba(15, 23, 42, 0.72) 52%);
             box-shadow: none;
           }
+          .industry-section {
+            padding: 1rem;
+          }
+          .industry-tabs {
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            padding-bottom: 0.25rem;
+          }
+          .industry-layout {
+            grid-template-columns: 1fr;
+            gap: 0.85rem;
+          }
+          .landing-footer {
+            padding: 1.35rem 1rem 0.9rem;
+          }
+          .footer-top-grid {
+            grid-template-columns: 1fr;
+            gap: 1.2rem;
+          }
+          .footer-nav-columns {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .footer-cta-col {
+            justify-self: start;
+            width: 100%;
+          }
+          .footer-request-form {
+            max-width: 100%;
+          }
+          .footer-bottom {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+          .footer-signature-strip {
+            margin-top: 0;
+          }
+          .footer-signature-word {
+            bottom: 20px;
+            font-size: clamp(3.7rem, 24vw, 7.3rem);
+          }
+          .footer-signature-slab {
+            margin-top: 94px;
+            padding: 0.95rem 1rem 1.05rem;
+          }
+          .footer-signature-content {
+            flex-direction: column;
+            align-items: flex-start;
+            padding-inline: 0.2rem;
+          }
           .floating-camera-wrap {
             display: none;
           }
@@ -839,7 +1276,7 @@ const Landing = () => {
                 more accurate, and consistent than manual inspection.
               </p>
 
-              <div className="d-flex flex-wrap align-items-center gap-3">
+              <div className="d-flex flex-wrap align-items-center hero-cta-row">
                 <Button
                   size="lg"
                   className="btn btn-cyan-primary px-4 py-3 fw-semibold"
@@ -1044,6 +1481,79 @@ const Landing = () => {
               ))}
             </div>
           </section>
+
+          <section className="industry-section" aria-label="Industries and use cases">
+            <h2 className="industry-heading">Industries & Use Cases We Support</h2>
+            <p className="industry-subheading">
+              VisionM adapts to different production environments with targeted inspection workflows.
+            </p>
+
+            <div className="industry-tabs" role="tablist" aria-label="Industry selector">
+              {industryShowcases.map((industry, index) => (
+                <button
+                  key={industry.name}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeIndustryIndex === index}
+                  className={`industry-tab ${activeIndustryIndex === index ? "active" : ""}`}
+                  onClick={() => setActiveIndustryIndex(index)}
+                >
+                  {industry.name}
+                </button>
+              ))}
+            </div>
+
+            <motion.div
+              key={industryShowcases[activeIndustryIndex].name}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              className="industry-layout"
+            >
+              <div className="industry-showcase-wrap">
+                <article
+                  className="industry-showcase-card"
+                  style={
+                    industryShowcases[activeIndustryIndex].image
+                      ? {
+                          backgroundImage: `linear-gradient(180deg, rgba(2, 6, 23, 0.38), rgba(2, 6, 23, 0.78)), url('${industryShowcases[activeIndustryIndex].image}')`,
+                          backgroundSize: "cover",
+                          backgroundPosition: "center",
+                          backgroundRepeat: "no-repeat",
+                        }
+                      : undefined
+                  }
+                >
+                  <div className="industry-showcase-eyebrow">Industry Focus</div>
+                  <h3 className="industry-showcase-title">
+                    {industryShowcases[activeIndustryIndex].name}
+                  </h3>
+                </article>
+              </div>
+
+              <aside className="industry-preview">
+                <h3 className="industry-description-title">
+                  {industryShowcases[activeIndustryIndex].name} Use Cases
+                </h3>
+                <p className="industry-description-subtext">
+                  {industryShowcases[activeIndustryIndex].summary}
+                </p>
+                <ul className="industry-usecase-list">
+                  {industryShowcases[activeIndustryIndex].useCases.map((item) => (
+                    <li key={item.title}>
+                      <span className="industry-usecase-item-title">{item.title}:</span>{" "}
+                      <span className="industry-preview-summary">{item.description}</span>
+                    </li>
+                  ))}
+                </ul>
+                <ul className="industry-kpi-list">
+                  {industryShowcases[activeIndustryIndex].kpis.map((kpi) => (
+                    <li key={kpi}>{kpi}</li>
+                  ))}
+                </ul>
+              </aside>
+            </motion.div>
+          </section>
         </div>
       </motion.section>
 
@@ -1060,6 +1570,72 @@ const Landing = () => {
             <FloatingCameraModel />
           </Suspense>
         </Canvas>
+      </div>
+
+      <footer className="landing-footer" aria-label="Site footer">
+        <div className="container">
+          <div className="footer-top-grid">
+            <div>
+              <div className="footer-brand">VisionM</div>
+              <p className="footer-description">
+                AI visual inspection platform built for industrial quality teams to detect defects,
+                classify products, and improve production consistency.
+              </p>
+            </div>
+
+            <div className="footer-nav-columns">
+              <div>
+                <h4 className="footer-col-title">Resources</h4>
+                <ul className="footer-links">
+                  <li><a href="#" className="footer-link">Documentation</a></li>
+                  <li><a href="#" className="footer-link">Use Cases</a></li>
+                  <li><a href="#" className="footer-link">API Reference</a></li>
+                  <li><a href="#" className="footer-link">Support</a></li>
+                </ul>
+              </div>
+              <div>
+                <h4 className="footer-col-title">Company</h4>
+                <ul className="footer-links">
+                  <li><a href="#" className="footer-link">About</a></li>
+                  <li><a href="#" className="footer-link">Careers</a></li>
+                  <li><a href="#" className="footer-link">Partners</a></li>
+                  <li><a href="#" className="footer-link">Contact</a></li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="footer-cta-col">
+              <div className="footer-request-subtitle">Demo</div>
+              <h4 className="footer-request-title">Request a Demo</h4>
+              <form className="footer-request-form" onSubmit={(e) => e.preventDefault()}>
+                <input
+                  className="footer-request-input"
+                  type="email"
+                  placeholder="Enter your email"
+                  aria-label="Enter your email"
+                />
+                <button type="submit" className="footer-request-btn" aria-label="Submit request">
+                  →
+                </button>
+              </form>
+            </div>
+          </div>
+
+        </div>
+      </footer>
+
+      <div className="footer-signature-strip" aria-label="VisionM signature strip">
+        <p className="footer-signature-word">visionm</p>
+        <div className="footer-signature-slab">
+          <div className="footer-signature-content">
+            <span>© {new Date().getFullYear()} VisionM, All rights reserved.</span>
+            <div className="footer-bottom-links">
+              <a href="#" className="footer-link">Privacy</a>
+              <a href="#" className="footer-link">Terms</a>
+              <a href="#" className="footer-link">Cookies</a>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
