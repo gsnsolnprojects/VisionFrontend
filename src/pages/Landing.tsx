@@ -79,6 +79,20 @@ const FloatingCameraModel = () => {
 const Landing = () => {
   const [activeBoxIndex, setActiveBoxIndex] = useState(0);
   const [confidences, setConfidences] = useState([92, 89, 86]);
+  const [isReportFormOpen, setIsReportFormOpen] = useState(false);
+  const [reportStep, setReportStep] = useState<1 | 2>(1);
+  const [lineInfo, setLineInfo] = useState({
+    industrySegment: "",
+    lineType: "",
+    partsPerHour: "",
+  });
+  const [contactInfo, setContactInfo] = useState({
+    fullName: "",
+    company: "",
+    workEmail: "",
+    phone: "",
+  });
+  const [pilotCountdownSeconds, setPilotCountdownSeconds] = useState(3 * 60 * 60 + 28 * 60 + 5);
   const [partsPerHour, setPartsPerHour] = useState(500);
   const [defectRate, setDefectRate] = useState(15);
   const [costPerDefectivePart, setCostPerDefectivePart] = useState(301);
@@ -360,6 +374,22 @@ const Landing = () => {
       cta: "Download Guide",
     },
   ];
+  const industryOptions = [
+    "Auto Components",
+    "Electronics Assembly",
+    "Pharma Packaging",
+    "Consumer Goods",
+    "Textiles",
+    "Metal Fabrication",
+    "Other Manufacturing",
+  ];
+  const lineTypeOptions = [
+    "Assembly Line",
+    "Machining / CNC",
+    "Packaging Line",
+    "Inspection Station",
+    "Mixed / Multiple",
+  ];
   const shiftHours = 8;
   const workingDaysPerMonth = 25;
   const manualInspectionAccuracy = 65;
@@ -368,6 +398,26 @@ const Landing = () => {
   const monthlyDefects = Math.round((monthlyParts * defectRate) / 100);
   const missedByManualQc = Math.round(monthlyDefects * (1 - manualInspectionAccuracy / 100));
   const monthlyLoss = missedByManualQc * costPerDefectivePart;
+  const isLineInfoValid =
+    lineInfo.industrySegment.trim() !== "" &&
+    lineInfo.lineType.trim() !== "" &&
+    lineInfo.partsPerHour.trim() !== "";
+  const isContactInfoValid =
+    contactInfo.fullName.trim() !== "" &&
+    contactInfo.company.trim() !== "" &&
+    contactInfo.workEmail.trim() !== "" &&
+    contactInfo.phone.trim() !== "";
+
+  const handleReportSubmit = () => {
+    if (!isContactInfoValid) return;
+    // Placeholder submit flow until backend endpoint is connected.
+    setIsReportFormOpen(false);
+    setReportStep(1);
+  };
+  const countdownHours = Math.floor(pilotCountdownSeconds / 3600);
+  const countdownMinutes = Math.floor((pilotCountdownSeconds % 3600) / 60);
+  const countdownSecs = pilotCountdownSeconds % 60;
+  const pilotCountdownLabel = `${countdownHours}h ${countdownMinutes}m ${countdownSecs}s`;
 
   // Force light theme on landing page (no dark mode)
   useEffect(() => {
@@ -402,6 +452,14 @@ const Landing = () => {
 
     return () => window.clearInterval(confidenceTimer);
   }, []);
+
+  useEffect(() => {
+    if (pilotCountdownSeconds <= 0) return;
+    const countdownTimer = window.setInterval(() => {
+      setPilotCountdownSeconds((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(countdownTimer);
+  }, [pilotCountdownSeconds]);
 
   return (
     <div className="min-vh-100 position-relative overflow-hidden landing-hero-bg text-light">
@@ -577,6 +635,7 @@ const Landing = () => {
           margin-top: 2.25rem;
           padding-top: 1.25rem;
           border-top: 1px solid rgba(100, 116, 139, 0.3);
+          position: relative;
         }
         .hidden-cost-section {
           margin-top: 2rem;
@@ -1439,6 +1498,146 @@ const Landing = () => {
           background: rgba(8, 47, 73, 0.65);
           border-color: rgba(56, 189, 248, 0.85);
         }
+        .report-form-shell {
+          border-radius: 0.9rem;
+          border: 1px solid rgba(100, 116, 139, 0.34);
+          background: #f1f5f9;
+          padding: 1rem;
+          color: #0f172a;
+        }
+        .report-form-alert {
+          margin: 0 auto 0.85rem;
+          width: fit-content;
+          border: 1px solid rgba(239, 68, 68, 0.4);
+          color: #ef4444;
+          border-radius: 999px;
+          padding: 0.28rem 0.9rem;
+          font-size: 0.92rem;
+          font-weight: 700;
+        }
+        .report-form-title {
+          margin: 0;
+          text-align: center;
+          color: #111827;
+          font-size: clamp(1.6rem, 2.8vw, 2.25rem);
+          font-weight: 800;
+          line-height: 1.16;
+        }
+        .report-form-title .accent {
+          color: #06b6d4;
+        }
+        .report-form-subtitle {
+          margin: 0.48rem 0 0;
+          text-align: center;
+          color: #64748b;
+          font-size: 1rem;
+        }
+        .report-form-strip {
+          margin-top: 0.85rem;
+          border: 1px solid rgba(6, 182, 212, 0.28);
+          border-radius: 0.62rem;
+          background: #e2f2f7;
+          color: #0f172a;
+          font-size: 0.95rem;
+          text-align: center;
+          padding: 0.45rem 0.65rem;
+        }
+        .report-form-strip strong {
+          color: #06b6d4;
+          font-weight: 800;
+        }
+        .report-steps {
+          margin-top: 0.85rem;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 0.65rem;
+          color: #64748b;
+          font-size: 1rem;
+          font-weight: 700;
+        }
+        .report-step-pill {
+          width: 30px;
+          height: 30px;
+          border-radius: 999px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid #cbd5e1;
+          color: #64748b;
+          background: #ffffff;
+          font-weight: 800;
+        }
+        .report-step-pill.active {
+          background: #06b6d4;
+          color: #0f172a;
+          border-color: #06b6d4;
+        }
+        .report-step-line {
+          width: 40px;
+          height: 2px;
+          background: #cbd5e1;
+        }
+        .report-form-grid {
+          margin-top: 0.9rem;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.8rem;
+        }
+        .report-field {
+          display: grid;
+          gap: 0.28rem;
+        }
+        .report-field.full {
+          grid-column: 1 / -1;
+        }
+        .report-field label {
+          color: #1f2937;
+          font-size: 0.9rem;
+          font-weight: 700;
+        }
+        .report-input,
+        .report-select {
+          width: 100%;
+          border: 1px solid #cbd5e1;
+          border-radius: 0.55rem;
+          background: #ffffff;
+          color: #1f2937;
+          padding: 0.55rem 0.75rem;
+          font-size: 0.95rem;
+          outline: none;
+        }
+        .report-submit-btn {
+          margin-top: 0.92rem;
+          width: 100%;
+          border: none;
+          border-radius: 0.55rem;
+          background: linear-gradient(135deg, #7dd3fc, #67e8f9);
+          color: #334155;
+          font-size: 1.05rem;
+          font-weight: 800;
+          letter-spacing: 0.02em;
+          padding: 0.7rem 0.95rem;
+        }
+        .report-submit-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+        .report-back {
+          margin-top: 0.35rem;
+          border: none;
+          background: transparent;
+          color: #64748b;
+          font-size: 0.95rem;
+          font-weight: 700;
+          padding: 0;
+        }
+        .report-footnote {
+          margin: 0.65rem 0 0;
+          text-align: center;
+          color: #64748b;
+          font-size: 0.9rem;
+        }
         @keyframes pulseCta {
           0%, 100% {
             box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.38);
@@ -2172,12 +2371,12 @@ const Landing = () => {
         }
         .floating-camera-wrap {
           position: absolute;
-          right: 22px;
-          top: calc(100% + 12px);
-          transform: none;
+          right: -50px;
+          top: auto;
+          bottom: 70px;
           width: 140px;
           height: 140px;
-          z-index: 60;
+          z-index: 4;
           pointer-events: none;
           background: transparent;
           border: none;
@@ -2291,6 +2490,9 @@ const Landing = () => {
           }
           .hero-right {
             align-items: stretch;
+          }
+          .report-form-grid {
+            grid-template-columns: 1fr;
           }
           .social-proof-wrap {
             margin-top: 2.8rem;
@@ -2516,46 +2718,177 @@ const Landing = () => {
                 <p className="hero-report-subtitle">
                   See your monthly losses from missed defects • No obligation
                 </p>
-                <button type="button" className="hero-report-btn">Click Here</button>
+                <button type="button" className="hero-report-btn" onClick={() => setIsReportFormOpen(true)}>
+                  Click Here
+                </button>
               </div>
             </div>
 
             <div className="hero-right">
-              <div className="preview-shell">
-                <div className="d-flex justify-content-between align-items-center px-1 mb-3">
-                  <span className="text-secondary small fw-semibold">Edge Camera Stream</span>
-                  <div className="d-flex align-items-center gap-2">
-                    <span className="badge rounded-pill bg-success live-badge">LIVE</span>
-                    <span className="badge rounded-pill bg-info text-dark fw-semibold">15 FPS</span>
-                  </div>
-                </div>
+              {isReportFormOpen ? (
+                <div className="report-form-shell">
+                  <p className="report-form-alert">Pilot pricing ends in {pilotCountdownLabel}</p>
+                  <h3 className="report-form-title">
+                    Get Your <span className="accent">Free Defect Cost Report</span>
+                  </h3>
+                  <p className="report-form-subtitle">See your monthly losses from missed defects • No obligation</p>
+                  <p className="report-form-strip">
+                    <strong>5 plants</strong> evaluating • <strong>2 pilots</strong> starting this week
+                  </p>
 
-                <div className="detection-screen">
-                  <div
-                    className={`bbox ${activeBoxIndex === 0 ? "active" : ""}`}
-                    style={{ top: "18%", left: "14%", width: "29%", height: "24%" }}
-                  >
-                    <span className="bbox-label">Missing Screw - {confidences[0]}%</span>
+                  <div className="report-steps">
+                    <span className={`report-step-pill ${reportStep === 1 ? "active" : ""}`}>{reportStep === 2 ? "✓" : "1"}</span>
+                    <span>Line Info</span>
+                    <span className="report-step-line" />
+                    <span className={`report-step-pill ${reportStep === 2 ? "active" : ""}`}>2</span>
+                    <span>Contact</span>
                   </div>
-                  <div
-                    className={`bbox ${activeBoxIndex === 1 ? "active" : ""}`}
-                    style={{ top: "52%", left: "50%", width: "32%", height: "30%" }}
-                  >
-                    <span className="bbox-label">Clamp Defect - {confidences[1]}%</span>
-                  </div>
-                  <div
-                    className={`bbox ${activeBoxIndex === 2 ? "active" : ""}`}
-                    style={{ top: "28%", left: "62%", width: "20%", height: "18%" }}
-                  >
-                    <span className="bbox-label">Surface Crack - {confidences[2]}%</span>
-                  </div>
-                </div>
 
-                <div className="d-flex justify-content-between mt-3 px-1 small text-secondary">
-                  <span>Model: visionm-inspector-v3</span>
-                  <span>Device: Jetson Nano</span>
+                  {reportStep === 1 ? (
+                    <>
+                      <div className="report-form-grid">
+                        <div className="report-field">
+                          <label>Industry Segment *</label>
+                          <select
+                            className="report-select"
+                            value={lineInfo.industrySegment}
+                            onChange={(e) => setLineInfo((prev) => ({ ...prev, industrySegment: e.target.value }))}
+                          >
+                            <option value="">Select industry</option>
+                            {industryOptions.map((option) => (
+                              <option key={option} value={option}>{option}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="report-field">
+                          <label>Line Type *</label>
+                          <select
+                            className="report-select"
+                            value={lineInfo.lineType}
+                            onChange={(e) => setLineInfo((prev) => ({ ...prev, lineType: e.target.value }))}
+                          >
+                            <option value="">Select type</option>
+                            {lineTypeOptions.map((option) => (
+                              <option key={option} value={option}>{option}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="report-field full">
+                          <label>Parts Per Hour (approx)</label>
+                          <input
+                            className="report-input"
+                            type="text"
+                            placeholder="e.g., 500, 1000+"
+                            value={lineInfo.partsPerHour}
+                            onChange={(e) => setLineInfo((prev) => ({ ...prev, partsPerHour: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="report-submit-btn"
+                        disabled={!isLineInfoValid}
+                        onClick={() => setReportStep(2)}
+                      >
+                        Continue to Get Report →
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" className="report-back" onClick={() => setReportStep(1)}>
+                        ← Back
+                      </button>
+                      <div className="report-form-grid">
+                        <div className="report-field">
+                          <label>Full Name *</label>
+                          <input
+                            className="report-input"
+                            type="text"
+                            placeholder="Your name"
+                            value={contactInfo.fullName}
+                            onChange={(e) => setContactInfo((prev) => ({ ...prev, fullName: e.target.value }))}
+                          />
+                        </div>
+                        <div className="report-field">
+                          <label>Company *</label>
+                          <input
+                            className="report-input"
+                            type="text"
+                            placeholder="Company name"
+                            value={contactInfo.company}
+                            onChange={(e) => setContactInfo((prev) => ({ ...prev, company: e.target.value }))}
+                          />
+                        </div>
+                        <div className="report-field">
+                          <label>Work Email *</label>
+                          <input
+                            className="report-input"
+                            type="email"
+                            placeholder="you@company.com"
+                            value={contactInfo.workEmail}
+                            onChange={(e) => setContactInfo((prev) => ({ ...prev, workEmail: e.target.value }))}
+                          />
+                        </div>
+                        <div className="report-field">
+                          <label>Phone *</label>
+                          <input
+                            className="report-input"
+                            type="text"
+                            placeholder="+91 98XXX XXXXX"
+                            value={contactInfo.phone}
+                            onChange={(e) => setContactInfo((prev) => ({ ...prev, phone: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="report-submit-btn"
+                        disabled={!isContactInfoValid}
+                        onClick={handleReportSubmit}
+                      >
+                        Get My Free Defect Cost Report →
+                      </button>
+                      <p className="report-footnote">Your data is secure • No spam, ever</p>
+                    </>
+                  )}
                 </div>
-              </div>
+              ) : (
+                <div className="preview-shell">
+                  <div className="d-flex justify-content-between align-items-center px-1 mb-3">
+                    <span className="text-secondary small fw-semibold">Edge Camera Stream</span>
+                    <div className="d-flex align-items-center gap-2">
+                      <span className="badge rounded-pill bg-success live-badge">LIVE</span>
+                      <span className="badge rounded-pill bg-info text-dark fw-semibold">15 FPS</span>
+                    </div>
+                  </div>
+
+                  <div className="detection-screen">
+                    <div
+                      className={`bbox ${activeBoxIndex === 0 ? "active" : ""}`}
+                      style={{ top: "18%", left: "14%", width: "29%", height: "24%" }}
+                    >
+                      <span className="bbox-label">Missing Screw - {confidences[0]}%</span>
+                    </div>
+                    <div
+                      className={`bbox ${activeBoxIndex === 1 ? "active" : ""}`}
+                      style={{ top: "52%", left: "50%", width: "32%", height: "30%" }}
+                    >
+                      <span className="bbox-label">Clamp Defect - {confidences[1]}%</span>
+                    </div>
+                    <div
+                      className={`bbox ${activeBoxIndex === 2 ? "active" : ""}`}
+                      style={{ top: "28%", left: "62%", width: "20%", height: "18%" }}
+                    >
+                      <span className="bbox-label">Surface Crack - {confidences[2]}%</span>
+                    </div>
+                  </div>
+
+                  <div className="d-flex justify-content-between mt-3 px-1 small text-secondary">
+                    <span>Model: visionm-inspector-v3</span>
+                    <span>Device: Jetson Nano</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -2588,6 +2921,20 @@ const Landing = () => {
                   </span>
                 ))}
               </div>
+            </div>
+            <div className="floating-camera-wrap" aria-hidden="true">
+              <Canvas
+                className="floating-camera-canvas"
+                camera={{ position: [0, 0, 2.8], fov: 38 }}
+                dpr={[1, 1.5]}
+              >
+                <ambientLight intensity={1.1} />
+                <directionalLight position={[3, 3, 5]} intensity={1.2} />
+                <directionalLight position={[-3, 2, -4]} intensity={0.55} />
+                <Suspense fallback={null}>
+                  <FloatingCameraModel />
+                </Suspense>
+              </Canvas>
             </div>
           </div>
 
@@ -3018,21 +3365,6 @@ const Landing = () => {
 
         </div>
       </motion.section>
-
-      <div className="floating-camera-wrap" aria-hidden="true">
-        <Canvas
-          className="floating-camera-canvas"
-          camera={{ position: [0, 0, 2.8], fov: 38 }}
-          dpr={[1, 1.5]}
-        >
-          <ambientLight intensity={1.1} />
-          <directionalLight position={[3, 3, 5]} intensity={1.2} />
-          <directionalLight position={[-3, 2, -4]} intensity={0.55} />
-          <Suspense fallback={null}>
-            <FloatingCameraModel />
-          </Suspense>
-        </Canvas>
-      </div>
 
       <footer className="landing-footer" aria-label="Site footer">
         <div className="container">
