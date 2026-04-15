@@ -80,6 +80,7 @@ const Landing = () => {
   const [activeBoxIndex, setActiveBoxIndex] = useState(0);
   const [confidences, setConfidences] = useState([92, 89, 86]);
   const [isReportFormOpen, setIsReportFormOpen] = useState(false);
+  const topReportFormRef = useRef<HTMLDivElement>(null);
   const [reportStep, setReportStep] = useState<1 | 2>(1);
   const [lineInfo, setLineInfo] = useState({
     industrySegment: "",
@@ -413,6 +414,17 @@ const Landing = () => {
     // Placeholder submit flow until backend endpoint is connected.
     setIsReportFormOpen(false);
     setReportStep(1);
+  };
+  const handleScrollToTopReportForm = () => {
+    setIsReportFormOpen(true);
+    setReportStep(1);
+
+    // Wait for the form panel to render before scrolling.
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        topReportFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
   };
   const countdownHours = Math.floor(pilotCountdownSeconds / 3600);
   const countdownMinutes = Math.floor((pilotCountdownSeconds % 3600) / 60);
@@ -2724,7 +2736,7 @@ const Landing = () => {
               </div>
             </div>
 
-            <div className="hero-right">
+            <div className="hero-right" ref={topReportFormRef}>
               {isReportFormOpen ? (
                 <div className="report-form-shell">
                   <p className="report-form-alert">Pilot pricing ends in {pilotCountdownLabel}</p>
@@ -3091,7 +3103,9 @@ const Landing = () => {
               </div>
 
               <div className="vision-overview-cta-wrap">
-                <button type="button" className="vision-overview-cta">See How It Works On Your Line →</button>
+                <button type="button" className="vision-overview-cta" onClick={handleScrollToTopReportForm}>
+                  See How It Works On Your Line →
+                </button>
               </div>
             </div>
           </section>
