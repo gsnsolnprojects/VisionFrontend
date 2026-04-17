@@ -17,6 +17,7 @@ import {
   Cpu,
   BrainCircuit,
   Menu,
+  FlaskConical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -115,6 +116,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
   };
   const handleSimulation = () => navigate("/dashboard?view=simulation");
   const handlePrediction = () => navigate("/project/prediction");
+  const handleDemoExtinguisherOcr = () => navigate("/demo/extinguisher-ocr");
 
   const isActive = (path: string) => location.pathname === path;
   const isActiveStartsWith = (path: string) => location.pathname.startsWith(path);
@@ -470,6 +472,23 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
                       >
                         <BrainCircuit className="mr-2 h-4 w-4" />
                         Prediction (Testing)
+                      </Button>
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={cn(
+                          "w-full justify-start",
+                          location.pathname === "/demo/extinguisher-ocr" && cn(
+                            "bg-primary/10 dark:bg-primary/20",
+                            "bg-primary/15",
+                            "border-l-2 border-l-primary"
+                          )
+                        )}
+                        onClick={handleDemoExtinguisherOcr}
+                      >
+                        <FlaskConical className="mr-2 h-4 w-4" />
+                        Demo - Extinguisher OCR
                       </Button>
 
                     </div>

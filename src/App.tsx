@@ -28,6 +28,7 @@ import { AccountPreferencesPage } from "@/pages/AccountPreferencesPage";
 import PredictionPage from "@/pages/PredictionPage";
 import PredictionHistoryDetailsPage from "@/pages/PredictionHistoryDetailsPage";
 import { AnnotationPage } from "@/pages/AnnotationPage";
+import DemoExtinguisherOCRPage from "@/pages/DemoExtinguisherOCRPage";
 // Route persistence is handled by useRoutePersistence hook in AppShell
 
 // Protected routes component - gates routes behind authentication
@@ -90,6 +91,12 @@ const ProtectedRoutes = () => {
         
         {/* Annotation */}
         <Route path="/annotation/:datasetId" element={<AnnotationPage />} />
+
+        {/* Temporary demo pages */}
+        <Route
+          path="/demo/extinguisher-ocr"
+          element={<DemoExtinguisherOCRPage />}
+        />
         
         {/* Team */}
         <Route path="/dashboard/team" element={<TeamMembersPage />} />
