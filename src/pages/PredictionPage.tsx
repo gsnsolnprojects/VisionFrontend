@@ -39,6 +39,7 @@ import {
   BrainCircuit,
   Play,
   Loader2,
+  Download,
   CheckCircle2,
   XCircle,
   Clock,
@@ -284,10 +285,22 @@ interface LiveLogEntry {
   defectClasses: Array<{ className: string; count?: number; confidence?: number } | string>;
 }
 
+interface LiveDefectLogEntry {
+  id: string;
+  timestamp: string;
+  imageBase64: string;
+  verdict: "NOT_OK";
+  defectClasses: string[];
+}
+
 const STORAGE_PREFIX = "prediction_";
 const LIVE_LOGS_HISTORY_KEY = "liveLogsHistory";
 const LIVE_LOGS_HISTORY_CAP = 100;
 const LIVE_LOGS_POLL_INTERVAL_MS = 5000;
+const LIVE_CENTER_REGION_DEFAULT_PERCENT = 40;
+const LIVE_CENTER_REGION_MIN_PERCENT = 40;
+const LIVE_CENTER_REGION_MAX_PERCENT = 80;
+const LIVE_DEFECT_LOG_CAP = 200;
 type InferenceMode = "dataset" | "custom";
 
 // VideoPlayer component with error handling and loading state
@@ -486,6 +499,8 @@ const PredictionPage = () => {
   const [liveGoodClassNames, setLiveGoodClassNames] = useState<string[]>(["product"]);
   /** Live frame returned detection.class values not listed on the selected model (possible wrong model or stale class list) */
   const [liveDetectionClassMismatch, setLiveDetectionClassMismatch] = useState<string | null>(null);
+  const [liveDefectLogs, setLiveDefectLogs] = useState<LiveDefectLogEntry[]>([]);
+  const [centerGuideSizePercent, setCenterGuideSizePercent] = useState<number>(LIVE_CENTER_REGION_DEFAULT_PERCENT);
 
   // Refs
   const pollIntervalRef = useRef<number | null>(null);
@@ -506,6 +521,8 @@ const PredictionPage = () => {
   const isLiveInferenceRunningRef = useRef<boolean>(false);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const hasRestoredStateRef = useRef<string | null>(null);
+  const incidentLockRef = useRef<boolean>(false);
+  const centerGuideSizeRatioRef = useRef<number>(LIVE_CENTER_REGION_DEFAULT_PERCENT / 100);
 
   const navigate = useNavigate();
 
@@ -523,6 +540,10 @@ const PredictionPage = () => {
   useEffect(() => {
     liveGoodClassNamesRef.current = liveGoodClassNames;
   }, [liveGoodClassNames]);
+
+  useEffect(() => {
+    centerGuideSizeRatioRef.current = centerGuideSizePercent / 100;
+  }, [centerGuideSizePercent]);
 
   // When the selected model changes — or its classNames payload changes after a refetch — reset live "good classes".
   useEffect(() => {
@@ -1318,6 +1339,47 @@ const PredictionPage = () => {
       }
 
       setVerdict(finalVerdict);
+
+      const imageWidth = data.imageWidth || 640;
+      const imageHeight = data.imageHeight || 480;
+      const centerRatio = centerGuideSizeRatioRef.current;
+      const centerBox = {
+        left: imageWidth * ((1 - centerRatio) / 2),
+        right: imageWidth * (1 - (1 - centerRatio) / 2),
+        top: imageHeight * ((1 - centerRatio) / 2),
+        bottom: imageHeight * (1 - (1 - centerRatio) / 2),
+      };
+
+      const productDetections = detections
+        .filter((d) => goodClasses.includes(d.class) && d.confidence >= 0.45)
+        .sort((a, b) => b.confidence - a.confidence);
+      const primaryProductDetection = productDetections[0];
+      const productInsideCenterRegion = !!primaryProductDetection &&
+        primaryProductDetection.bbox[0] >= centerBox.left &&
+        primaryProductDetection.bbox[1] >= centerBox.top &&
+        primaryProductDetection.bbox[2] <= centerBox.right &&
+        primaryProductDetection.bbox[3] <= centerBox.bottom;
+
+      if (finalVerdict === "NO_PRODUCT") {
+        incidentLockRef.current = false;
+      } else if (frameVerdict === "NOT_OK" && !incidentLockRef.current && productInsideCenterRegion) {
+        const defects = detections
+          .filter((d) => !goodClasses.includes(d.class))
+          .sort((a, b) => b.confidence - a.confidence);
+        const defectClassesRaw = [...new Set(defects.map((d) => d.class).filter(Boolean))];
+        const defectClasses = defectClassesRaw.length > 0 ? defectClassesRaw : ["unknown_defect"];
+
+        const logEntry: LiveDefectLogEntry = {
+          id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          timestamp: new Date().toISOString(),
+          imageBase64: frameBase64,
+          verdict: "NOT_OK",
+          defectClasses,
+        };
+
+        setLiveDefectLogs((prev) => [logEntry, ...prev].slice(0, LIVE_DEFECT_LOG_CAP));
+        incidentLockRef.current = true;
+      }
       console.log("Frame processed successfully (overlay mode):", {
         totalDetections: data.totalDetections,
         detectionsCount: data.detections?.length ?? 0,
@@ -1482,6 +1544,91 @@ const PredictionPage = () => {
     }
   };
 
+  const exportLiveDefectLogs = useCallback(async () => {
+    if (liveDefectLogs.length === 0) {
+      toast({
+        title: "No logs to export",
+        description: "Run live inference and capture at least one NOT_OK event.",
+      });
+      return;
+    }
+
+    try {
+      const { Workbook } = await import("exceljs");
+      const workbook = new Workbook();
+      const worksheet = workbook.addWorksheet("LiveDefectLogs");
+      worksheet.columns = [
+        { header: "SrNo", key: "srNo", width: 8 },
+        { header: "Timestamp", key: "timestamp", width: 24 },
+        { header: "Verdict", key: "verdict", width: 12 },
+        { header: "DefectClasses", key: "defectClasses", width: 28 },
+        { header: "LoggedFrom", key: "loggedFrom", width: 18 },
+        { header: "Snapshot", key: "snapshot", width: 28 },
+      ];
+
+      liveDefectLogs.forEach((entry, idx) => {
+        const rowNumber = idx + 2;
+        worksheet.addRow({
+          srNo: idx + 1,
+          timestamp: new Date(entry.timestamp).toLocaleString(),
+          verdict: entry.verdict,
+          defectClasses: entry.defectClasses.join(", "),
+          loggedFrom: "Live Camera",
+          snapshot: "",
+        });
+
+        const imageExtension = entry.imageBase64.includes("image/png") ? "png" : "jpeg";
+        const imageId = workbook.addImage({
+          base64: entry.imageBase64,
+          extension: imageExtension,
+        });
+        worksheet.addImage(imageId, {
+          tl: { col: 6, row: rowNumber - 1 + 0.08 },
+          ext: { width: 160, height: 90 },
+          editAs: "oneCell",
+        });
+        worksheet.getRow(rowNumber).height = 72;
+      });
+
+      const headerRow = worksheet.getRow(1);
+      headerRow.font = { bold: true };
+      headerRow.alignment = { vertical: "middle", horizontal: "center" };
+      headerRow.height = 24;
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber > 1) {
+          row.alignment = { vertical: "middle", wrapText: true };
+        }
+      });
+
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const filename = `live-defect-logs-${stamp}.xlsx`;
+      const wbArray = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([wbArray], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Export complete",
+        description: `Exported ${liveDefectLogs.length} log entries to Excel.`,
+      });
+    } catch (error) {
+      console.error("Failed to export live defect logs:", error);
+      toast({
+        title: "Export failed",
+        description: "Could not generate Excel file. Please try again.",
+        variant: "destructive",
+      });
+    }
+  }, [liveDefectLogs, toast]);
+
   // Start frame capture loop
   const startFrameCaptureLoop = (inferenceId: string) => {
     if (captureIntervalRef.current) {
@@ -1627,6 +1774,9 @@ const PredictionPage = () => {
     }
 
     setLiveDetectionClassMismatch(null);
+    setLiveDefectLogs([]);
+    setCenterGuideSizePercent(LIVE_CENTER_REGION_DEFAULT_PERCENT);
+    incidentLockRef.current = false;
 
     // Request camera access first and wait for video to be ready
     const cameraGranted = await requestCameraAccess();
@@ -1766,6 +1916,7 @@ const PredictionPage = () => {
     pendingFrameRequestRef.current = false;
     liveInferenceIdRef.current = null;
     setLiveDetectionClassMismatch(null);
+    incidentLockRef.current = false;
 
     toast({
       title: "Live inference stopped",
@@ -2061,7 +2212,12 @@ const PredictionPage = () => {
 
       const json = await res.json();
       const jobsList = Array.isArray(json.inferenceJobs) ? json.inferenceJobs : (json.inferenceJobs || []);
-      setPastInferences(jobsList);
+      // Hide live-camera sessions from History tab by request; keep only non-live jobs.
+      const nonLiveJobs = jobsList.filter((job: InferenceJob) => {
+        const source = (job.sourceType || "").toLowerCase();
+        return source !== "live" && source !== "live_camera";
+      });
+      setPastInferences(nonLiveJobs);
     } catch (err) {
       console.error("Error fetching past inferences:", err);
       setPastInferences([]);
@@ -2928,12 +3084,6 @@ const PredictionPage = () => {
               initial="hidden"
               animate="visible"
             >
-              <div className="space-y-1">
-                <h3 className="text-sm font-medium">Inference mode</h3>
-                <p className="text-xs text-muted-foreground">
-                  Choose whether to use a dataset&apos;s test folder or upload custom images.
-                </p>
-              </div>
               <div className="inline-flex rounded-md border bg-muted/50 p-1">
                 <Button
                   type="button"
@@ -3008,6 +3158,7 @@ const PredictionPage = () => {
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Camera feed with overlay canvas for detections */}
+                <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
                 <div className="space-y-2">
                   <div className="relative aspect-video bg-black rounded-md overflow-hidden">
                     <video
@@ -3046,6 +3197,15 @@ const PredictionPage = () => {
                       className="absolute inset-0 w-full h-full pointer-events-none"
                     />
                     <div
+                      className="pointer-events-none absolute rounded-md border-2 border-dashed border-cyan-300/80"
+                      style={{
+                        width: `${centerGuideSizePercent}%`,
+                        height: `${centerGuideSizePercent}%`,
+                        left: `${(100 - centerGuideSizePercent) / 2}%`,
+                        top: `${(100 - centerGuideSizePercent) / 2}%`,
+                      }}
+                    />
+                    <div
                       className={cn(
                         "absolute top-3 left-3 rounded-xl border-2 px-5 py-3.5 shadow-lg backdrop-blur-sm sm:top-4 sm:left-4 sm:px-2 sm:py-1",
                         verdict === "OK" && "bg-green-50/95 text-green-700 border-green-200",
@@ -3082,6 +3242,70 @@ const PredictionPage = () => {
                       </div>
                     )}
                   </div>
+                </div>
+                <Card className="h-full">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <CardTitle className="text-base">Defect Logger</CardTitle>
+                        <CardDescription>Logs NOT_OK products in center only</CardDescription>
+                      </div>
+                      {!isLiveInferenceRunning && liveDefectLogs.length > 0 && (
+                        <Button type="button" size="sm" variant="outline" onClick={exportLiveDefectLogs}>
+                          <Download className="mr-2 h-4 w-4" />
+                          Export Logs (.xlsx)
+                        </Button>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-md border p-2">
+                        <p className="text-xs text-muted-foreground">NOT_OK logs</p>
+                        <p className="text-xl font-semibold">{liveDefectLogs.length}</p>
+                      </div>
+                      <div className="rounded-md border p-2">
+                        <p className="text-xs text-muted-foreground">Mode</p>
+                        <p className="text-sm font-semibold">{isLiveInferenceRunning ? "Capturing" : "Stopped"}</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2 rounded-md border p-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-muted-foreground">Center guide size</p>
+                        <p className="text-xs font-medium">{centerGuideSizePercent}%</p>
+                      </div>
+                      <input
+                        type="range"
+                        min={LIVE_CENTER_REGION_MIN_PERCENT}
+                        max={LIVE_CENTER_REGION_MAX_PERCENT}
+                        step={1}
+                        value={centerGuideSizePercent}
+                        onChange={(e) => setCenterGuideSizePercent(Number(e.target.value))}
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="max-h-[360px] space-y-2 overflow-auto pr-1">
+                      {liveDefectLogs.length === 0 ? (
+                        <p className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                          No NOT_OK incidents logged yet. Logs are added once per incident only when the product is fully inside the center guide.
+                        </p>
+                      ) : (
+                        liveDefectLogs.map((entry) => (
+                          <div key={entry.id} className="space-y-2 rounded-md border p-2">
+                            <div className="relative aspect-video overflow-hidden rounded bg-muted">
+                              <img src={entry.imageBase64} alt={`Defect ${entry.timestamp}`} className="h-full w-full object-contain" />
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">{new Date(entry.timestamp).toLocaleString()}</p>
+                              <p className="text-xs font-medium text-red-600">{entry.verdict}</p>
+                              <p className="text-xs text-muted-foreground">Defects: {entry.defectClasses.join(", ") || "Unknown"}</p>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
                 </div>
 
                 {/* Detection Statistics */}

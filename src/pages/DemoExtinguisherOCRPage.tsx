@@ -167,10 +167,6 @@ const normalizeIpCameraBaseUrl = (value: string): string => {
   return value.trim().replace(/\/+$/, "");
 };
 
-const buildIpCameraSnapshotUrl = (baseUrl: string): string => {
-  return `${normalizeIpCameraBaseUrl(baseUrl)}/shot.jpg`;
-};
-
 const buildIpCameraStreamUrl = (baseUrl: string): string => {
   return `${normalizeIpCameraBaseUrl(baseUrl)}/video`;
 };
@@ -274,15 +270,6 @@ const DemoExtinguisherOCRPage = () => {
     codeInput,
     confidenceInput
   );
-  const ipCameraSnapshotUrl = useMemo(
-    () => buildIpCameraSnapshotUrl(ipCameraBaseUrl),
-    [ipCameraBaseUrl]
-  );
-  const ipCameraStreamUrl = useMemo(
-    () => buildIpCameraStreamUrl(ipCameraBaseUrl),
-    [ipCameraBaseUrl]
-  );
-
   const handleConfidenceThresholdChange = (value: number) => {
     const normalized = Number.isFinite(value)
       ? Math.min(0.95, Math.max(0.1, value))
@@ -1038,9 +1025,6 @@ const DemoExtinguisherOCRPage = () => {
             <Badge variant={isSessionActive ? "default" : "secondary"}>
               {isSessionActive ? "Session Active" : "Session Inactive"}
             </Badge>
-            <span className="text-xs text-muted-foreground">
-              ID: {sessionId || "-"}
-            </span>
           </div>
 
           <div className="grid gap-3 lg:grid-cols-3">
@@ -1105,12 +1089,6 @@ const DemoExtinguisherOCRPage = () => {
                   className="w-24"
                 />
               </div>
-              <p className="text-xs text-muted-foreground">
-                Current threshold: {confidenceThreshold.toFixed(2)}
-                {typeof lastMinConfidenceUsed === "number"
-                  ? ` | Backend minConfidenceUsed: ${lastMinConfidenceUsed.toFixed(2)}`
-                  : ""}
-              </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -1269,15 +1247,6 @@ const DemoExtinguisherOCRPage = () => {
                         {ipCameraStatus}
                       </Badge>
                     </div>
-                    <div className="text-xs text-muted-foreground space-y-1">
-                      <p>
-                        Snapshot URL: backend proxy via{" "}
-                        <code className="text-xs">/demo/extinguisher/ip-camera/snapshot</code>{" "}
-                        (joined with <code className="text-xs">VITE_API_BASE_URL</code>)
-                      </p>
-                      <p>Stream candidate: {ipCameraStreamUrl}</p>
-                      <p>Preview mode: Live stream</p>
-                    </div>
                   </div>
                 )}
 
@@ -1338,12 +1307,6 @@ const DemoExtinguisherOCRPage = () => {
                 {!isSessionActive && (
                   <p className="text-xs text-muted-foreground">
                     Start a session before submitting camera frames.
-                  </p>
-                )}
-
-                {cameraSourceMode === "ip" && (
-                  <p className="text-xs text-muted-foreground">
-                    Live stream preview stays direct. Capture and auto-scan now use the backend proxy to avoid browser tainted-canvas issues.
                   </p>
                 )}
 
