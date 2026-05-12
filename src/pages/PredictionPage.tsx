@@ -1,5 +1,5 @@
 // src/pages/PredictionPage.tsx
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useProfile } from "@/hooks/useProfile";
@@ -80,6 +80,15 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
+import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
 
@@ -293,14 +302,25 @@ interface LiveDefectLogEntry {
   defectClasses: string[];
 }
 
+interface LiveRunAnalytics {
+  framesProcessed: number;
+  totalProducts: number;
+  goodProducts: number;
+  badProducts: number;
+  classCounts: Record<string, number>;
+  runStartedAt: string | null;
+  runEndedAt: string | null;
+}
+
 const STORAGE_PREFIX = "prediction_";
 const LIVE_LOGS_HISTORY_KEY = "liveLogsHistory";
 const LIVE_LOGS_HISTORY_CAP = 100;
 const LIVE_LOGS_POLL_INTERVAL_MS = 5000;
 const LIVE_CENTER_REGION_DEFAULT_PERCENT = 40;
 const LIVE_CENTER_REGION_MIN_PERCENT = 40;
-const LIVE_CENTER_REGION_MAX_PERCENT = 80;
+const LIVE_CENTER_REGION_MAX_PERCENT = 95;
 const LIVE_DEFECT_LOG_CAP = 200;
+const LIVE_ANALYTICS_PIE_COLORS = ["hsl(var(--primary))", "hsl(var(--destructive))"];
 type InferenceMode = "dataset" | "custom";
 
 // VideoPlayer component with error handling and loading state
@@ -500,6 +520,17 @@ const PredictionPage = () => {
   /** Live frame returned detection.class values not listed on the selected model (possible wrong model or stale class list) */
   const [liveDetectionClassMismatch, setLiveDetectionClassMismatch] = useState<string | null>(null);
   const [liveDefectLogs, setLiveDefectLogs] = useState<LiveDefectLogEntry[]>([]);
+  const [isLiveDefectLoggingEnabled, setIsLiveDefectLoggingEnabled] = useState(true);
+  const [showRunAnalytics, setShowRunAnalytics] = useState(false);
+  const [liveRunAnalytics, setLiveRunAnalytics] = useState<LiveRunAnalytics>({
+    framesProcessed: 0,
+    totalProducts: 0,
+    goodProducts: 0,
+    badProducts: 0,
+    classCounts: {},
+    runStartedAt: null,
+    runEndedAt: null,
+  });
   const [centerGuideSizePercent, setCenterGuideSizePercent] = useState<number>(LIVE_CENTER_REGION_DEFAULT_PERCENT);
 
   // Refs
@@ -522,6 +553,10 @@ const PredictionPage = () => {
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const hasRestoredStateRef = useRef<string | null>(null);
   const incidentLockRef = useRef<boolean>(false);
+  const analyticsIncidentLockRef = useRef<boolean>(false);
+  const analyticsIncidentClassesRef = useRef<Set<string>>(new Set());
+  const analyticsIncidentVerdictRef = useRef<"OK" | "NOT_OK" | null>(null);
+  const isLiveDefectLoggingEnabledRef = useRef<boolean>(true);
   const centerGuideSizeRatioRef = useRef<number>(LIVE_CENTER_REGION_DEFAULT_PERCENT / 100);
 
   const navigate = useNavigate();
@@ -544,6 +579,85 @@ const PredictionPage = () => {
   useEffect(() => {
     centerGuideSizeRatioRef.current = centerGuideSizePercent / 100;
   }, [centerGuideSizePercent]);
+
+  useEffect(() => {
+    isLiveDefectLoggingEnabledRef.current = isLiveDefectLoggingEnabled;
+  }, [isLiveDefectLoggingEnabled]);
+
+  const liveRunTotalClasses = useMemo(
+    () => Object.keys(liveRunAnalytics.classCounts).length,
+    [liveRunAnalytics.classCounts]
+  );
+
+  const liveRunPieData = useMemo(
+    () => [
+      { key: "good", label: "Good Products", count: liveRunAnalytics.goodProducts },
+      { key: "bad", label: "Bad Products", count: liveRunAnalytics.badProducts },
+    ],
+    [liveRunAnalytics.badProducts, liveRunAnalytics.goodProducts]
+  );
+
+  const liveRunClassBarData = useMemo(
+    () =>
+      Object.entries(liveRunAnalytics.classCounts)
+        .map(([className, count]) => ({ className, count }))
+        .sort((a, b) => b.count - a.count),
+    [liveRunAnalytics.classCounts]
+  );
+
+  const liveRunAnalyticsChartConfig = useMemo(
+    () =>
+      ({
+        count: {
+          label: "Count",
+          color: "hsl(var(--primary))",
+        },
+        good: {
+          label: "Good Products",
+          color: "hsl(var(--primary))",
+        },
+        bad: {
+          label: "Bad Products",
+          color: "hsl(var(--destructive))",
+        },
+      }) satisfies ChartConfig,
+    []
+  );
+
+  const resetAnalyticsIncidentTracking = useCallback(() => {
+    analyticsIncidentLockRef.current = false;
+    analyticsIncidentClassesRef.current = new Set();
+    analyticsIncidentVerdictRef.current = null;
+  }, []);
+
+  const flushAnalyticsIncident = useCallback(() => {
+    const incidentClasses = Array.from(analyticsIncidentClassesRef.current);
+    const incidentVerdict = analyticsIncidentVerdictRef.current;
+
+    if (!incidentVerdict || incidentClasses.length === 0) {
+      resetAnalyticsIncidentTracking();
+      return;
+    }
+
+    setLiveRunAnalytics((prev) => {
+      const nextClassCounts = { ...prev.classCounts };
+      incidentClasses.forEach((className) => {
+        nextClassCounts[className] = (nextClassCounts[className] ?? 0) + 1;
+      });
+
+      return {
+        framesProcessed: prev.framesProcessed + 1,
+        totalProducts: prev.totalProducts + 1,
+        goodProducts: prev.goodProducts + (incidentVerdict === "OK" ? 1 : 0),
+        badProducts: prev.badProducts + (incidentVerdict === "NOT_OK" ? 1 : 0),
+        classCounts: nextClassCounts,
+        runStartedAt: prev.runStartedAt,
+        runEndedAt: prev.runEndedAt,
+      };
+    });
+
+    resetAnalyticsIncidentTracking();
+  }, [resetAnalyticsIncidentTracking]);
 
   // When the selected model changes — or its classNames payload changes after a refetch — reset live "good classes".
   useEffect(() => {
@@ -1361,8 +1475,48 @@ const PredictionPage = () => {
         primaryProductDetection.bbox[3] <= centerBox.bottom;
 
       if (finalVerdict === "NO_PRODUCT") {
+        if (analyticsIncidentLockRef.current) {
+          flushAnalyticsIncident();
+        }
+      } else if (
+        productInsideCenterRegion &&
+        (frameVerdict === "OK" || frameVerdict === "NOT_OK")
+      ) {
+        // Accumulate classes across the whole product incident so defects that
+        // appear in later frames are still represented in analytics.
+        const qualifyingClassesForFrame = [
+          ...new Set(
+            detections
+              .filter((d) =>
+                goodClasses.includes(d.class)
+                  ? d.confidence >= 0.45
+                  : d.confidence >= 0.35
+              )
+              .map((d) => d.class || "unknown")
+          ),
+        ];
+
+        qualifyingClassesForFrame.forEach((className) => {
+          analyticsIncidentClassesRef.current.add(className);
+        });
+
+        if (frameVerdict === "NOT_OK" || finalVerdict === "NOT_OK") {
+          analyticsIncidentVerdictRef.current = "NOT_OK";
+        } else if (!analyticsIncidentVerdictRef.current) {
+          analyticsIncidentVerdictRef.current = "OK";
+        }
+
+        analyticsIncidentLockRef.current = true;
+      }
+
+      if (finalVerdict === "NO_PRODUCT") {
         incidentLockRef.current = false;
-      } else if (frameVerdict === "NOT_OK" && !incidentLockRef.current && productInsideCenterRegion) {
+      } else if (
+        isLiveDefectLoggingEnabledRef.current &&
+        frameVerdict === "NOT_OK" &&
+        !incidentLockRef.current &&
+        productInsideCenterRegion
+      ) {
         const defects = detections
           .filter((d) => !goodClasses.includes(d.class))
           .sort((a, b) => b.confidence - a.confidence);
@@ -1775,8 +1929,19 @@ const PredictionPage = () => {
 
     setLiveDetectionClassMismatch(null);
     setLiveDefectLogs([]);
+    setShowRunAnalytics(false);
+    setLiveRunAnalytics({
+      framesProcessed: 0,
+      totalProducts: 0,
+      goodProducts: 0,
+      badProducts: 0,
+      classCounts: {},
+      runStartedAt: null,
+      runEndedAt: null,
+    });
     setCenterGuideSizePercent(LIVE_CENTER_REGION_DEFAULT_PERCENT);
     incidentLockRef.current = false;
+    resetAnalyticsIncidentTracking();
 
     // Request camera access first and wait for video to be ready
     const cameraGranted = await requestCameraAccess();
@@ -1848,6 +2013,11 @@ const PredictionPage = () => {
       setLiveSessionConfidenceThreshold(sessionThreshold);
       setAnnotatedFrame(null);
       setCurrentDetections(0);
+      setLiveRunAnalytics((prev) => ({
+        ...prev,
+        runStartedAt: new Date().toISOString(),
+        runEndedAt: null,
+      }));
 
       toast({
         title: "Live inference started",
@@ -1917,6 +2087,15 @@ const PredictionPage = () => {
     liveInferenceIdRef.current = null;
     setLiveDetectionClassMismatch(null);
     incidentLockRef.current = false;
+    if (analyticsIncidentLockRef.current) {
+      flushAnalyticsIncident();
+    } else {
+      resetAnalyticsIncidentTracking();
+    }
+    setLiveRunAnalytics((prev) => ({
+      ...prev,
+      runEndedAt: new Date().toISOString(),
+    }));
 
     toast({
       title: "Live inference stopped",
@@ -3250,11 +3429,25 @@ const PredictionPage = () => {
                         <CardTitle className="text-base">Defect Logger</CardTitle>
                         <CardDescription>Logs NOT_OK products in center only</CardDescription>
                       </div>
-                      {!isLiveInferenceRunning && liveDefectLogs.length > 0 && (
-                        <Button type="button" size="sm" variant="outline" onClick={exportLiveDefectLogs}>
-                          <Download className="mr-2 h-4 w-4" />
-                          Export Logs (.xlsx)
-                        </Button>
+                      {!isLiveInferenceRunning && (
+                        <div className="flex items-center gap-2">
+                          {liveRunAnalytics.framesProcessed > 0 && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setShowRunAnalytics(true)}
+                            >
+                              View Analytics
+                            </Button>
+                          )}
+                          {isLiveDefectLoggingEnabled && liveDefectLogs.length > 0 && (
+                            <Button type="button" size="sm" variant="outline" onClick={exportLiveDefectLogs}>
+                              <Download className="mr-2 h-4 w-4" />
+                              Export Logs (.xlsx)
+                            </Button>
+                          )}
+                        </div>
                       )}
                     </div>
                   </CardHeader>
@@ -3285,7 +3478,11 @@ const PredictionPage = () => {
                       />
                     </div>
                     <div className="max-h-[360px] space-y-2 overflow-auto pr-1">
-                      {liveDefectLogs.length === 0 ? (
+                      {!isLiveDefectLoggingEnabled ? (
+                        <p className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                          Defect logging is disabled for this run. Enable it before starting live inference to capture NOT_OK incidents.
+                        </p>
+                      ) : liveDefectLogs.length === 0 ? (
                         <p className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
                           No NOT_OK incidents logged yet. Logs are added once per incident only when the product is fully inside the center guide.
                         </p>
@@ -3306,6 +3503,91 @@ const PredictionPage = () => {
                     </div>
                   </CardContent>
                 </Card>
+                <Dialog open={showRunAnalytics} onOpenChange={setShowRunAnalytics}>
+                  <DialogContent className="max-w-5xl">
+                    <DialogHeader>
+                      <DialogTitle>Run Analytics</DialogTitle>
+                      <DialogDescription>
+                        Summary and chart view for the most recent live inference run.
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    {liveRunAnalytics.framesProcessed > 0 ? (
+                      <div className="space-y-4">
+                        <div className="grid gap-2 rounded-md border p-2 text-xs text-muted-foreground md:grid-cols-2">
+                          <p>
+                            Run started:{" "}
+                            <span className="font-medium text-foreground">
+                              {liveRunAnalytics.runStartedAt
+                                ? new Date(liveRunAnalytics.runStartedAt).toLocaleString()
+                                : "-"}
+                            </span>
+                          </p>
+                          <p>
+                            Run ended:{" "}
+                            <span className="font-medium text-foreground">
+                              {liveRunAnalytics.runEndedAt
+                                ? new Date(liveRunAnalytics.runEndedAt).toLocaleString()
+                                : "Running"}
+                            </span>
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                          <div className="rounded-md border p-2">
+                            <p className="text-xs text-muted-foreground">Total Products</p>
+                            <p className="text-xl font-semibold">{liveRunAnalytics.totalProducts}</p>
+                          </div>
+                          <div className="rounded-md border p-2">
+                            <p className="text-xs text-muted-foreground">Good Products</p>
+                            <p className="text-xl font-semibold text-emerald-600">{liveRunAnalytics.goodProducts}</p>
+                          </div>
+                          <div className="rounded-md border p-2">
+                            <p className="text-xs text-muted-foreground">Bad Products</p>
+                            <p className="text-xl font-semibold text-red-600">{liveRunAnalytics.badProducts}</p>
+                          </div>
+                          <div className="rounded-md border p-2">
+                            <p className="text-xs text-muted-foreground">Total Classes</p>
+                            <p className="text-xl font-semibold">{liveRunTotalClasses}</p>
+                          </div>
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="rounded-md border p-2">
+                            <p className="mb-2 text-xs text-muted-foreground">Good vs Bad</p>
+                            <ChartContainer config={liveRunAnalyticsChartConfig} className="h-[260px] w-full">
+                              <PieChart>
+                                <Pie data={liveRunPieData} dataKey="count" nameKey="label" innerRadius={50} outerRadius={90}>
+                                  {liveRunPieData.map((entry, index) => (
+                                    <Cell key={entry.key} fill={LIVE_ANALYTICS_PIE_COLORS[index % LIVE_ANALYTICS_PIE_COLORS.length]} />
+                                  ))}
+                                </Pie>
+                                <ChartTooltip content={<ChartTooltipContent />} />
+                                <ChartLegend content={<ChartLegendContent />} />
+                              </PieChart>
+                            </ChartContainer>
+                          </div>
+
+                          <div className="rounded-md border p-2">
+                            <p className="mb-2 text-xs text-muted-foreground">Class Counts</p>
+                            <ChartContainer config={liveRunAnalyticsChartConfig} className="h-[260px] w-full">
+                              <BarChart data={liveRunClassBarData}>
+                                <CartesianGrid vertical={false} />
+                                <XAxis dataKey="className" tickLine={false} axisLine={false} interval={0} angle={-20} textAnchor="end" height={52} />
+                                <YAxis allowDecimals={false} />
+                                <ChartTooltip content={<ChartTooltipContent />} />
+                                <Bar dataKey="count" radius={[4, 4, 0, 0]} fill="var(--color-count)" />
+                              </BarChart>
+                            </ChartContainer>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                        No analytics data available yet. Start and stop a live inference run first.
+                      </div>
+                    )}
+                  </DialogContent>
+                </Dialog>
                 </div>
 
                 {/* Detection Statistics */}
@@ -3385,15 +3667,9 @@ const PredictionPage = () => {
 
                 {/* Good classes for live verdict (matches inference `class` strings from model) */}
                 <div className="space-y-2 pt-2 border-t">
-                  <div className="flex items-start gap-2">
-                    <Label className="text-sm font-medium leading-tight shrink-0 pt-0.5">
-                      Good classes
-                    </Label>
-                    <p className="text-xs text-muted-foreground leading-snug">
-                      Detections of these classes (≥ 0.45 conf.) count as product present. Other classes
-                      (≥ 0.35 conf.) count as defects for the OK / NOT OK / NO PRODUCT verdict.
-                    </p>
-                  </div>
+                  <Label className="text-sm font-medium leading-tight shrink-0 pt-0.5">
+                    Good classes
+                  </Label>
                   {selectedModel?.classNames && selectedModel.classNames.length > 0 ? (
                     <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-md border bg-muted/30 p-3">
                       {selectedModel.classNames.map((cls) => (
@@ -3419,7 +3695,25 @@ const PredictionPage = () => {
                 </div>
 
                 {/* Control Buttons */}
-                <div className="flex items-center gap-2 pt-2 border-t">
+                <div className="space-y-3 pt-2 border-t">
+                  <div className="flex items-center gap-2 rounded-md border p-2">
+                    <Checkbox
+                      id="live-defect-logging-toggle"
+                      checked={isLiveDefectLoggingEnabled}
+                      onCheckedChange={(checked) =>
+                        setIsLiveDefectLoggingEnabled(checked === true)
+                      }
+                      disabled={isLiveInferenceRunning}
+                    />
+                    <Label
+                      htmlFor="live-defect-logging-toggle"
+                      className="text-sm font-medium cursor-pointer"
+                    >
+                      Enable defect logging
+                    </Label>
+                  </div>
+
+                  <div className="flex items-center gap-2">
                   {!isLiveInferenceRunning ? (
                     hasPermission("runInference") ? (
                       <Button
@@ -3455,6 +3749,7 @@ const PredictionPage = () => {
                       Stop Inference
                     </Button>
                   )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
