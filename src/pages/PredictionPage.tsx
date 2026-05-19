@@ -53,6 +53,7 @@ import {
   ChevronRight,
   Info,
   AlertTriangle,
+  FolderOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -513,6 +514,8 @@ const PredictionPage = () => {
   const [currentDetections, setCurrentDetections] = useState<number>(0);
   const [verdict, setVerdict] = useState<"NO_PRODUCT" | "OK" | "NOT_OK">("NO_PRODUCT");
   const [isProcessingFrame, setIsProcessingFrame] = useState<boolean>(false);
+  /** Debounced version of isProcessingFrame so the badge does not blink between frames */
+  const [showProcessingIndicator, setShowProcessingIndicator] = useState<boolean>(false);
   const [fps, setFps] = useState<number>(0); // Optional: FPS counter
   const [liveSessionConfidenceThreshold, setLiveSessionConfidenceThreshold] = useState<number | null>(null); // Value returned from live/start (optional display)
   /** Classes treated as "good product present" for live camera verdict (subset of model.classNames) */
@@ -531,6 +534,7 @@ const PredictionPage = () => {
     runStartedAt: null,
     runEndedAt: null,
   });
+  const [isCenterGuideEnabled, setIsCenterGuideEnabled] = useState<boolean>(true);
   const [centerGuideSizePercent, setCenterGuideSizePercent] = useState<number>(LIVE_CENTER_REGION_DEFAULT_PERCENT);
 
   // Refs
@@ -555,9 +559,12 @@ const PredictionPage = () => {
   const incidentLockRef = useRef<boolean>(false);
   const analyticsIncidentLockRef = useRef<boolean>(false);
   const analyticsIncidentClassesRef = useRef<Set<string>>(new Set());
-  const analyticsIncidentVerdictRef = useRef<"OK" | "NOT_OK" | null>(null);
+  const analyticsIncidentHasDefectRef = useRef<boolean>(false);
   const isLiveDefectLoggingEnabledRef = useRef<boolean>(true);
+  const isCenterGuideEnabledRef = useRef<boolean>(true);
   const centerGuideSizeRatioRef = useRef<number>(LIVE_CENTER_REGION_DEFAULT_PERCENT / 100);
+  /** Timer used to delay hiding the Processing badge so it doesn't flicker between frames */
+  const processingIndicatorHideTimerRef = useRef<number | null>(null);
 
   const navigate = useNavigate();
 
@@ -580,13 +587,73 @@ const PredictionPage = () => {
     centerGuideSizeRatioRef.current = centerGuideSizePercent / 100;
   }, [centerGuideSizePercent]);
 
+  // Debounce the hide of the Processing indicator so it doesn't flicker
+  // between consecutive frame processing toggles.
+  useEffect(() => {
+    if (isProcessingFrame) {
+      if (processingIndicatorHideTimerRef.current !== null) {
+        window.clearTimeout(processingIndicatorHideTimerRef.current);
+        processingIndicatorHideTimerRef.current = null;
+      }
+      setShowProcessingIndicator(true);
+    } else {
+      if (processingIndicatorHideTimerRef.current !== null) {
+        window.clearTimeout(processingIndicatorHideTimerRef.current);
+      }
+      processingIndicatorHideTimerRef.current = window.setTimeout(() => {
+        setShowProcessingIndicator(false);
+        processingIndicatorHideTimerRef.current = null;
+      }, 400);
+    }
+
+    return () => {
+      if (processingIndicatorHideTimerRef.current !== null) {
+        window.clearTimeout(processingIndicatorHideTimerRef.current);
+        processingIndicatorHideTimerRef.current = null;
+      }
+    };
+  }, [isProcessingFrame]);
+
   useEffect(() => {
     isLiveDefectLoggingEnabledRef.current = isLiveDefectLoggingEnabled;
   }, [isLiveDefectLoggingEnabled]);
 
-  const liveRunTotalClasses = useMemo(
-    () => Object.keys(liveRunAnalytics.classCounts).length,
-    [liveRunAnalytics.classCounts]
+  useEffect(() => {
+    isCenterGuideEnabledRef.current = isCenterGuideEnabled;
+  }, [isCenterGuideEnabled]);
+
+  const liveRunDefectClassBarData = useMemo(() => {
+    const goodClassSet = new Set(liveGoodClassNames);
+
+    return Object.entries(liveRunAnalytics.classCounts)
+      .filter(([className]) => !goodClassSet.has(className))
+      .map(([className, count]) => ({
+        className,
+        count,
+        share:
+          liveRunAnalytics.badProducts > 0
+            ? (count / liveRunAnalytics.badProducts) * 100
+            : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [liveGoodClassNames, liveRunAnalytics.badProducts, liveRunAnalytics.classCounts]);
+
+  const liveRunDefectRate = useMemo(
+    () =>
+      liveRunAnalytics.totalProducts > 0
+        ? (liveRunAnalytics.badProducts / liveRunAnalytics.totalProducts) * 100
+        : 0,
+    [liveRunAnalytics.badProducts, liveRunAnalytics.totalProducts]
+  );
+
+  const liveRunTopDefect = useMemo(
+    () => liveRunDefectClassBarData[0] ?? null,
+    [liveRunDefectClassBarData]
+  );
+
+  const liveRunDefectClassCount = useMemo(
+    () => liveRunDefectClassBarData.length,
+    [liveRunDefectClassBarData]
   );
 
   const liveRunPieData = useMemo(
@@ -595,14 +662,6 @@ const PredictionPage = () => {
       { key: "bad", label: "Bad Products", count: liveRunAnalytics.badProducts },
     ],
     [liveRunAnalytics.badProducts, liveRunAnalytics.goodProducts]
-  );
-
-  const liveRunClassBarData = useMemo(
-    () =>
-      Object.entries(liveRunAnalytics.classCounts)
-        .map(([className, count]) => ({ className, count }))
-        .sort((a, b) => b.count - a.count),
-    [liveRunAnalytics.classCounts]
   );
 
   const liveRunAnalyticsChartConfig = useMemo(
@@ -627,14 +686,14 @@ const PredictionPage = () => {
   const resetAnalyticsIncidentTracking = useCallback(() => {
     analyticsIncidentLockRef.current = false;
     analyticsIncidentClassesRef.current = new Set();
-    analyticsIncidentVerdictRef.current = null;
+    analyticsIncidentHasDefectRef.current = false;
   }, []);
 
   const flushAnalyticsIncident = useCallback(() => {
     const incidentClasses = Array.from(analyticsIncidentClassesRef.current);
-    const incidentVerdict = analyticsIncidentVerdictRef.current;
+    const incidentVerdict = analyticsIncidentHasDefectRef.current ? "NOT_OK" : "OK";
 
-    if (!incidentVerdict || incidentClasses.length === 0) {
+    if (incidentClasses.length === 0) {
       resetAnalyticsIncidentTracking();
       return;
     }
@@ -1457,29 +1516,35 @@ const PredictionPage = () => {
       const imageWidth = data.imageWidth || 640;
       const imageHeight = data.imageHeight || 480;
       const centerRatio = centerGuideSizeRatioRef.current;
-      const centerBox = {
-        left: imageWidth * ((1 - centerRatio) / 2),
-        right: imageWidth * (1 - (1 - centerRatio) / 2),
-        top: imageHeight * ((1 - centerRatio) / 2),
-        bottom: imageHeight * (1 - (1 - centerRatio) / 2),
-      };
-
+      const validRegionBox = isCenterGuideEnabledRef.current
+        ? {
+            left: imageWidth * ((1 - centerRatio) / 2),
+            right: imageWidth * (1 - (1 - centerRatio) / 2),
+            top: imageHeight * ((1 - centerRatio) / 2),
+            bottom: imageHeight * (1 - (1 - centerRatio) / 2),
+          }
+        : {
+            left: 0,
+            right: imageWidth,
+            top: 0,
+            bottom: imageHeight,
+          };
       const productDetections = detections
         .filter((d) => goodClasses.includes(d.class) && d.confidence >= 0.45)
         .sort((a, b) => b.confidence - a.confidence);
       const primaryProductDetection = productDetections[0];
-      const productInsideCenterRegion = !!primaryProductDetection &&
-        primaryProductDetection.bbox[0] >= centerBox.left &&
-        primaryProductDetection.bbox[1] >= centerBox.top &&
-        primaryProductDetection.bbox[2] <= centerBox.right &&
-        primaryProductDetection.bbox[3] <= centerBox.bottom;
+      const productInsideValidRegion = !!primaryProductDetection &&
+        primaryProductDetection.bbox[0] >= validRegionBox.left &&
+        primaryProductDetection.bbox[1] >= validRegionBox.top &&
+        primaryProductDetection.bbox[2] <= validRegionBox.right &&
+        primaryProductDetection.bbox[3] <= validRegionBox.bottom;
 
       if (finalVerdict === "NO_PRODUCT") {
         if (analyticsIncidentLockRef.current) {
           flushAnalyticsIncident();
         }
       } else if (
-        productInsideCenterRegion &&
+        productInsideValidRegion &&
         (frameVerdict === "OK" || frameVerdict === "NOT_OK")
       ) {
         // Accumulate classes across the whole product incident so defects that
@@ -1500,10 +1565,12 @@ const PredictionPage = () => {
           analyticsIncidentClassesRef.current.add(className);
         });
 
-        if (frameVerdict === "NOT_OK" || finalVerdict === "NOT_OK") {
-          analyticsIncidentVerdictRef.current = "NOT_OK";
-        } else if (!analyticsIncidentVerdictRef.current) {
-          analyticsIncidentVerdictRef.current = "OK";
+        if (
+          detections.some(
+            (d) => !goodClasses.includes(d.class) && d.confidence >= 0.35
+          )
+        ) {
+          analyticsIncidentHasDefectRef.current = true;
         }
 
         analyticsIncidentLockRef.current = true;
@@ -1515,7 +1582,7 @@ const PredictionPage = () => {
         isLiveDefectLoggingEnabledRef.current &&
         frameVerdict === "NOT_OK" &&
         !incidentLockRef.current &&
-        productInsideCenterRegion
+        productInsideValidRegion
       ) {
         const defects = detections
           .filter((d) => !goodClasses.includes(d.class))
@@ -3199,9 +3266,9 @@ const PredictionPage = () => {
               exit="hidden"
             >
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    Select Project
+                <CardHeader className={liveCameraMode ? "pb-3" : undefined}>
+                  <CardTitle className={cn("flex items-center gap-2", liveCameraMode && "text-xl")}>
+                    {liveCameraMode ? "Project" : "Select Project"}
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -3211,38 +3278,55 @@ const PredictionPage = () => {
                         </TooltipTrigger>
                         <TooltipContent side="top" align="start" className="max-w-sm">
                           <p className="text-xs">
-                            Choose the project that contains your trained models. Inference will use models from this project.
+                            {liveCameraMode
+                              ? "This is the project currently used for live inference. Exit Live Camera to switch projects."
+                              : "Choose the project that contains your trained models. Inference will use models from this project."}
                           </p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </CardTitle>
-                  <CardDescription>Choose project scope for datasets and models</CardDescription>
+                  <CardDescription>
+                    {liveCameraMode
+                      ? "Active project for this live camera session"
+                      : "Choose project scope for datasets and models"}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Select value={selectedProjectId} onValueChange={handleProjectSelect} disabled={loadingProjects}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a project" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {loadingProjects ? (
-                        <SelectItem value="loading" disabled>
-                          Loading projects...
-                        </SelectItem>
-                      ) : projects.length === 0 ? (
-                        <SelectItem value="no-projects" disabled>
-                          No projects available
-                        </SelectItem>
-                      ) : (
-                        projects.map((project) => (
-                          <SelectItem key={String(project.id)} value={String(project.id)}>
-                            {project.name}
+                  {liveCameraMode ? (
+                    <div className="flex items-center gap-3 rounded-lg border bg-gradient-to-r from-primary/10 via-primary/[0.04] to-transparent px-4 py-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-md bg-primary/15 text-primary ring-1 ring-primary/20">
+                        <FolderOpen className="h-5 w-5" />
+                      </div>
+                      <span className="truncate text-lg font-semibold tracking-tight">
+                        {projectName || "—"}
+                      </span>
+                    </div>
+                  ) : (
+                    <Select value={selectedProjectId} onValueChange={handleProjectSelect} disabled={loadingProjects}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a project" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {loadingProjects ? (
+                          <SelectItem value="loading" disabled>
+                            Loading projects...
                           </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  {!selectedProjectId && (
+                        ) : projects.length === 0 ? (
+                          <SelectItem value="no-projects" disabled>
+                            No projects available
+                          </SelectItem>
+                        ) : (
+                          projects.map((project) => (
+                            <SelectItem key={String(project.id)} value={String(project.id)}>
+                              {project.name}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {!selectedProjectId && !liveCameraMode && (
                     <p className="text-sm text-muted-foreground mt-2">
                       Select a project to continue
                     </p>
@@ -3321,17 +3405,27 @@ const PredictionPage = () => {
                     >
                       Back to New Inference
                     </Button>
-                    {isLiveInferenceRunning && (
-                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                        Running
-                      </Badge>
-                    )}
-                    {isProcessingFrame && (
-                      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                        Processing...
-                      </Badge>
-                    )}
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "bg-green-50 text-green-700 border-green-200 transition-opacity duration-200",
+                        isLiveInferenceRunning ? "opacity-100" : "opacity-0"
+                      )}
+                      aria-hidden={!isLiveInferenceRunning}
+                    >
+                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      Running
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "bg-blue-50 text-blue-700 border-blue-200 transition-opacity duration-200",
+                        showProcessingIndicator ? "opacity-100" : "opacity-0"
+                      )}
+                      aria-hidden={!showProcessingIndicator}
+                    >
+                      Processing...
+                    </Badge>
                   </div>
                 </div>
               </CardHeader>
@@ -3375,15 +3469,17 @@ const PredictionPage = () => {
                       ref={annotatedCanvasRef}
                       className="absolute inset-0 w-full h-full pointer-events-none"
                     />
-                    <div
-                      className="pointer-events-none absolute rounded-md border-2 border-dashed border-cyan-300/80"
-                      style={{
-                        width: `${centerGuideSizePercent}%`,
-                        height: `${centerGuideSizePercent}%`,
-                        left: `${(100 - centerGuideSizePercent) / 2}%`,
-                        top: `${(100 - centerGuideSizePercent) / 2}%`,
-                      }}
-                    />
+                    {isCenterGuideEnabled && (
+                      <div
+                        className="pointer-events-none absolute rounded-md border-2 border-dashed border-cyan-300/80"
+                        style={{
+                          width: `${centerGuideSizePercent}%`,
+                          height: `${centerGuideSizePercent}%`,
+                          left: `${(100 - centerGuideSizePercent) / 2}%`,
+                          top: `${(100 - centerGuideSizePercent) / 2}%`,
+                        }}
+                      />
+                    )}
                     <div
                       className={cn(
                         "absolute top-3 left-3 rounded-xl border-2 px-5 py-3.5 shadow-lg backdrop-blur-sm sm:top-4 sm:left-4 sm:px-2 sm:py-1",
@@ -3427,7 +3523,9 @@ const PredictionPage = () => {
                     <div className="flex items-center justify-between gap-2">
                       <div>
                         <CardTitle className="text-base">Defect Logger</CardTitle>
-                        <CardDescription>Logs NOT_OK products in center only</CardDescription>
+                        <CardDescription>
+                          Logs NOT_OK products that fully fit inside the active capture region
+                        </CardDescription>
                       </div>
                       {!isLiveInferenceRunning && (
                         <div className="flex items-center gap-2">
@@ -3463,19 +3561,47 @@ const PredictionPage = () => {
                       </div>
                     </div>
                     <div className="space-y-2 rounded-md border p-2">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs text-muted-foreground">Center guide size</p>
-                        <p className="text-xs font-medium">{centerGuideSizePercent}%</p>
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="live-center-guide-toggle"
+                          checked={isCenterGuideEnabled}
+                          onCheckedChange={(checked) =>
+                            setIsCenterGuideEnabled(checked === true)
+                          }
+                          disabled={isLiveInferenceRunning}
+                        />
+                        <Label
+                          htmlFor="live-center-guide-toggle"
+                          className="cursor-pointer text-sm font-medium"
+                        >
+                          Enable center guide
+                        </Label>
                       </div>
-                      <input
-                        type="range"
-                        min={LIVE_CENTER_REGION_MIN_PERCENT}
-                        max={LIVE_CENTER_REGION_MAX_PERCENT}
-                        step={1}
-                        value={centerGuideSizePercent}
-                        onChange={(e) => setCenterGuideSizePercent(Number(e.target.value))}
-                        className="w-full"
-                      />
+
+                      {isCenterGuideEnabled ? (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs text-muted-foreground">Center guide size</p>
+                            <p className="text-xs font-medium">{centerGuideSizePercent}%</p>
+                          </div>
+                          <input
+                            type="range"
+                            min={LIVE_CENTER_REGION_MIN_PERCENT}
+                            max={LIVE_CENTER_REGION_MAX_PERCENT}
+                            step={1}
+                            value={centerGuideSizePercent}
+                            onChange={(e) => setCenterGuideSizePercent(Number(e.target.value))}
+                            className="w-full"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Products must fully fit inside the center guide to be counted and logged.
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Center guide is off. Products must still fully fit inside the visible camera frame.
+                        </p>
+                      )}
                     </div>
                     <div className="max-h-[360px] space-y-2 overflow-auto pr-1">
                       {!isLiveDefectLoggingEnabled ? (
@@ -3484,7 +3610,7 @@ const PredictionPage = () => {
                         </p>
                       ) : liveDefectLogs.length === 0 ? (
                         <p className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
-                          No NOT_OK incidents logged yet. Logs are added once per incident only when the product is fully inside the center guide.
+                          No NOT_OK incidents logged yet. Logs are added once per incident only when the product is fully inside the active capture region.
                         </p>
                       ) : (
                         liveDefectLogs.map((entry) => (
@@ -3504,7 +3630,7 @@ const PredictionPage = () => {
                   </CardContent>
                 </Card>
                 <Dialog open={showRunAnalytics} onOpenChange={setShowRunAnalytics}>
-                  <DialogContent className="max-w-5xl">
+                  <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle>Run Analytics</DialogTitle>
                       <DialogDescription>
@@ -3532,7 +3658,7 @@ const PredictionPage = () => {
                             </span>
                           </p>
                         </div>
-                        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                        <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
                           <div className="rounded-md border p-2">
                             <p className="text-xs text-muted-foreground">Total Products</p>
                             <p className="text-xl font-semibold">{liveRunAnalytics.totalProducts}</p>
@@ -3546,8 +3672,16 @@ const PredictionPage = () => {
                             <p className="text-xl font-semibold text-red-600">{liveRunAnalytics.badProducts}</p>
                           </div>
                           <div className="rounded-md border p-2">
-                            <p className="text-xs text-muted-foreground">Total Classes</p>
-                            <p className="text-xl font-semibold">{liveRunTotalClasses}</p>
+                            <p className="text-xs text-muted-foreground">Defect Rate</p>
+                            <p className="text-xl font-semibold text-amber-600">
+                              {liveRunDefectRate.toFixed(1)}%
+                            </p>
+                          </div>
+                          <div className="rounded-md border p-2">
+                            <p className="text-xs text-muted-foreground">Top Defect</p>
+                            <p className="truncate text-xl font-semibold">
+                              {liveRunTopDefect?.className ?? "None"}
+                            </p>
                           </div>
                         </div>
 
@@ -3568,17 +3702,66 @@ const PredictionPage = () => {
                           </div>
 
                           <div className="rounded-md border p-2">
-                            <p className="mb-2 text-xs text-muted-foreground">Class Counts</p>
-                            <ChartContainer config={liveRunAnalyticsChartConfig} className="h-[260px] w-full">
-                              <BarChart data={liveRunClassBarData}>
-                                <CartesianGrid vertical={false} />
-                                <XAxis dataKey="className" tickLine={false} axisLine={false} interval={0} angle={-20} textAnchor="end" height={52} />
-                                <YAxis allowDecimals={false} />
-                                <ChartTooltip content={<ChartTooltipContent />} />
-                                <Bar dataKey="count" radius={[4, 4, 0, 0]} fill="var(--color-count)" />
-                              </BarChart>
-                            </ChartContainer>
+                            <div className="mb-2 flex items-center justify-between">
+                              <p className="text-xs text-muted-foreground">Defect Class Counts</p>
+                              <p className="text-xs text-muted-foreground">
+                                {liveRunDefectClassCount} class{liveRunDefectClassCount === 1 ? "" : "es"}
+                              </p>
+                            </div>
+                            {liveRunDefectClassBarData.length > 0 ? (
+                              <ChartContainer config={liveRunAnalyticsChartConfig} className="h-[260px] w-full">
+                                <BarChart data={liveRunDefectClassBarData}>
+                                  <CartesianGrid vertical={false} />
+                                  <XAxis dataKey="className" tickLine={false} axisLine={false} interval={0} angle={-20} textAnchor="end" height={52} />
+                                  <YAxis allowDecimals={false} />
+                                  <ChartTooltip content={<ChartTooltipContent />} />
+                                  <Bar dataKey="count" radius={[4, 4, 0, 0]} fill="var(--color-count)" />
+                                </BarChart>
+                              </ChartContainer>
+                            ) : (
+                              <div className="flex h-[260px] items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
+                                No defect classes detected in this run.
+                              </div>
+                            )}
                           </div>
+                        </div>
+
+                        <div className="rounded-md border p-2">
+                          <div className="mb-3 flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium">Defect Breakdown</p>
+                              <p className="text-xs text-muted-foreground">
+                                Share is calculated against bad products in this run.
+                              </p>
+                            </div>
+                          </div>
+
+                          {liveRunDefectClassBarData.length > 0 ? (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="border-b text-left text-xs text-muted-foreground">
+                                    <th className="py-2 pr-4 font-medium">Defect Class</th>
+                                    <th className="py-2 pr-4 font-medium">Count</th>
+                                    <th className="py-2 font-medium">Share</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {liveRunDefectClassBarData.map((row) => (
+                                    <tr key={row.className} className="border-b last:border-b-0">
+                                      <td className="py-2 pr-4 font-medium">{row.className}</td>
+                                      <td className="py-2 pr-4">{row.count}</td>
+                                      <td className="py-2">{row.share.toFixed(1)}%</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                              No defect classes available to summarize yet.
+                            </div>
+                          )}
                         </div>
                       </div>
                     ) : (
