@@ -523,6 +523,8 @@ const PredictionPage = () => {
   /** Live frame returned detection.class values not listed on the selected model (possible wrong model or stale class list) */
   const [liveDetectionClassMismatch, setLiveDetectionClassMismatch] = useState<string | null>(null);
   const [liveDefectLogs, setLiveDefectLogs] = useState<LiveDefectLogEntry[]>([]);
+  /** OK / NOT_OK / NO PRODUCT overlay on the camera feed */
+  const [isLiveVerdictLabelEnabled, setIsLiveVerdictLabelEnabled] = useState(true);
   const [isLiveDefectLoggingEnabled, setIsLiveDefectLoggingEnabled] = useState(true);
   const [showRunAnalytics, setShowRunAnalytics] = useState(false);
   const [liveRunAnalytics, setLiveRunAnalytics] = useState<LiveRunAnalytics>({
@@ -560,6 +562,7 @@ const PredictionPage = () => {
   const analyticsIncidentLockRef = useRef<boolean>(false);
   const analyticsIncidentClassesRef = useRef<Set<string>>(new Set());
   const analyticsIncidentHasDefectRef = useRef<boolean>(false);
+  const isLiveVerdictLabelEnabledRef = useRef<boolean>(true);
   const isLiveDefectLoggingEnabledRef = useRef<boolean>(true);
   const isCenterGuideEnabledRef = useRef<boolean>(true);
   const centerGuideSizeRatioRef = useRef<number>(LIVE_CENTER_REGION_DEFAULT_PERCENT / 100);
@@ -615,8 +618,13 @@ const PredictionPage = () => {
   }, [isProcessingFrame]);
 
   useEffect(() => {
-    isLiveDefectLoggingEnabledRef.current = isLiveDefectLoggingEnabled;
-  }, [isLiveDefectLoggingEnabled]);
+    isLiveVerdictLabelEnabledRef.current = isLiveVerdictLabelEnabled;
+  }, [isLiveVerdictLabelEnabled]);
+
+  useEffect(() => {
+    isLiveDefectLoggingEnabledRef.current =
+      isLiveVerdictLabelEnabled && isLiveDefectLoggingEnabled;
+  }, [isLiveVerdictLabelEnabled, isLiveDefectLoggingEnabled]);
 
   useEffect(() => {
     isCenterGuideEnabledRef.current = isCenterGuideEnabled;
@@ -903,6 +911,11 @@ const PredictionPage = () => {
     if (savedDatasetId) setSelectedDatasetId(savedDatasetId);
     if (savedModelId) setSelectedModelId(savedModelId);
     setConfidenceThreshold(savedConfidence);
+    const savedVerdictLabels = loadFromStorage<boolean>("liveVerdictLabelEnabled", true);
+    setIsLiveVerdictLabelEnabled(savedVerdictLabels);
+    if (!savedVerdictLabels) {
+      setIsLiveDefectLoggingEnabled(false);
+    }
   }, [sessionReady, selectedProjectId, loadingProjects]);
 
   // Restore inference state separately (after functions are defined)
@@ -1156,6 +1169,14 @@ const PredictionPage = () => {
     const clamped = Math.max(0, Math.min(1, value));
     setConfidenceThreshold(clamped);
     saveToStorage("confidenceThreshold", clamped);
+  };
+
+  const handleLiveVerdictLabelToggle = (enabled: boolean) => {
+    setIsLiveVerdictLabelEnabled(enabled);
+    saveToStorage("liveVerdictLabelEnabled", enabled);
+    if (!enabled) {
+      setIsLiveDefectLoggingEnabled(false);
+    }
   };
 
   const toggleLiveGoodClass = (className: string, checked: boolean) => {
@@ -1469,137 +1490,137 @@ const PredictionPage = () => {
 
       const goodClasses = liveGoodClassNamesRef.current;
 
-      const productDetected =
-        goodClasses.length > 0 &&
-        detections.some(
-          (d) => goodClasses.includes(d.class) && d.confidence >= 0.45
-        );
-
-      const defectDetected = detections.some(
-        (d) => !goodClasses.includes(d.class) && d.confidence >= 0.35
-      );
-
-      // Frame verdict
-      let frameVerdict: "NO_PRODUCT" | "OK" | "NOT_OK";
-
-      if (!productDetected) {
-        frameVerdict = "NO_PRODUCT";
-      } else if (defectDetected) {
-        frameVerdict = "NOT_OK";
-      } else {
-        frameVerdict = "OK";
-      }
-
-      const history = verdictHistoryRef.current;
-      history.push(frameVerdict);
-      if (history.length > 7) history.shift();
-
-      // Count values
-      const counts = history.reduce((acc, v) => {
-        acc[v] = (acc[v] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
-
-      let finalVerdict = verdict;
-
-      // Rules
-      if (counts["NOT_OK"] >= 2) {
-        finalVerdict = "NOT_OK";
-      } else if (counts["OK"] >= 5) {
-        finalVerdict = "OK";
-      } else if (counts["NO_PRODUCT"] >= 5) {
-        finalVerdict = "NO_PRODUCT";
-      }
-
-      setVerdict(finalVerdict);
-
       const imageWidth = data.imageWidth || 640;
       const imageHeight = data.imageHeight || 480;
-      const centerRatio = centerGuideSizeRatioRef.current;
-      const validRegionBox = isCenterGuideEnabledRef.current
-        ? {
-            left: imageWidth * ((1 - centerRatio) / 2),
-            right: imageWidth * (1 - (1 - centerRatio) / 2),
-            top: imageHeight * ((1 - centerRatio) / 2),
-            bottom: imageHeight * (1 - (1 - centerRatio) / 2),
-          }
-        : {
-            left: 0,
-            right: imageWidth,
-            top: 0,
-            bottom: imageHeight,
-          };
-      const productDetections = detections
-        .filter((d) => goodClasses.includes(d.class) && d.confidence >= 0.45)
-        .sort((a, b) => b.confidence - a.confidence);
-      const primaryProductDetection = productDetections[0];
-      const productInsideValidRegion = !!primaryProductDetection &&
-        primaryProductDetection.bbox[0] >= validRegionBox.left &&
-        primaryProductDetection.bbox[1] >= validRegionBox.top &&
-        primaryProductDetection.bbox[2] <= validRegionBox.right &&
-        primaryProductDetection.bbox[3] <= validRegionBox.bottom;
 
-      if (finalVerdict === "NO_PRODUCT") {
-        if (analyticsIncidentLockRef.current) {
-          flushAnalyticsIncident();
-        }
-      } else if (
-        productInsideValidRegion &&
-        (frameVerdict === "OK" || frameVerdict === "NOT_OK")
-      ) {
-        // Accumulate classes across the whole product incident so defects that
-        // appear in later frames are still represented in analytics.
-        const qualifyingClassesForFrame = [
-          ...new Set(
-            detections
-              .filter((d) =>
-                goodClasses.includes(d.class)
-                  ? d.confidence >= 0.45
-                  : d.confidence >= 0.35
-              )
-              .map((d) => d.class || "unknown")
-          ),
-        ];
-
-        qualifyingClassesForFrame.forEach((className) => {
-          analyticsIncidentClassesRef.current.add(className);
-        });
-
-        if (
+      if (isLiveVerdictLabelEnabledRef.current) {
+        const productDetected =
+          goodClasses.length > 0 &&
           detections.some(
-            (d) => !goodClasses.includes(d.class) && d.confidence >= 0.35
-          )
-        ) {
-          analyticsIncidentHasDefectRef.current = true;
+            (d) => goodClasses.includes(d.class) && d.confidence >= 0.45
+          );
+
+        const defectDetected = detections.some(
+          (d) => !goodClasses.includes(d.class) && d.confidence >= 0.35
+        );
+
+        let frameVerdict: "NO_PRODUCT" | "OK" | "NOT_OK";
+
+        if (!productDetected) {
+          frameVerdict = "NO_PRODUCT";
+        } else if (defectDetected) {
+          frameVerdict = "NOT_OK";
+        } else {
+          frameVerdict = "OK";
         }
 
-        analyticsIncidentLockRef.current = true;
-      }
+        const history = verdictHistoryRef.current;
+        history.push(frameVerdict);
+        if (history.length > 7) history.shift();
 
-      if (finalVerdict === "NO_PRODUCT") {
-        incidentLockRef.current = false;
-      } else if (
-        isLiveDefectLoggingEnabledRef.current &&
-        frameVerdict === "NOT_OK" &&
-        !incidentLockRef.current &&
-        productInsideValidRegion
-      ) {
-        const defects = detections
-          .filter((d) => !goodClasses.includes(d.class))
+        const counts = history.reduce((acc, v) => {
+          acc[v] = (acc[v] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+
+        let finalVerdict = verdict;
+
+        if (counts["NOT_OK"] >= 2) {
+          finalVerdict = "NOT_OK";
+        } else if (counts["OK"] >= 5) {
+          finalVerdict = "OK";
+        } else if (counts["NO_PRODUCT"] >= 5) {
+          finalVerdict = "NO_PRODUCT";
+        }
+
+        setVerdict(finalVerdict);
+
+        const centerRatio = centerGuideSizeRatioRef.current;
+        const validRegionBox = isCenterGuideEnabledRef.current
+          ? {
+              left: imageWidth * ((1 - centerRatio) / 2),
+              right: imageWidth * (1 - (1 - centerRatio) / 2),
+              top: imageHeight * ((1 - centerRatio) / 2),
+              bottom: imageHeight * (1 - (1 - centerRatio) / 2),
+            }
+          : {
+              left: 0,
+              right: imageWidth,
+              top: 0,
+              bottom: imageHeight,
+            };
+        const productDetections = detections
+          .filter((d) => goodClasses.includes(d.class) && d.confidence >= 0.45)
           .sort((a, b) => b.confidence - a.confidence);
-        const defectClassesRaw = [...new Set(defects.map((d) => d.class).filter(Boolean))];
-        const defectClasses = defectClassesRaw.length > 0 ? defectClassesRaw : ["unknown_defect"];
+        const primaryProductDetection = productDetections[0];
+        const productInsideValidRegion =
+          !!primaryProductDetection &&
+          primaryProductDetection.bbox[0] >= validRegionBox.left &&
+          primaryProductDetection.bbox[1] >= validRegionBox.top &&
+          primaryProductDetection.bbox[2] <= validRegionBox.right &&
+          primaryProductDetection.bbox[3] <= validRegionBox.bottom;
 
-        const logEntry: LiveDefectLogEntry = {
-          id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          timestamp: new Date().toISOString(),
-          imageBase64: frameBase64,
-          verdict: "NOT_OK",
-          defectClasses,
-        };
+        if (finalVerdict === "NO_PRODUCT") {
+          if (analyticsIncidentLockRef.current) {
+            flushAnalyticsIncident();
+          }
+        } else if (
+          productInsideValidRegion &&
+          (frameVerdict === "OK" || frameVerdict === "NOT_OK")
+        ) {
+          const qualifyingClassesForFrame = [
+            ...new Set(
+              detections
+                .filter((d) =>
+                  goodClasses.includes(d.class)
+                    ? d.confidence >= 0.45
+                    : d.confidence >= 0.35
+                )
+                .map((d) => d.class || "unknown")
+            ),
+          ];
 
-        setLiveDefectLogs((prev) => [logEntry, ...prev].slice(0, LIVE_DEFECT_LOG_CAP));
-        incidentLockRef.current = true;
+          qualifyingClassesForFrame.forEach((className) => {
+            analyticsIncidentClassesRef.current.add(className);
+          });
+
+          if (
+            detections.some(
+              (d) => !goodClasses.includes(d.class) && d.confidence >= 0.35
+            )
+          ) {
+            analyticsIncidentHasDefectRef.current = true;
+          }
+
+          analyticsIncidentLockRef.current = true;
+        }
+
+        if (finalVerdict === "NO_PRODUCT") {
+          incidentLockRef.current = false;
+        } else if (
+          isLiveDefectLoggingEnabledRef.current &&
+          frameVerdict === "NOT_OK" &&
+          !incidentLockRef.current &&
+          productInsideValidRegion
+        ) {
+          const defects = detections
+            .filter((d) => !goodClasses.includes(d.class))
+            .sort((a, b) => b.confidence - a.confidence);
+          const defectClassesRaw = [...new Set(defects.map((d) => d.class).filter(Boolean))];
+          const defectClasses =
+            defectClassesRaw.length > 0 ? defectClassesRaw : ["unknown_defect"];
+
+          const logEntry: LiveDefectLogEntry = {
+            id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            timestamp: new Date().toISOString(),
+            imageBase64: frameBase64,
+            verdict: "NOT_OK",
+            defectClasses,
+          };
+
+          setLiveDefectLogs((prev) => [logEntry, ...prev].slice(0, LIVE_DEFECT_LOG_CAP));
+          incidentLockRef.current = true;
+        }
       }
       console.log("Frame processed successfully (overlay mode):", {
         totalDetections: data.totalDetections,
@@ -1982,6 +2003,7 @@ const PredictionPage = () => {
 
     const modelForLive = models.find((x) => modelRowMatchesId(x, selectedModelId));
     if (
+      isLiveVerdictLabelEnabled &&
       modelForLive?.classNames &&
       modelForLive.classNames.length > 0 &&
       liveGoodClassNames.length === 0
@@ -3480,29 +3502,31 @@ const PredictionPage = () => {
                         }}
                       />
                     )}
-                    <div
-                      className={cn(
-                        "absolute top-3 left-3 rounded-xl border-2 px-5 py-3.5 shadow-lg backdrop-blur-sm sm:top-4 sm:left-4 sm:px-2 sm:py-1",
-                        verdict === "OK" && "bg-green-50/95 text-green-700 border-green-200",
-                        verdict === "NOT_OK" && "bg-red-50/95 text-red-700 border-red-200",
-                        verdict === "NO_PRODUCT" && "bg-gray-50/95 text-gray-700 border-gray-200"
-                      )}
-                    >
-                      <div className="flex items-center gap-4 sm:gap-5">
-                        <span
-                          className={cn(
-                            "inline-block h-12 w-12 shrink-0 rounded-full border-[3px] shadow-[0_0_18px_rgba(0,0,0,0.25)] sm:h-14 sm:w-14",
-                            verdict === "OK" && "bg-green-500 border-green-600 shadow-green-500/70",
-                            verdict === "NOT_OK" &&
-                              "bg-red-500 border-red-600 shadow-red-500/80 animate-pulse",
-                            verdict === "NO_PRODUCT" && "bg-gray-400 border-gray-500 shadow-gray-400/60"
-                          )}
-                        />
-                        <span className="text-xl font-bold tracking-wide sm:text-2xl">
-                          {verdict === "NO_PRODUCT" ? "NO PRODUCT" : verdict}
-                        </span>
+                    {isLiveVerdictLabelEnabled && (
+                      <div
+                        className={cn(
+                          "absolute top-3 left-3 rounded-xl border-2 px-5 py-3.5 shadow-lg backdrop-blur-sm sm:top-4 sm:left-4 sm:px-2 sm:py-1",
+                          verdict === "OK" && "bg-green-50/95 text-green-700 border-green-200",
+                          verdict === "NOT_OK" && "bg-red-50/95 text-red-700 border-red-200",
+                          verdict === "NO_PRODUCT" && "bg-gray-50/95 text-gray-700 border-gray-200"
+                        )}
+                      >
+                        <div className="flex items-center gap-4 sm:gap-5">
+                          <span
+                            className={cn(
+                              "inline-block h-12 w-12 shrink-0 rounded-full border-[3px] shadow-[0_0_18px_rgba(0,0,0,0.25)] sm:h-14 sm:w-14",
+                              verdict === "OK" && "bg-green-500 border-green-600 shadow-green-500/70",
+                              verdict === "NOT_OK" &&
+                                "bg-red-500 border-red-600 shadow-red-500/80 animate-pulse",
+                              verdict === "NO_PRODUCT" && "bg-gray-400 border-gray-500 shadow-gray-400/60"
+                            )}
+                          />
+                          <span className="text-xl font-bold tracking-wide sm:text-2xl">
+                            {verdict === "NO_PRODUCT" ? "NO PRODUCT" : verdict}
+                          </span>
+                        </div>
                       </div>
-                    </div>
+                    )}
                     {cameraPermission === 'requesting' && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/50">
                         <Loader2 className="h-8 w-8 animate-spin text-white" />
@@ -3604,7 +3628,11 @@ const PredictionPage = () => {
                       )}
                     </div>
                     <div className="max-h-[360px] space-y-2 overflow-auto pr-1">
-                      {!isLiveDefectLoggingEnabled ? (
+                      {!isLiveVerdictLabelEnabled ? (
+                        <p className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                          OK / NOT_OK verdict labels are disabled. Enable them before starting live inference to use defect logging and the on-screen verdict badge.
+                        </p>
+                      ) : !isLiveDefectLoggingEnabled ? (
                         <p className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
                           Defect logging is disabled for this run. Enable it before starting live inference to capture NOT_OK incidents.
                         </p>
@@ -3849,6 +3877,7 @@ const PredictionPage = () => {
                 )}
 
                 {/* Good classes for live verdict (matches inference `class` strings from model) */}
+                {isLiveVerdictLabelEnabled && (
                 <div className="space-y-2 pt-2 border-t">
                   <Label className="text-sm font-medium leading-tight shrink-0 pt-0.5">
                     Good classes
@@ -3876,9 +3905,26 @@ const PredictionPage = () => {
                     </p>
                   )}
                 </div>
+                )}
 
                 {/* Control Buttons */}
                 <div className="space-y-3 pt-2 border-t">
+                  <div className="flex items-center gap-2 rounded-md border p-2">
+                    <Checkbox
+                      id="live-verdict-label-toggle"
+                      checked={isLiveVerdictLabelEnabled}
+                      onCheckedChange={(checked) =>
+                        handleLiveVerdictLabelToggle(checked === true)
+                      }
+                      disabled={isLiveInferenceRunning}
+                    />
+                    <Label
+                      htmlFor="live-verdict-label-toggle"
+                      className="text-sm font-medium cursor-pointer"
+                    >
+                      Show OK / NOT_OK verdict label
+                    </Label>
+                  </div>
                   <div className="flex items-center gap-2 rounded-md border p-2">
                     <Checkbox
                       id="live-defect-logging-toggle"
@@ -3886,15 +3932,23 @@ const PredictionPage = () => {
                       onCheckedChange={(checked) =>
                         setIsLiveDefectLoggingEnabled(checked === true)
                       }
-                      disabled={isLiveInferenceRunning}
+                      disabled={isLiveInferenceRunning || !isLiveVerdictLabelEnabled}
                     />
                     <Label
                       htmlFor="live-defect-logging-toggle"
-                      className="text-sm font-medium cursor-pointer"
+                      className={cn(
+                        "text-sm font-medium",
+                        isLiveVerdictLabelEnabled ? "cursor-pointer" : "cursor-not-allowed opacity-60"
+                      )}
                     >
                       Enable defect logging
                     </Label>
                   </div>
+                  {!isLiveVerdictLabelEnabled && (
+                    <p className="text-xs text-muted-foreground px-1">
+                      Detection boxes still run; verdict badge, analytics incidents, and defect logs are off until you enable the label above.
+                    </p>
+                  )}
 
                   <div className="flex items-center gap-2">
                   {!isLiveInferenceRunning ? (
@@ -3905,7 +3959,9 @@ const PredictionPage = () => {
                           !selectedModelId ||
                           startingInference ||
                           cameraPermission === "denied" ||
-                          (!!(selectedModel?.classNames?.length) && liveGoodClassNames.length === 0)
+                          (isLiveVerdictLabelEnabled &&
+                            !!(selectedModel?.classNames?.length) &&
+                            liveGoodClassNames.length === 0)
                         }
                         className="flex-1"
                       >
