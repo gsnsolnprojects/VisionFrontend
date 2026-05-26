@@ -7,7 +7,8 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  */
 export const convertAnnotationsToLabels = async (
   datasetId: string,
-  options?: {
+  options: {
+    modelType: "YOLO" | "YOLO_SEG";
     imageIds?: string[];
     folder?: string;
   }
@@ -19,7 +20,7 @@ export const convertAnnotationsToLabels = async (
   await delay(500 + Math.random() * 500); // 500-1000ms delay
 
   // Mock response - no actual conversion logic
-  const converted = options?.imageIds?.length ?? 10;
+  const converted = options.imageIds?.length ?? 10;
   const labelFilesCreated = converted;
 
   return {

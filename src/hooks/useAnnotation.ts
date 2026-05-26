@@ -104,7 +104,7 @@ export const useAnnotation = () => {
   }, [currentImage, saveToHistory]);
 
   // Update annotation
-  const updateAnnotation = useCallback((id: string, updates: Partial<Pick<Annotation, "bbox" | "categoryId" | "categoryName">>) => {
+  const updateAnnotation = useCallback((id: string, updates: Partial<Pick<Annotation, "bbox" | "polygon" | "categoryId" | "categoryName">>) => {
     setAllAnnotations((prev) =>
       prev.map((ann) =>
         ann.id === id ? { ...ann, ...updates } : ann
@@ -206,6 +206,9 @@ export const useAnnotation = () => {
       );
     }
     setUnsavedChanges(false);
+    // Baseline snapshot so the first edit can be undone (e.g. after delete or new box)
+    setHistory([[...newAnnotations]]);
+    setHistoryIndex(0);
   }, [currentImage]);
 
   // Reset state

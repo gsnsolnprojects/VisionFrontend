@@ -3,6 +3,11 @@
 
 export type BBox = [number, number, number, number]; // [x, y, width, height] normalized 0-1
 
+/** Normalized polygon vertex [x, y] in [0..1] relative to image. */
+export type PolygonPoint = [number, number];
+
+export type AnnotationShapeMode = "BBOX" | "POLYGON";
+
 export type AnnotationState = "draft" | "reviewed" | "approved" | "rejected";
 
 export interface Image {
@@ -30,6 +35,8 @@ export interface Annotation {
   id: string;
   imageId: string;
   bbox: BBox;
+  /** Segmentation polygon in normalized coordinates; optional for detect-only. */
+  polygon?: PolygonPoint[];
   categoryId: string;
   categoryName: string;
   // Phase 6: State and metadata

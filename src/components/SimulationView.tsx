@@ -61,6 +61,9 @@ import {
   HyperparametersSnapshot,
   ModelInfoSnapshot,
 } from "@/utils/trainingPersistence";
+import type { TrainModelType } from "@/types/training";
+import * as annotationsApi from "@/lib/api/annotations";
+import { mapApiRecordToAnnotation } from "@/lib/utils/mapApiAnnotation";
 
 type TrainedModelSummary = {
   modelId: string;
@@ -99,6 +102,107 @@ const FALLBACK_YOLO_MODELS: Array<{
   { type: "base", version: "v8", size: "x", key: "base-v8x", name: "YOLOv8 XLarge" },
 ];
 
+/** Offline fallback when base-models fetch fails and user selected YOLO segmentation. */
+const FALLBACK_YOLO_SEG_MODELS: Array<{
+  type: "base";
+  version: string;
+  size: string;
+  key: string;
+  name: string;
+  modelType: string;
+}> = [
+  { type: "base", version: "v8", size: "n", key: "base-v8n-seg", name: "YOLOv8 Nano (Seg)", modelType: "YOLO_SEG" },
+  { type: "base", version: "v8", size: "s", key: "base-v8s-seg", name: "YOLOv8 Small (Seg)", modelType: "YOLO_SEG" },
+  { type: "base", version: "v8", size: "m", key: "base-v8m-seg", name: "YOLOv8 Medium (Seg)", modelType: "YOLO_SEG" },
+];
+
+/** Offline fallback when base-models fetch fails and user selected RF-DETR. */
+const FALLBACK_RF_DETR_MODELS: Array<{
+  type: "base";
+  size: string;
+  key: string;
+  name: string;
+  modelType: string;
+}> = [
+  {
+    type: "base",
+    size: "n",
+    key: "base-rfdetr-n",
+    name: "RF-DETR Nano (detection)",
+    modelType: "RF_DETR",
+  },
+];
+
+type BaseModelRow = {
+  type?: "base" | "trained";
+  key?: string;
+  filename?: string;
+  size?: string;
+  name?: string;
+  sizeMB?: number;
+  label?: string;
+  version?: string;
+  modelId?: string;
+  modelVersion?: string;
+  modelType?: string;
+};
+
+function mapFallbackToBaseModelRow(
+  m: { type: "base"; size: string; key: string; name: string; modelType?: string; version?: string },
+  idx: number,
+  prefix: string
+): BaseModelRow {
+  return {
+    type: "base" as const,
+    key: m.key ?? `${prefix}-${m.size}-${idx}`,
+    size: m.size,
+    name: m.name,
+    label: m.name,
+    version: m.version,
+    modelType: m.modelType ?? "YOLO",
+  };
+}
+
+function getFallbackBaseModels(selected: TrainModelType): BaseModelRow[] {
+  if (selected === "RF_DETR") {
+    return FALLBACK_RF_DETR_MODELS.map((m, idx) => mapFallbackToBaseModelRow(m, idx, "fallback-rfdetr"));
+  }
+  if (selected === "YOLO_SEG") {
+    return FALLBACK_YOLO_SEG_MODELS.map((m, idx) => mapFallbackToBaseModelRow(m, idx, "fallback-seg"));
+  }
+  return FALLBACK_YOLO_MODELS.map((m, idx) => ({
+    type: "base" as const,
+    key: m.key ?? `fallback-${m.size}-${idx}`,
+    size: m.size,
+    name: m.name,
+    label: m.name,
+    version: m.version,
+    modelType: "YOLO" as const,
+  }));
+}
+
+function matchesSelectedTrainType(m: BaseModelRow, selected: TrainModelType): boolean {
+  const mt = String(m.modelType ?? "").toUpperCase();
+  if (selected === "RF_DETR") return mt === "RF_DETR";
+  if (selected === "YOLO_SEG") return isSegLikelyModel(m);
+  if (selected === "YOLO") return !isSegLikelyModel(m) && mt !== "RF_DETR";
+  return false;
+}
+
+function isSegLikelyModel(m: {
+  modelType?: string;
+  name?: string;
+  label?: string;
+  key?: string;
+  filename?: string;
+}): boolean {
+  const mt = String(m.modelType ?? "").toUpperCase();
+  if (mt === "YOLO_SEG") return true;
+  if (mt === "YOLO") return false;
+  const t = `${m.name ?? ""} ${m.label ?? ""} ${m.key ?? ""} ${m.filename ?? ""}`.toLowerCase();
+  return /\bseg\b|segmentation|\bsegment\b|mask|yolo.?seg|-seg/i.test(t);
+}
+
 export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profile }) => {
   const { toast } = useToast();
   const { sessionReady, profile: userProfile } = useProfile();
@@ -114,22 +218,8 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
   const [datasetDetails, setDatasetDetails] = useState<any | null>(null);
 
   // model selection states
-  const [modelType, setModelType] = useState<"YOLO" | "EfficientNet" | "Custom">("YOLO");
-  const [baseModels, setBaseModels] = useState<
-    Array<{
-      type?: "base" | "trained";
-      key?: string;
-      filename?: string;
-      size?: string;
-      name?: string;
-      sizeMB?: number;
-      label?: string;
-      version?: string;
-      modelId?: string;
-      modelVersion?: string;
-      modelType?: string;
-    }>
-  >([]);
+  const [modelType, setModelType] = useState<TrainModelType>("YOLO");
+  const [baseModels, setBaseModels] = useState<BaseModelRow[]>([]);
   // NOTE: this now stores the selected model key (for both base and trained models)
   const [selectedModelSize, setSelectedModelSize] = useState<string>(""); // key for selected model
 
@@ -749,14 +839,14 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
 
       if (!resp.ok) {
         console.warn("[fetchBaseModels] non-ok:", resp.status);
-        setBaseModels(FALLBACK_YOLO_MODELS);
+        setBaseModels(getFallbackBaseModels(modelType));
         return;
       }
 
       const contentType = resp.headers.get("content-type") ?? "";
       if (!contentType.includes("application/json")) {
         console.warn("[fetchBaseModels] non-json response");
-        setBaseModels(FALLBACK_YOLO_MODELS);
+        setBaseModels(getFallbackBaseModels(modelType));
         return;
       }
 
@@ -781,6 +871,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
           filename: m.filename,
           label: name,
           version: version || undefined,
+          modelType: m.modelType != null ? String(m.modelType) : undefined,
         };
       });
 
@@ -793,7 +884,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
           name,
           modelId: m.modelId,
           modelVersion: m.modelVersion,
-          modelType: m.modelType,
+          modelType: m.modelType != null ? String(m.modelType) : undefined,
           label: name,
         };
       });
@@ -801,31 +892,44 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
       const combined = [...mappedBase, ...mappedTrained];
 
       if (combined.length === 0) {
-        // Fallback to static YOLO base models, mapped into the same shape
-        const fallback = FALLBACK_YOLO_MODELS.map((m, idx) => ({
-          type: "base" as const,
-          key: m.key ?? `fallback-${m.size}-${idx}`,
-          size: m.size,
-          name: m.name,
-          label: m.name,
-          version: m.version,
-        }));
-        setBaseModels(fallback);
+        setBaseModels(getFallbackBaseModels(modelType));
       } else {
-        setBaseModels(combined);
+        setBaseModels(combined.filter((m) => matchesSelectedTrainType(m, modelType)));
       }
     } catch (err) {
       console.error("fetchBaseModels error:", err);
-      const fallback = FALLBACK_YOLO_MODELS.map((m, idx) => ({
-        type: "base" as const,
-        key: m.key ?? `fallback-${m.size}-${idx}`,
-        size: m.size,
-        name: m.name,
-        label: m.name,
-        version: m.version,
-      }));
-      setBaseModels(fallback);
+      setBaseModels(getFallbackBaseModels(modelType));
     }
+  };
+
+  /** True if dataset has any saved polygon (segmentation) annotations — blocks RF-DETR training. */
+  const datasetHasPolygonAnnotations = async (datasetId: string): Promise<boolean> => {
+    try {
+      const data = await annotationsApi.getAnnotations(datasetId);
+      const list = (data.annotations ?? []).map((raw) =>
+        mapApiRecordToAnnotation(raw as unknown as Record<string, unknown>)
+      );
+      return list.some((a) => a.polygon && a.polygon.length >= 3);
+    } catch (e) {
+      console.warn("[SimulationView] polygon annotation probe failed:", e);
+      return false;
+    }
+  };
+
+  const handleOpenTrainConfirm = async () => {
+    if (modelType === "RF_DETR" && selectedDatasetId) {
+      const hasPoly = await datasetHasPolygonAnnotations(selectedDatasetId);
+      if (hasPoly) {
+        toast({
+          title: "Cannot train RF-DETR on this dataset",
+          description:
+            "This dataset uses polygon (segmentation) annotations. RF-DETR requires bounding-box labels. Use Box annotation mode on a bbox-only dataset version, or create a new version.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    setShowSimulateConfirm(true);
   };
 
   // --- fetch trained models for current company/project ---
@@ -1017,20 +1121,22 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
     setTrainingModelName(`${base}-${stamp}`);
   }, [selectedDatasetId, datasetList, datasetDetails?.version]);
 
-  // EfficientNet and Custom are disabled; ensure we never leave them selected
+  // RF-DETR: augmentation presets are YOLO-only — force none
   useEffect(() => {
-    if (modelType === "EfficientNet" || modelType === "Custom") {
-      setModelType("YOLO");
+    if (modelType === "RF_DETR") {
+      setAugmentationPreset("none");
     }
   }, [modelType]);
 
-  // when modelType changes => fetch defaults and base-models when YOLO
-  useEffect(() => {
-    // fetch default hyperparameters
-    void fetchDefaultParams(modelType);
+  const trainUsesModelPicker =
+    modelType === "YOLO" || modelType === "YOLO_SEG" || modelType === "RF_DETR";
 
-    // if YOLO, fetch model sizes
-    if (modelType === "YOLO") {
+  // when modelType changes => fetch defaults and base-models
+  useEffect(() => {
+    void fetchDefaultParams(modelType);
+    setSelectedModelSize("");
+
+    if (trainUsesModelPicker) {
       void fetchBaseModels();
     } else {
       setBaseModels([]);
@@ -1159,8 +1265,10 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
           setSelectedDatasetId(savedState.datasetId);
         }
         if (savedState.modelType && !modelType) {
-          const restored = savedState.modelType as "YOLO" | "EfficientNet" | "Custom";
-          setModelType(restored === "EfficientNet" || restored === "Custom" ? "YOLO" : restored);
+          const restored = String(savedState.modelType).toUpperCase();
+          if (restored === "YOLO_SEG") setModelType("YOLO_SEG");
+          else if (restored === "RF_DETR") setModelType("RF_DETR");
+          else setModelType("YOLO");
         }
 
         // Persist latest snapshot for this job
@@ -1303,11 +1411,24 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
     // Prepare payload based on selected model option
     const selectedModel = baseModels.find((m) => m.key === selectedModelSize);
 
+    if (modelType === "RF_DETR") {
+      const hasPoly = await datasetHasPolygonAnnotations(selectedDatasetId);
+      if (hasPoly) {
+        toast({
+          title: "Cannot train RF-DETR on this dataset",
+          description:
+            "This dataset uses polygon (segmentation) annotations. RF-DETR requires bounding-box labels. Use Box annotation mode on a bbox-only dataset version, or create a new version.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     const payload: any = {
       datasetId: selectedDatasetId,
       ...(selectedProjectId ? { projectId: selectedProjectId } : {}),
     };
-    payload.augmentationPreset = augmentationPreset;
+    payload.augmentationPreset = modelType === "RF_DETR" ? "none" : augmentationPreset;
 
     if (trimmedModelName.length > 0) {
       // Backend: optional display/version string for the resulting trained model (matches list UI `modelVersion`).
@@ -1325,8 +1446,10 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
       } else if (selectedModelSize) {
         payload.modelKey = selectedModelSize;
       }
-      // Only send modelSize if we do NOT have a modelKey (avoid backend picking the wrong version)
-      if (!payload.modelKey && selectedModel?.size && modelType === "YOLO") {
+      if (modelType === "RF_DETR") {
+        if (!payload.modelKey) payload.modelKey = "base-rfdetr-n";
+        if (!payload.modelId) payload.modelSize = "n";
+      } else if (!payload.modelKey && selectedModel?.size) {
         payload.modelSize = String(selectedModel.size);
       }
     }
@@ -2070,30 +2193,38 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                   initial="hidden"
                   animate="visible"
                 >
-                  <div className="flex justify-end gap-2">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="inline-flex">
-                            <Button
-                              variant="outline"
-                              type="button"
-                              onClick={() => {
-                                navigate(`/annotation/${selectedDatasetId}`);
-                              }}
-                            >
-                              {label}
-                            </Button>
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-sm">
-                          <p className="text-xs">
-                            Open the annotation workspace for this dataset version. Pre-labeled
-                            images load boxes from label files when you open each image.
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="flex justify-end gap-2">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-flex">
+                              <Button
+                                variant="outline"
+                                type="button"
+                                onClick={() => {
+                                  navigate(`/annotation/${selectedDatasetId}`);
+                                }}
+                              >
+                                {label}
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-sm">
+                            <p className="text-xs">
+                              Open the annotation workspace for this dataset version. Pre-labeled
+                              images load boxes from label files when you open each image.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    {modelType === "RF_DETR" && (
+                      <p className="text-xs text-muted-foreground text-right max-w-md">
+                        RF-DETR uses bounding boxes. Annotate with <strong>Box</strong> mode, then
+                        Save &amp; convert (detection labels).
+                      </p>
+                    )}
                   </div>
                 </motion.div>
               </ProtectedComponent>
@@ -2789,18 +2920,31 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
               {/* Model type selector */}
               <div className="mb-4">
                 <Label>Model Type</Label>
-                <div className="mt-2 flex gap-2">
-                  <Button variant={modelType === "YOLO" ? "default" : "ghost"} onClick={() => setModelType("YOLO")}>YOLO</Button>
-                  <Button variant={modelType === "EfficientNet" ? "default" : "ghost"} onClick={() => setModelType("EfficientNet")} disabled>EfficientNet</Button>
-                  <Button variant={modelType === "Custom" ? "default" : "ghost"} onClick={() => setModelType("Custom")} disabled>Custom</Button>
+              <div className="mt-2 flex flex-wrap gap-2">
+                  <Button variant={modelType === "YOLO" ? "default" : "ghost"} onClick={() => setModelType("YOLO")}>
+                    YOLO
+                  </Button>
+                  <Button
+                    variant={modelType === "YOLO_SEG" ? "default" : "ghost"}
+                    onClick={() => setModelType("YOLO_SEG")}
+                  >
+                    YOLO_SEG
+                  </Button>
+                  <Button
+                    variant={modelType === "RF_DETR" ? "default" : "ghost"}
+                    onClick={() => setModelType("RF_DETR")}
+                  >
+                    RF-DETR
+                  </Button>
                 </div>
               </div>
 
-              {/* If YOLO -> show model-size dropdown */}
-              {modelType === "YOLO" && (
+              {trainUsesModelPicker && (
                 <div className="mb-4">
                   <div className="flex items-center gap-1.5">
-                    <Label>YOLO Base / Trained Model</Label>
+                    <Label>
+                      {modelType === "RF_DETR" ? "RF-DETR Base / Trained Model" : "YOLO Base / Trained Model"}
+                    </Label>
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -2825,13 +2969,21 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                     onValueChange={setSelectedModelSize}
                     onOpenChange={(open) => {
                       // Always refetch models when the dropdown is opened so trained models stay in sync
-                      if (open && modelType === "YOLO") {
+                      if (open && trainUsesModelPicker) {
                         void fetchBaseModels();
                       }
                     }}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder={baseModels.length ? "Select YOLO model" : "Loading models..."} />
+                      <SelectValue
+                        placeholder={
+                          baseModels.length
+                            ? modelType === "RF_DETR"
+                              ? "Select RF-DETR model"
+                              : "Select YOLO model"
+                            : "Loading models..."
+                        }
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       {baseModels.length === 0 ? (
@@ -2870,7 +3022,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                       />
                         <span>Use defaults</span>
                     </label>
-                    {selectedDatasetId && datasetDetails && (
+                    {selectedDatasetId && datasetDetails && modelType !== "RF_DETR" && (
                       <HyperparametersChatbot
                         datasetInfo={{
                           datasetId: selectedDatasetId,
@@ -2902,7 +3054,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
 
                           // If AI suggestions were for a specific YOLO variant,
                           // try to select a matching base model in the YOLO dropdown.
-                          if (modelKey && modelType === "YOLO" && baseModels.length > 0) {
+                          if (modelKey && trainUsesModelPicker && baseModels.length > 0) {
                             const lowerKey = modelKey.toLowerCase();
                             const match = baseModels.find((m) => {
                               const label = (m.name ?? m.label ?? m.filename ?? "").toLowerCase();
@@ -3100,7 +3252,11 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                     </Tooltip>
                   </TooltipProvider>
                 </div>
-                <Select value={augmentationPreset} onValueChange={setAugmentationPreset}>
+                <Select
+                  value={augmentationPreset}
+                  onValueChange={setAugmentationPreset}
+                  disabled={modelType === "RF_DETR"}
+                >
                   <SelectTrigger className="mt-1 w-full">
                     <SelectValue placeholder="Select preset" />
                   </SelectTrigger>
@@ -3112,6 +3268,11 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                     <SelectItem value="robust">Industrial Robust Mode</SelectItem>
                   </SelectContent>
                 </Select>
+                {modelType === "RF_DETR" && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Augmentation presets apply to YOLO training only. RF-DETR uses none.
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -3412,7 +3573,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                       <TooltipTrigger asChild>
                         <span>
                           <Button
-                            onClick={() => setShowSimulateConfirm(true)}
+                            onClick={() => void handleOpenTrainConfirm()}
                             size="lg"
                             className="gap-2"
                             disabled={
@@ -3454,7 +3615,12 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
             <div className="flex justify-between"><span className="text-sm text-muted-foreground">Dataset:</span><span className="text-sm font-medium">{selectedDataset?.version ?? datasetDetails?.version}</span></div>
             <div className="flex justify-between"><span className="text-sm text-muted-foreground">Train / Val / Test:</span><span className="text-sm font-medium">{[datasetDetails?.trainCount ?? 0, datasetDetails?.valCount ?? 0, datasetDetails?.testCount ?? 0].join(" / ")}</span></div>
             <div className="flex justify-between"><span className="text-sm text-muted-foreground">Model Type:</span><span className="text-sm font-medium">{modelType}</span></div>
-            {modelType === "YOLO" && (<div className="flex justify-between"><span className="text-sm text-muted-foreground">YOLO Size:</span><span className="text-sm font-medium">{selectedModelSize || "not selected"}</span></div>)}
+            {trainUsesModelPicker && (
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Base model key:</span>
+                <span className="text-sm font-medium">{selectedModelSize || "not selected"}</span>
+              </div>
+            )}
             <div className="flex justify-between gap-4">
               <span className="text-sm text-muted-foreground shrink-0">Model name:</span>
               <span className="text-sm font-medium text-right">

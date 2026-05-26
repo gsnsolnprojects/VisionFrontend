@@ -1,5 +1,13 @@
-import type { Image, Annotation } from "@/types/annotation";
+import type { Image, Annotation, PolygonPoint } from "@/types/annotation";
 import { apiRequest } from "./config";
+
+/** Batch/single write: bbox and/or polygon (polygon mode may omit bbox). */
+export type AnnotationWritePayload = {
+  imageId: string;
+  categoryId: string;
+  bbox?: [number, number, number, number];
+  polygon?: PolygonPoint[];
+};
 
 /**
  * Get all images for a dataset (with optional status filter)
@@ -109,11 +117,7 @@ export const importLabelsToAnnotations = async (
  */
 export const saveAnnotation = async (
   datasetId: string,
-  annotation: {
-    imageId: string;
-    bbox: [number, number, number, number];
-    categoryId: string;
-  }
+  annotation: AnnotationWritePayload
 ): Promise<{
   annotation: Annotation;
   message: string;
@@ -135,6 +139,7 @@ export const updateAnnotation = async (
   annotationId: string,
   data: {
     bbox?: [number, number, number, number];
+    polygon?: PolygonPoint[];
     categoryId?: string;
   }
 ): Promise<{
@@ -173,11 +178,7 @@ export const deleteAnnotation = async (
  */
 export const batchSaveAnnotations = async (
   datasetId: string,
-  annotations: Array<{
-    imageId: string;
-    bbox: [number, number, number, number];
-    categoryId: string;
-  }>
+  annotations: AnnotationWritePayload[]
 ): Promise<{
   saved: number;
   failed: number;

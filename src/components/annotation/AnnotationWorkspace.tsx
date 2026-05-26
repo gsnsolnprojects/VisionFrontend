@@ -7,7 +7,10 @@ import { CategoryManager } from "@/components/annotation/CategoryManager";
 import { AnnotationStats } from "@/components/annotation/AnnotationStats";
 import { ImageThumbnailGrid } from "@/components/annotation/ImageThumbnailGrid";
 import { ImageViewer } from "@/components/annotation/ImageViewer";
-import { BoundingBoxCanvas } from "@/components/annotation/BoundingBoxCanvas";
+import {
+  BoundingBoxCanvas,
+  type BoundingBoxCanvasHandle,
+} from "@/components/annotation/BoundingBoxCanvas";
 import { AnnotationErrorBoundary } from "@/components/annotation/AnnotationErrorBoundary";
 import { ConvertToYOLOButton } from "@/components/annotation/ConvertToYOLOButton";
 import { AnnotationMetadata } from "@/components/annotation/AnnotationMetadata";
@@ -23,7 +26,16 @@ import { supabase } from "@/integrations/supabase/client";
 import * as annotationsApi from "@/lib/api/annotations";
 import * as categoriesApi from "@/lib/api/categories";
 import * as modelsApi from "@/lib/api/models";
-import type { AnnotationState, Category, Image } from "@/types/annotation";
+import type {
+  Annotation,
+  AnnotationState,
+  AnnotationShapeMode,
+  Category,
+  Image,
+  PolygonPoint,
+} from "@/types/annotation";
+import { mapApiRecordToAnnotation, annotationToWritePayload } from "@/lib/utils/mapApiAnnotation";
+import { validatePolygonNormalized, polygonToBoundingBox } from "@/lib/utils/polygonUtils";
 import { Loader2, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAugmentationStatus, type AugmentationStatusState } from "@/hooks/useAugmentationStatus";
@@ -88,6 +100,10 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   datasetId,
   onClose,
 }) => {
+  const [annotationShapeMode, setAnnotationShapeMode] = useState<AnnotationShapeMode>("BBOX");
+  const [shapeModeLocked, setShapeModeLocked] = useState(false);
+  const shapePrefStorageKey = useMemo(() => `annotationShapePref:${datasetId}`, [datasetId]);
+
   const annotationState = useAnnotation();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,6 +139,8 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   const [imageLoaded, setImageLoaded] = useState(false);
   // Phase 4: Track unsaved bounding boxes
   const [unsavedBoxes, setUnsavedBoxes] = useState<Array<{ imageId: string; bbox: [number, number, number, number]; categoryId: string; categoryName: string }>>([]);
+  const canvasRef = useRef<BoundingBoxCanvasHandle>(null);
+  const [polygonDraftPointCount, setPolygonDraftPointCount] = useState(0);
   // Phase 7: Track completion state
   const [isSaveComplete, setIsSaveComplete] = useState(false);
   const [showUnannotatedDialog, setShowUnannotatedDialog] = useState(false);
@@ -263,6 +281,37 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     showOnlyUnannotatedImages,
     storageKey,
   ]);
+
+  // Server-truth: lock BBOX vs POLYGON when dataset already has saved annotations; else use local pref until first save.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await annotationsApi.getAnnotations(datasetId);
+        if (cancelled) return;
+        const list = (data.annotations ?? []).map((raw) =>
+          mapApiRecordToAnnotation(raw as unknown as Record<string, unknown>)
+        );
+        if (list.length > 0) {
+          const anyPoly = list.some((a) => a.polygon && a.polygon.length >= 3);
+          setAnnotationShapeMode(anyPoly ? "POLYGON" : "BBOX");
+          setShapeModeLocked(true);
+        } else {
+          try {
+            const pref = window.localStorage.getItem(shapePrefStorageKey) as AnnotationShapeMode | null;
+            if (pref === "POLYGON" || pref === "BBOX") setAnnotationShapeMode(pref);
+          } catch {
+            /* ignore */
+          }
+        }
+      } catch (e) {
+        console.warn("[AnnotationWorkspace] dataset annotation mode probe failed:", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [datasetId, shapePrefStorageKey]);
 
   // Fetch images and categories on mount
   useEffect(() => {
@@ -458,7 +507,11 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           count: data.annotations.length,
           anns: data.annotations,
         });
-        loadAnnotations(data.annotations);
+        loadAnnotations(
+          (data.annotations ?? []).map((raw) =>
+            mapApiRecordToAnnotation(raw as unknown as Record<string, unknown>)
+          )
+        );
         setSelectedAnnotation(null);
         selection.clearSelection();
         setLastUpdateTime(new Date());
@@ -642,6 +695,33 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     }
   }, [selectedCategoryId, selectedAnnotationId, annotations, categories, updateAnnotation, currentImage]);
 
+  const canUndoToolbar =
+    canUndo || (isDrawing && annotationShapeMode === "POLYGON" && polygonDraftPointCount > 0);
+
+  const handleUndo = useCallback(() => {
+    if (
+      isDrawing &&
+      annotationShapeMode === "POLYGON" &&
+      canvasRef.current?.undoLastPolygonDraftPoint()
+    ) {
+      return;
+    }
+    undo();
+  }, [isDrawing, annotationShapeMode, undo]);
+
+  const handleAnnotationShapeModeChange = useCallback(
+    (mode: AnnotationShapeMode) => {
+      if (shapeModeLocked) return;
+      setAnnotationShapeMode(mode);
+      try {
+        window.localStorage.setItem(shapePrefStorageKey, mode);
+      } catch {
+        /* ignore */
+      }
+    },
+    [shapeModeLocked, shapePrefStorageKey]
+  );
+
   // Manual save handler - batch save current annotations on demand
   const handleSaveAnnotations = useCallback(async () => {
     if (annotations.length === 0) {
@@ -653,11 +733,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
 
     try {
       // Prepare annotations for batch save
-      const annotationsToSave = annotations.map((ann) => ({
-        imageId: ann.imageId,
-        bbox: ann.bbox,
-        categoryId: ann.categoryId,
-      }));
+      const annotationsToSave = annotations.map((ann) => annotationToWritePayload(ann, annotationShapeMode));
 
       const result = await annotationsApi.batchSaveAnnotations(datasetId, annotationsToSave);
 
@@ -668,6 +744,8 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           description: `${result.saved} saved, ${result.failed} failed`,
           variant: "destructive",
         });
+      } else if (result.saved > 0) {
+        setShapeModeLocked(true);
       }
       markSaved();
       setSaveStatus("saved");
@@ -678,7 +756,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       setSaveStatus("error");
       setTimeout(() => setSaveStatus("idle"), 3000);
     }
-  }, [annotations, datasetId, markSaved, toast]);
+  }, [annotations, datasetId, markSaved, toast, annotationShapeMode]);
 
   // Phase 5 & 6: Save annotations and convert to YOLO
   const handleSaveAndConvert = useCallback(async (unannotatedImageIds: string[] = []) => {
@@ -695,14 +773,13 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
 
     try {
       // Prepare annotations for batch save
-      const annotationsToSave = annotations.map((ann) => ({
-        imageId: ann.imageId,
-        bbox: ann.bbox,
-        categoryId: ann.categoryId,
-      }));
+      const annotationsToSave = annotations.map((ann) => annotationToWritePayload(ann, annotationShapeMode));
 
       // Save annotations
-      await annotationsApi.batchSaveAnnotations(datasetId, annotationsToSave);
+      const batchResult = await annotationsApi.batchSaveAnnotations(datasetId, annotationsToSave);
+      if (batchResult.saved > 0) {
+        setShapeModeLocked(true);
+      }
 
       // Phase 6: Prepare categories for YOLO conversion (include names)
       const categoriesForYOLO = categories.map((cat) => ({
@@ -710,8 +787,11 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         name: cat.name,
       }));
 
+      const convertModelType = annotationShapeMode === "POLYGON" ? "YOLO_SEG" : "YOLO";
+
       // Convert to YOLO with category names and unannotated image IDs
       const convertResult = await modelsApi.convertAnnotationsToLabels(datasetId, {
+        modelType: convertModelType,
         imageIds: undefined, // Convert all images
         categories: categoriesForYOLO,
         unannotatedImageIds: unannotatedImageIds, // For empty label files
@@ -746,7 +826,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       });
       setTimeout(() => setSaveStatus("idle"), 3000);
     }
-  }, [annotations, datasetId, categories, hasCategories, markSaved, toast]);
+  }, [annotations, datasetId, categories, hasCategories, markSaved, toast, annotationShapeMode]);
 
   // Handle image selection with unsaved changes confirmation
   const handleImageSelect = useCallback(
@@ -858,7 +938,11 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         if (currentImage?.id) {
           try {
             const data = await annotationsApi.getAnnotations(datasetId, currentImage.id);
-            loadAnnotations(data.annotations);
+            loadAnnotations(
+          (data.annotations ?? []).map((raw) =>
+            mapApiRecordToAnnotation(raw as unknown as Record<string, unknown>)
+          )
+        );
           } catch (reloadError) {
             console.error("Failed to reload annotations after delete error:", reloadError);
           }
@@ -880,6 +964,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   // Phase 4: Handle bounding box drawing - save immediately when box is complete
   const handleBboxDraw = useCallback(
     async (bbox: [number, number, number, number]) => {
+      if (annotationShapeMode !== "BBOX") return;
       if (!currentImage || !selectedCategoryId) {
         toast({
           title: "Category required",
@@ -914,17 +999,21 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
 
       // Phase 4: Save immediately when box is complete (one box → one API call)
       try {
-        const annotationToSave = {
-          imageId: currentImage.id,
-          bbox,
-          categoryId: selectedCategoryId,
-        };
+        await annotationsApi.batchSaveAnnotations(datasetId, [
+          annotationToWritePayload(
+            {
+              id: "pending",
+              imageId: currentImage.id,
+              bbox,
+              categoryId: selectedCategoryId,
+              categoryName: category.name,
+            } as Annotation,
+            annotationShapeMode
+          ),
+        ]);
 
-        // Save immediately via API
-        await annotationsApi.batchSaveAnnotations(datasetId, [annotationToSave]);
-        
-        // Mark as saved to clear "Unsaved changes" indicator
         markSaved();
+        setShapeModeLocked(true);
         
         // Remove from unsaved boxes on successful save
         setUnsavedBoxes((prev) => prev.filter((box) => 
@@ -957,7 +1046,107 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         });
       }
     },
-    [currentImage, selectedCategoryId, categories, addAnnotation, toast, imageLoaded, datasetId, markSaved, setUnsavedBoxes]
+    [currentImage, selectedCategoryId, categories, addAnnotation, toast, imageLoaded, datasetId, markSaved, setUnsavedBoxes, annotationShapeMode]
+  );
+
+  const handlePolygonDrawComplete = useCallback(
+    async (polygon: PolygonPoint[]) => {
+      if (annotationShapeMode !== "POLYGON") return;
+      const v = validatePolygonNormalized(polygon);
+      if (!v.ok) {
+        toast({
+          title: "Invalid polygon",
+          description: v.errors[0] ?? "Need at least 3 numeric points in [0..1].",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (!currentImage || !selectedCategoryId) {
+        toast({
+          title: "Category required",
+          description: "Please select a category before drawing.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (!imageLoaded) {
+        toast({
+          title: "Image loading",
+          description: "Please wait for the image to load before drawing.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const category = categories.find((c) => c.id === selectedCategoryId);
+      if (!category) return;
+
+      const bbox = polygonToBoundingBox(polygon);
+      const newAnnotation = {
+        imageId: currentImage.id,
+        bbox,
+        polygon,
+        categoryId: selectedCategoryId,
+        categoryName: category.name,
+      };
+      addAnnotation(newAnnotation);
+
+      try {
+        await annotationsApi.batchSaveAnnotations(datasetId, [
+          {
+            imageId: currentImage.id,
+            categoryId: selectedCategoryId,
+            polygon,
+          },
+        ]);
+        markSaved();
+        setShapeModeLocked(true);
+      } catch (error) {
+        console.error("Failed to save polygon:", error);
+        toast({
+          title: "Save failed",
+          description: error instanceof Error ? error.message : "Failed to save polygon annotation.",
+          variant: "destructive",
+        });
+      }
+    },
+    [
+      annotationShapeMode,
+      currentImage,
+      selectedCategoryId,
+      categories,
+      addAnnotation,
+      toast,
+      imageLoaded,
+      datasetId,
+      markSaved,
+    ]
+  );
+
+  const handlePolygonUpdate = useCallback(
+    async (annotationId: string, polygon: PolygonPoint[]) => {
+      const v = validatePolygonNormalized(polygon);
+      if (!v.ok) {
+        toast({
+          title: "Invalid polygon",
+          description: v.errors[0] ?? "Check vertices.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const bbox = polygonToBoundingBox(polygon);
+      updateAnnotation(annotationId, { polygon, bbox });
+      if (annotationId.startsWith("ann_")) return;
+      try {
+        await annotationsApi.updateAnnotation(datasetId, annotationId, { polygon, bbox });
+      } catch (error) {
+        toast({
+          title: "Failed to update polygon",
+          description: error instanceof Error ? error.message : "Unknown error",
+          variant: "destructive",
+        });
+      }
+    },
+    [datasetId, updateAnnotation, toast]
   );
 
   // Handle annotation click (Phase 6: Support multi-select)
@@ -976,9 +1165,10 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   // Phase 6: Handle annotation update (move/resize)
   const handleAnnotationUpdate = useCallback(
     async (annotationId: string, bbox: [number, number, number, number]) => {
+      updateAnnotation(annotationId, { bbox });
+      if (annotationId.startsWith("ann_")) return;
       try {
         await annotationsApi.updateAnnotation(datasetId, annotationId, { bbox });
-        updateAnnotation(annotationId, { bbox });
       } catch (error) {
         toast({
           title: "Failed to update annotation",
@@ -1034,7 +1224,11 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
 
     try {
       const data = await annotationsApi.getAnnotations(datasetId, currentImage.id);
-      loadAnnotations(data.annotations);
+      loadAnnotations(
+          (data.annotations ?? []).map((raw) =>
+            mapApiRecordToAnnotation(raw as unknown as Record<string, unknown>)
+          )
+        );
       setHasConflicts(false);
       setLastUpdateTime(new Date());
       toast({
@@ -1070,7 +1264,11 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         });
       }
       const data = await annotationsApi.getAnnotations(datasetId, currentImage.id);
-      loadAnnotations(data.annotations);
+      loadAnnotations(
+          (data.annotations ?? []).map((raw) =>
+            mapApiRecordToAnnotation(raw as unknown as Record<string, unknown>)
+          )
+        );
       setLastUpdateTime(new Date());
       toast({
         title: "Reloaded from label file",
@@ -1230,14 +1428,14 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         setSelectedAnnotation(null);
       }
 
-      // Ctrl+Z → undo
-      if (e.ctrlKey && e.key === "z" && !e.shiftKey) {
+      // Ctrl+Z / Cmd+Z → undo
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
-        undo();
+        handleUndo();
       }
 
-      // Ctrl+Shift+Z → redo
-      if (e.ctrlKey && e.key === "z" && e.shiftKey) {
+      // Ctrl+Shift+Z / Cmd+Shift+Z → redo
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && e.shiftKey) {
         e.preventDefault();
         redo();
       }
@@ -1283,7 +1481,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     setDrawing,
     setSelectedAnnotation,
     setCategory,
-    undo,
+    handleUndo,
     redo,
     handleDeleteAnnotation,
     handlePreviousImage,
@@ -1489,7 +1687,11 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
               // Reload annotations after import
               if (currentImage) {
                 annotationsApi.getAnnotations(datasetId, currentImage.id).then((data) => {
-                  loadAnnotations(data.annotations);
+                  loadAnnotations(
+          (data.annotations ?? []).map((raw) =>
+            mapApiRecordToAnnotation(raw as unknown as Record<string, unknown>)
+          )
+        );
                 });
               }
             }}
@@ -1648,27 +1850,27 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
             />
             {imageLoaded && imageMetrics && (
               <>
-                {console.log("[AnnotationWorkspace] RENDER CANVAS", {
-                  currentImageId: currentImage?.id,
-                  annotationsForImage: annotations.length,
-                  sample: annotations[0],
-                })}
                 <BoundingBoxCanvas
-                imageWidth={imageMetrics.displayWidth}
-                imageHeight={imageMetrics.displayHeight}
-                naturalWidth={imageMetrics.naturalWidth}
-                naturalHeight={imageMetrics.naturalHeight}
-                offsetX={imageMetrics.offsetX}
-                offsetY={imageMetrics.offsetY}
-                annotations={filteredAnnotations}
-                categories={categories}
-                selectedCategoryId={selectedCategoryId}
-                isDrawing={isDrawing && imageLoaded && hasCategories}
-                selectedAnnotationId={selectedAnnotationId}
-                selectedAnnotationIds={selection.selectedAnnotationIds}
-                onBboxDraw={handleBboxDraw}
-                onAnnotationClick={handleAnnotationClick}
-                onAnnotationUpdate={handleAnnotationUpdate}
+                  ref={canvasRef}
+                  imageWidth={imageMetrics.displayWidth}
+                  imageHeight={imageMetrics.displayHeight}
+                  naturalWidth={imageMetrics.naturalWidth}
+                  naturalHeight={imageMetrics.naturalHeight}
+                  offsetX={imageMetrics.offsetX}
+                  offsetY={imageMetrics.offsetY}
+                  annotations={filteredAnnotations}
+                  categories={categories}
+                  selectedCategoryId={selectedCategoryId}
+                  isDrawing={isDrawing && imageLoaded && hasCategories}
+                  selectedAnnotationId={selectedAnnotationId}
+                  selectedAnnotationIds={selection.selectedAnnotationIds}
+                  shapeMode={annotationShapeMode === "POLYGON" ? "polygon" : "bbox"}
+                  onBboxDraw={handleBboxDraw}
+                  onPolygonDrawComplete={handlePolygonDrawComplete}
+                  onPolygonUpdate={handlePolygonUpdate}
+                  onAnnotationClick={handleAnnotationClick}
+                  onAnnotationUpdate={handleAnnotationUpdate}
+                  onPolygonDraftChange={setPolygonDraftPointCount}
                 />
               </>
             )}
@@ -1697,6 +1899,9 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         <div className="border rounded-md p-3 space-y-3">
           <h4 className="text-sm font-medium">Tools</h4>
           <AnnotationToolbar
+            annotationShapeMode={annotationShapeMode}
+            onAnnotationShapeModeChange={handleAnnotationShapeModeChange}
+            shapeModeLocked={shapeModeLocked}
             isDrawing={isDrawing}
             onDraw={() => {
               if (!hasCategories) {
@@ -1717,9 +1922,9 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
               }
               setDrawing(!isDrawing);
             }}
-            onUndo={undo}
+            onUndo={handleUndo}
             onRedo={redo}
-            canUndo={canUndo}
+            canUndo={canUndoToolbar}
             canRedo={canRedo}
             onDelete={() => {
               if (selectedAnnotationId) {

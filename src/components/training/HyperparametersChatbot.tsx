@@ -14,6 +14,7 @@ import { useAIChat, type AIProvider } from "@/hooks/useAIChat";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import type { HyperparametersSnapshot } from "@/utils/trainingPersistence";
+import type { TrainModelType } from "@/types/training";
 import { ProviderSelector } from "@/components/ai/ProviderSelector";
 
 interface HyperparametersChatbotProps {
@@ -29,7 +30,7 @@ interface HyperparametersChatbotProps {
     version?: string;
     status?: string;
   };
-  modelType: "YOLO" | "EfficientNet" | "Custom";
+  modelType: TrainModelType;
   currentParams?: {
     epochs?: number;
     batchSize?: number;
@@ -297,7 +298,13 @@ export const HyperparametersChatbot: React.FC<HyperparametersChatbotProps> = ({
 
     const trainingImages = trainCount || totalLabeled || datasetSummary.totalImages;
 
-    return `You are a senior ML engineer helping configure YOLO training.
+    return `You are a senior ML engineer helping configure ${
+      modelType === "YOLO_SEG"
+        ? "YOLO instance segmentation (YOLO_SEG)"
+        : modelType === "RF_DETR"
+          ? "RF-DETR object detection"
+          : "YOLO object detection"
+    } training.
 
 Goal: suggest SAFE, PRACTICAL hyperparameters that avoid overfitting and are easy for non-technical users.
 

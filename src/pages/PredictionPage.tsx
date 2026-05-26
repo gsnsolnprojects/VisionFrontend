@@ -130,6 +130,19 @@ function canonicalInferenceRowId(m: Model): string {
   return String(m.modelId || idField || m._id || "");
 }
 
+/** Polygon overlays only apply to segmentation (YOLO_SEG) models in v1. */
+function isSegmentationInferenceModel(model: Model | null | undefined): boolean {
+  return String(model?.modelType ?? "").toUpperCase() === "YOLO_SEG";
+}
+
+function formatInferenceModelTypeLabel(modelType?: string): string {
+  const t = String(modelType ?? "").toUpperCase();
+  if (t === "YOLO_SEG") return "YOLO_SEG";
+  if (t === "RF_DETR") return "RF-DETR";
+  if (t === "YOLO") return "YOLO";
+  return modelType ?? "";
+}
+
 const apiUrl = (path: string) => {
   const base = API_BASE_URL.replace(/\/+$/, "");
   const p = path.replace(/^\/+/, "");
@@ -206,6 +219,7 @@ interface InferenceResults {
       className: string;
       confidence: number;
       bbox?: number[];
+      polygon?: number[][];
     }>;
   }>;
   statistics?: {
@@ -276,11 +290,7 @@ interface InferenceJob {
 
 interface LiveFrameResponse {
   annotatedImage?: string; // base64 data URL (optional when returnAnnotatedImage: false)
-  detections: Array<{
-    class: string;
-    confidence: number;
-    bbox: [number, number, number, number]; // [x1, y1, x2, y2]
-  }>;
+  detections: LiveFrameDetection[];
   totalDetections: number;
   processingTime?: number;
   imageWidth?: number; // Original image width sent to backend
@@ -323,6 +333,70 @@ const LIVE_CENTER_REGION_MAX_PERCENT = 95;
 const LIVE_DEFECT_LOG_CAP = 200;
 const LIVE_ANALYTICS_PIE_COLORS = ["hsl(var(--primary))", "hsl(var(--destructive))"];
 type InferenceMode = "dataset" | "custom";
+
+/** Live frame detection: bbox and/or polygon/segmentation (backend-dependent). */
+type LiveFrameDetection = {
+  class: string;
+  confidence: number;
+  bbox?: [number, number, number, number];
+  polygon?: unknown;
+  segmentation?: unknown;
+};
+
+function parseLiveDetectionPolygon(det: {
+  polygon?: unknown;
+  segmentation?: unknown;
+}): [number, number][] | null {
+  const raw = det.polygon ?? det.segmentation;
+  if (!Array.isArray(raw) || raw.length < 3) return null;
+  const out: [number, number][] = [];
+  for (const p of raw) {
+    if (Array.isArray(p) && p.length >= 2 && typeof p[0] === "number" && typeof p[1] === "number") {
+      out.push([p[0], p[1]]);
+    } else if (p && typeof p === "object" && "x" in p && "y" in p) {
+      const x = Number((p as { x: unknown }).x);
+      const y = Number((p as { y: unknown }).y);
+      if (Number.isFinite(x) && Number.isFinite(y)) out.push([x, y]);
+    }
+  }
+  return out.length >= 3 ? out : null;
+}
+
+function polygonPointsToImagePixels(points: [number, number][], iw: number, ih: number): [number, number][] {
+  if (points.length === 0) return points;
+  const maxX = Math.max(...points.map((p) => p[0]));
+  const maxY = Math.max(...points.map((p) => p[1]));
+  if (maxX <= 1.001 && maxY <= 1.001) {
+    return points.map(([x, y]) => [x * iw, y * ih]);
+  }
+  return points;
+}
+
+function liveDetectionPixelBounds(
+  det: LiveFrameDetection,
+  iw: number,
+  ih: number
+): { left: number; top: number; right: number; bottom: number } | null {
+  if (det.bbox && det.bbox.length >= 4) {
+    const [x1, y1, x2, y2] = det.bbox;
+    return { left: x1, top: y1, right: x2, bottom: y2 };
+  }
+  const polyNorm = parseLiveDetectionPolygon(det);
+  if (!polyNorm) return null;
+  const poly = polygonPointsToImagePixels(polyNorm, iw, ih);
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of poly) {
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  }
+  if (!Number.isFinite(minX)) return null;
+  return { left: minX, top: minY, right: maxX, bottom: maxY };
+}
 
 // VideoPlayer component with error handling and loading state
 const VideoPlayer = ({ 
@@ -538,6 +612,10 @@ const PredictionPage = () => {
   });
   const [isCenterGuideEnabled, setIsCenterGuideEnabled] = useState<boolean>(true);
   const [centerGuideSizePercent, setCenterGuideSizePercent] = useState<number>(LIVE_CENTER_REGION_DEFAULT_PERCENT);
+  const [showLiveBoxes, setShowLiveBoxes] = useState(true);
+  const [showLivePolygons, setShowLivePolygons] = useState(true);
+  const showLiveBoxesRef = useRef(true);
+  const showLivePolygonsRef = useRef(true);
 
   // Refs
   const pollIntervalRef = useRef<number | null>(null);
@@ -589,6 +667,14 @@ const PredictionPage = () => {
   useEffect(() => {
     centerGuideSizeRatioRef.current = centerGuideSizePercent / 100;
   }, [centerGuideSizePercent]);
+
+  useEffect(() => {
+    showLiveBoxesRef.current = showLiveBoxes;
+  }, [showLiveBoxes]);
+
+  useEffect(() => {
+    showLivePolygonsRef.current = showLivePolygons;
+  }, [showLivePolygons]);
 
   // Debounce the hide of the Processing indicator so it doesn't flicker
   // between consecutive frame processing toggles.
@@ -758,6 +844,15 @@ const PredictionPage = () => {
   useEffect(() => {
     setLiveDetectionClassMismatch(null);
   }, [selectedModelId]);
+
+  useEffect(() => {
+    const m = selectedModelId
+      ? models.find((x) => modelRowMatchesId(x, selectedModelId)) ?? null
+      : null;
+    if (!isSegmentationInferenceModel(m)) {
+      setShowLivePolygons(false);
+    }
+  }, [selectedModelId, models]);
 
   useEffect(() => {
     if (!import.meta.env.DEV || !selectedModelId) return;
@@ -1553,12 +1648,15 @@ const PredictionPage = () => {
           .filter((d) => goodClasses.includes(d.class) && d.confidence >= 0.45)
           .sort((a, b) => b.confidence - a.confidence);
         const primaryProductDetection = productDetections[0];
+        const primaryBounds = primaryProductDetection
+          ? liveDetectionPixelBounds(primaryProductDetection, imageWidth, imageHeight)
+          : null;
         const productInsideValidRegion =
-          !!primaryProductDetection &&
-          primaryProductDetection.bbox[0] >= validRegionBox.left &&
-          primaryProductDetection.bbox[1] >= validRegionBox.top &&
-          primaryProductDetection.bbox[2] <= validRegionBox.right &&
-          primaryProductDetection.bbox[3] <= validRegionBox.bottom;
+          !!primaryBounds &&
+          primaryBounds.left >= validRegionBox.left &&
+          primaryBounds.top >= validRegionBox.top &&
+          primaryBounds.right <= validRegionBox.right &&
+          primaryBounds.bottom <= validRegionBox.bottom;
 
         if (finalVerdict === "NO_PRODUCT") {
           if (analyticsIncidentLockRef.current) {
@@ -1674,49 +1772,86 @@ const PredictionPage = () => {
           // Clear previous annotations
           ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-          // ✅ Get original image dimensions from API response
-          // Should be 640x480 (the size sent to backend)
           const imageWidth = data.imageWidth || 640;
           const imageHeight = data.imageHeight || 480;
 
+          const renderLiveDetections = (opts: {
+            scaleX: number;
+            scaleY: number;
+            offsetX: number;
+            offsetY: number;
+          }) => {
+            const { scaleX, scaleY, offsetX, offsetY } = opts;
+            const detections = data.detections || [];
+
+            detections.forEach((det) => {
+              const label = `${det.class} ${(det.confidence * 100).toFixed(0)}%`;
+              let drew = false;
+              let labelLeft = 0;
+              let labelTop = 0;
+
+              if (showLiveBoxesRef.current && det.bbox && det.bbox.length >= 4) {
+                const [x1, y1, x2, y2] = det.bbox;
+                const scaledX1 = x1 * scaleX + offsetX;
+                const scaledY1 = y1 * scaleY + offsetY;
+                const scaledX2 = x2 * scaleX + offsetX;
+                const scaledY2 = y2 * scaleY + offsetY;
+                const width = scaledX2 - scaledX1;
+                const height = scaledY2 - scaledY1;
+                labelLeft = scaledX1;
+                labelTop = scaledY1;
+                ctx.strokeStyle = "#00FF00";
+                ctx.lineWidth = 2;
+                ctx.strokeRect(scaledX1, scaledY1, width, height);
+                drew = true;
+              }
+
+              if (showLivePolygonsRef.current) {
+                const polyNorm = parseLiveDetectionPolygon(det);
+                if (polyNorm) {
+                  const polyPx = polygonPointsToImagePixels(polyNorm, imageWidth, imageHeight);
+                  ctx.beginPath();
+                  const [fx, fy] = polyPx[0];
+                  ctx.moveTo(fx * scaleX + offsetX, fy * scaleY + offsetY);
+                  for (let i = 1; i < polyPx.length; i++) {
+                    const [px, py] = polyPx[i];
+                    ctx.lineTo(px * scaleX + offsetX, py * scaleY + offsetY);
+                  }
+                  ctx.closePath();
+                  ctx.fillStyle = "rgba(34,211,238,0.12)";
+                  ctx.strokeStyle = "#22d3ee";
+                  ctx.lineWidth = 2;
+                  ctx.fill();
+                  ctx.stroke();
+                  if (!drew) {
+                    labelLeft = polyPx[0][0] * scaleX + offsetX;
+                    labelTop = polyPx[0][1] * scaleY + offsetY;
+                  }
+                  drew = true;
+                }
+              }
+
+              if (drew) {
+                ctx.font = "bold 14px Arial";
+                const textMetrics = ctx.measureText(label);
+                const labelWidth = textMetrics.width + 10;
+                const labelHeight = 20;
+                const labelY = Math.max(offsetY, labelTop - labelHeight);
+
+                ctx.fillStyle = "rgba(0,255,0,0.7)";
+                ctx.fillRect(labelLeft, labelY, labelWidth, labelHeight);
+
+                ctx.fillStyle = "#000000";
+                ctx.fillText(label, labelLeft + 5, labelY + labelHeight - 6);
+              }
+            });
+          };
+
           // Safety checks for valid dimensions
           if (imageWidth > 0 && imageHeight > 0 && videoWidth > 0 && videoHeight > 0) {
-            // ✅ Scale from original image (640x480) to displayed video area (not container!)
             const scaleX = displayedVideoWidth / imageWidth;
             const scaleY = displayedVideoHeight / imageHeight;
-
-            const detections = data.detections || [];
-            detections.forEach((det) => {
-              const [x1, y1, x2, y2] = det.bbox;
-              
-              // ✅ Scale coordinates to displayed video area, then add offset for letterboxing/pillarboxing
-              const scaledX1 = (x1 * scaleX) + offsetX;
-              const scaledY1 = (y1 * scaleY) + offsetY;
-              const scaledX2 = (x2 * scaleX) + offsetX;
-              const scaledY2 = (y2 * scaleY) + offsetY;
-
-              const width = scaledX2 - scaledX1;
-              const height = scaledY2 - scaledY1;
-              const label = `${det.class} ${(det.confidence * 100).toFixed(0)}%`;
-
-              // Draw bounding box using scaled and offset coordinates
-              ctx.strokeStyle = "#00FF00";
-              ctx.lineWidth = 2;
-              ctx.strokeRect(scaledX1, scaledY1, width, height);
-
-              // Draw label background using scaled and offset coordinates
-              ctx.font = "bold 14px Arial";
-              const textMetrics = ctx.measureText(label);
-              const labelWidth = textMetrics.width + 10;
-              const labelHeight = 20;
-              const labelY = Math.max(offsetY, scaledY1 - labelHeight); // ✅ Ensure label doesn't go above video area
-
-              ctx.fillStyle = "rgba(0,255,0,0.7)";
-              ctx.fillRect(scaledX1, labelY, labelWidth, labelHeight);
-
-              ctx.fillStyle = "#000000";
-              ctx.fillText(label, scaledX1 + 5, labelY + labelHeight - 6);
-            });
+            renderLiveDetections({ scaleX, scaleY, offsetX, offsetY });
           } else {
             // Fallback: use coordinates as-is if dimensions invalid (backward compatibility)
             console.warn("Invalid dimensions, using coordinates as-is", {
@@ -1725,32 +1860,9 @@ const PredictionPage = () => {
               videoWidth: video.videoWidth,
               videoHeight: video.videoHeight,
               containerWidth,
-              containerHeight
+              containerHeight,
             });
-
-            const detections = data.detections || [];
-            detections.forEach((det) => {
-              const [x1, y1, x2, y2] = det.bbox;
-              const width = x2 - x1;
-              const height = y2 - y1;
-              const label = `${det.class} ${(det.confidence * 100).toFixed(0)}%`;
-
-              ctx.strokeStyle = "#00FF00";
-              ctx.lineWidth = 2;
-              ctx.strokeRect(x1, y1, width, height);
-
-              ctx.font = "bold 14px Arial";
-              const textMetrics = ctx.measureText(label);
-              const labelWidth = textMetrics.width + 10;
-              const labelHeight = 20;
-              const labelY = Math.max(0, y1 - labelHeight);
-
-              ctx.fillStyle = "rgba(0,255,0,0.7)";
-              ctx.fillRect(x1, labelY, labelWidth, labelHeight);
-
-              ctx.fillStyle = "#000000";
-              ctx.fillText(label, x1 + 5, labelY + labelHeight - 6);
-            });
+            renderLiveDetections({ scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 });
           }
         }
       }
@@ -3541,6 +3653,28 @@ const PredictionPage = () => {
                       </div>
                     )}
                   </div>
+                  <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                    <label className="flex cursor-pointer items-center gap-2">
+                      <Checkbox
+                        checked={showLiveBoxes}
+                        onCheckedChange={(v) => setShowLiveBoxes(v === true)}
+                      />
+                      <span>Show boxes</span>
+                    </label>
+                    {isSegmentationInferenceModel(
+                      selectedModelId
+                        ? models.find((x) => modelRowMatchesId(x, selectedModelId)) ?? null
+                        : null
+                    ) && (
+                      <label className="flex cursor-pointer items-center gap-2">
+                        <Checkbox
+                          checked={showLivePolygons}
+                          onCheckedChange={(v) => setShowLivePolygons(v === true)}
+                        />
+                        <span>Show polygons</span>
+                      </label>
+                    )}
+                  </div>
                 </div>
                 <Card className="h-full">
                   <CardHeader className="pb-3">
@@ -4280,8 +4414,15 @@ const PredictionPage = () => {
                             : "border-border hover:bg-muted"
                         )}
                       >
-                        <div className="font-medium">
-                          {model.name || model.modelVersion || model.modelId || "Unnamed Model"}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium">
+                            {model.name || model.modelVersion || model.modelId || "Unnamed Model"}
+                          </span>
+                          {model.modelType && (
+                            <Badge variant="secondary" className="text-xs font-normal">
+                              {formatInferenceModelTypeLabel(model.modelType)}
+                            </Badge>
+                          )}
                         </div>
                         {model.metrics && (
                           <div className="text-xs text-muted-foreground mt-1 space-y-0.5">

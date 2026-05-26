@@ -1,12 +1,15 @@
 import { apiRequest } from "./config";
 
 /**
- * Convert annotations to YOLO label format
+ * Convert annotations to YOLO label format (bbox or seg lines).
+ * RF-DETR training uses modelType "YOLO" here (5-value bbox lines), not "RF_DETR".
  * POST /api/dataset/:datasetId/convert-annotations-to-labels
  */
 export const convertAnnotationsToLabels = async (
   datasetId: string,
-  options?: {
+  options: {
+    /** Explicit YOLO detect vs YOLO segmentation export. */
+    modelType: "YOLO" | "YOLO_SEG";
     imageIds?: string[];
     folder?: string;
     categories?: Array<{ id: string; name: string }>; // Phase 6: Category names for YOLO data.yaml
@@ -21,7 +24,7 @@ export const convertAnnotationsToLabels = async (
 
   return apiRequest(path, {
     method: "POST",
-    body: JSON.stringify(options || {}),
+    body: JSON.stringify(options),
   });
 };
 

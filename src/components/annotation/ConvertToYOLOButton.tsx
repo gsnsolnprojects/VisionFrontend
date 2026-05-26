@@ -17,6 +17,8 @@ import * as modelsApi from "@/lib/api/models";
 interface ConvertToYOLOButtonProps {
   datasetId: string;
   imageIds?: string[];
+  /** Defaults to detection export; use YOLO_SEG when annotations are polygon/segmentation. */
+  modelType?: "YOLO" | "YOLO_SEG";
   onConversionComplete?: (result: {
     converted: number;
     labelFilesCreated: number;
@@ -27,6 +29,7 @@ interface ConvertToYOLOButtonProps {
 export const ConvertToYOLOButton: React.FC<ConvertToYOLOButtonProps> = ({
   datasetId,
   imageIds,
+  modelType = "YOLO",
   onConversionComplete,
 }) => {
   const [isConverting, setIsConverting] = useState(false);
@@ -39,6 +42,7 @@ export const ConvertToYOLOButton: React.FC<ConvertToYOLOButtonProps> = ({
 
     try {
       const result = await modelsApi.convertAnnotationsToLabels(datasetId, {
+        modelType,
         imageIds,
       });
 

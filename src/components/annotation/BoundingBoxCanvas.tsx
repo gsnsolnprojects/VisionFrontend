@@ -1,27 +1,33 @@
-import React, { useState, useRef, useCallback, useMemo } from "react";
-import type { Annotation, Category } from "@/types/annotation";
+import React, {
+  useState,
+  useRef,
+  useCallback,
+  useMemo,
+  useEffect,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
+import type { Annotation, Category, PolygonPoint } from "@/types/annotation";
 import { normalizeBbox, calculateBbox, validateBbox, denormalizeBbox, getResizeHandle } from "@/lib/utils/bboxUtils";
+import {
+  pixelToNormalizedPoint,
+  normPointsPixelDistance,
+  polygonToBoundingBox,
+} from "@/lib/utils/polygonUtils";
+
+const CLOSE_VERTEX_PIXELS = 14;
+
+export interface BoundingBoxCanvasHandle {
+  /** Remove the last point from an in-progress polygon. Returns true if a point was removed. */
+  undoLastPolygonDraftPoint: () => boolean;
+  hasPolygonDraftPoints: () => boolean;
+}
 
 interface BoundingBoxCanvasProps {
-  /**
-   * Displayed image width/height in pixels (what the user sees on screen),
-   * i.e. the actual rendered image area, excluding any letterboxing/padding.
-   */
   imageWidth: number;
   imageHeight: number;
-  /**
-   * Actual image resolution in pixels (natural dimensions of the file).
-   * Normalized coords are ultimately relative to these dimensions, but with
-   * uniform scaling and correct offsets, normalizing by displayed size is
-   * mathematically equivalent while drawing in displayed-image space.
-   */
   naturalWidth?: number;
   naturalHeight?: number;
-  /**
-   * Optional offsets (in pixels) of the displayed image inside the canvas
-   * container, used when the image is centered with object-contain and has
-   * letterboxing/pillarboxing around it.
-   */
   offsetX?: number;
   offsetY?: number;
   annotations: Annotation[];
@@ -29,10 +35,17 @@ interface BoundingBoxCanvasProps {
   selectedCategoryId: string | null;
   isDrawing: boolean;
   selectedAnnotationId: string | null;
-  selectedAnnotationIds?: string[]; // Phase 6: Multi-select
+  selectedAnnotationIds?: string[];
+  /** "bbox" = drag rectangle (default). "polygon" = click vertices / edit vertices. */
+  shapeMode?: "bbox" | "polygon";
   onBboxDraw?: (bbox: [number, number, number, number]) => void;
+  /** Called when user closes a polygon (>=3 normalized points). */
+  onPolygonDrawComplete?: (polygon: PolygonPoint[]) => void;
   onAnnotationClick?: (annotationId: string, multiSelect?: boolean) => void;
-  onAnnotationUpdate?: (annotationId: string, bbox: [number, number, number, number]) => void; // Phase 6: Move/resize
+  onAnnotationUpdate?: (annotationId: string, bbox: [number, number, number, number]) => void;
+  onPolygonUpdate?: (annotationId: string, polygon: PolygonPoint[]) => void;
+  /** Fired when in-progress polygon vertex count changes (for undo button state). */
+  onPolygonDraftChange?: (pointCount: number) => void;
 }
 
 interface DrawingState {
@@ -42,26 +55,38 @@ interface DrawingState {
   currentY: number;
 }
 
-// Phase 3: Full drawing functionality
-// Phase 6: Enhanced with move/resize and multi-select
-export const BoundingBoxCanvas: React.FC<BoundingBoxCanvasProps> = ({
-  imageWidth,
-  imageHeight,
-  naturalWidth,
-  naturalHeight,
-  offsetX = 0,
-  offsetY = 0,
-  annotations,
-  categories = [],
-  selectedCategoryId,
-  isDrawing,
-  selectedAnnotationId,
-  selectedAnnotationIds = [],
-  onBboxDraw,
-  onAnnotationClick,
-  onAnnotationUpdate,
-}) => {
+export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBoxCanvasProps>(
+  function BoundingBoxCanvas(
+    {
+      imageWidth,
+      imageHeight,
+      offsetX = 0,
+      offsetY = 0,
+      annotations,
+      categories = [],
+      selectedCategoryId,
+      isDrawing,
+      selectedAnnotationId,
+      selectedAnnotationIds = [],
+      shapeMode = "bbox",
+      onBboxDraw,
+      onPolygonDrawComplete,
+      onAnnotationClick,
+      onAnnotationUpdate,
+      onPolygonUpdate,
+      onPolygonDraftChange,
+    },
+    ref
+  ) {
   const [drawingState, setDrawingState] = useState<DrawingState | null>(null);
+  const [polygonDraft, setPolygonDraft] = useState<PolygonPoint[]>([]);
+  const polygonDraftRef = useRef<PolygonPoint[]>([]);
+  const [vertexDrag, setVertexDrag] = useState<{
+    annotationId: string;
+    index: number;
+    startPolygon: PolygonPoint[];
+    currentPolygon: PolygonPoint[];
+  } | null>(null);
   const [editingState, setEditingState] = useState<{
     annotationId: string;
     mode: "move" | "resize";
@@ -72,69 +97,94 @@ export const BoundingBoxCanvas: React.FC<BoundingBoxCanvasProps> = ({
   } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
-  // Get category color by ID
+  useEffect(() => {
+    polygonDraftRef.current = polygonDraft;
+    onPolygonDraftChange?.(polygonDraft.length);
+  }, [polygonDraft, onPolygonDraftChange]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      undoLastPolygonDraftPoint: () => {
+        if (polygonDraftRef.current.length === 0) return false;
+        setPolygonDraft((prev) => prev.slice(0, -1));
+        return true;
+      },
+      hasPolygonDraftPoints: () => polygonDraftRef.current.length > 0,
+    }),
+    []
+  );
+
   const getCategoryColor = (categoryId: string): string => {
     const category = categories.find((cat) => cat.id === categoryId);
-    return category?.color ?? "#ef4444"; // Default red if not found
+    return category?.color ?? "#ef4444";
   };
 
-  // RAF throttling for mousemove
   const rafRef = useRef<number>();
   const pendingUpdate = useRef<{ x: number; y: number } | null>(null);
 
-  // Get mouse position relative to the displayed image area (image-local coords)
+  useEffect(() => {
+    if (!isDrawing) setPolygonDraft([]);
+  }, [isDrawing]);
+
+  const annotationsForRender = useMemo(() => {
+    if (!vertexDrag) return annotations;
+    return annotations.map((a) => {
+      if (a.id !== vertexDrag.annotationId) return a;
+      const poly = vertexDrag.currentPolygon;
+      return { ...a, polygon: poly, bbox: polygonToBoundingBox(poly) };
+    });
+  }, [annotations, vertexDrag]);
+
   const getMousePosition = (e: React.MouseEvent<HTMLDivElement>): { x: number; y: number } => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const rect = canvasRef.current.getBoundingClientRect();
     const rawX = e.clientX - rect.left;
     const rawY = e.clientY - rect.top;
-
-    // Translate from container space into image-local space by subtracting offsets.
-    // This ensures drawing and interaction happen in displayed-image coordinates.
-    const imageX = rawX - offsetX;
-    const imageY = rawY - offsetY;
-
-    return { x: imageX, y: imageY };
+    return { x: rawX - offsetX, y: rawY - offsetY };
   };
 
-  // Handle mouse down - start drawing or editing
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      // Safety check: ensure canvas is ready
       if (!canvasRef.current) return;
-      
-      if (isDrawing && selectedCategoryId) {
-        // Drawing mode
-        const { x, y } = getMousePosition(e);
-        // Ignore clicks outside the displayed image area
-        if (x < 0 || y < 0 || x > imageWidth || y > imageHeight) {
-          return;
+
+      const { x, y } = getMousePosition(e);
+      if (x < 0 || y < 0 || x > imageWidth || y > imageHeight) return;
+
+      // Polygon vertex drag is started from vertex handle divs (pointer-events).
+
+      // Polygon drawing: add point or close
+      if (shapeMode === "polygon" && isDrawing && selectedCategoryId && onPolygonDrawComplete) {
+        const next = pixelToNormalizedPoint(x, y, imageWidth, imageHeight);
+        if (polygonDraft.length >= 3) {
+          const dist = normPointsPixelDistance(polygonDraft[0], next, imageWidth, imageHeight);
+          if (dist < CLOSE_VERTEX_PIXELS) {
+            onPolygonDrawComplete([...polygonDraft]);
+            setPolygonDraft([]);
+            e.preventDefault();
+            return;
+          }
         }
-        setDrawingState({
-          startX: x,
-          startY: y,
-          currentX: x,
-          currentY: y,
-        });
+        setPolygonDraft((prev) => [...prev, next]);
+        e.preventDefault();
         return;
       }
 
-      // Check if clicking on annotation or resize handle
+      if (isDrawing && selectedCategoryId && shapeMode === "bbox") {
+        setDrawingState({ startX: x, startY: y, currentX: x, currentY: y });
+        return;
+      }
+
       const target = e.target as HTMLElement;
-      const annotationElement = target.closest('[data-annotation-id]');
-      
-      if (annotationElement) {
-        const annotationId = annotationElement.getAttribute('data-annotation-id');
+      const annotationElement = target.closest("[data-annotation-id]");
+
+      if (annotationElement && shapeMode === "bbox") {
+        const annotationId = annotationElement.getAttribute("data-annotation-id");
         if (!annotationId) return;
 
         const annotation = annotations.find((a) => a.id === annotationId);
         if (!annotation) return;
 
-        const { x, y } = getMousePosition(e);
-        // If click is outside image area, ignore editing start
-        if (x < 0 || y < 0 || x > imageWidth || y > imageHeight) {
-          return;
-        }
         const [nx, ny, nw, nh] = annotation.bbox;
         const pixelBbox = {
           left: nx * imageWidth,
@@ -143,11 +193,9 @@ export const BoundingBoxCanvas: React.FC<BoundingBoxCanvasProps> = ({
           height: nh * imageHeight,
         };
 
-        // Check if clicking on resize handle
         const handle = getResizeHandle({ x, y }, pixelBbox);
-        
+
         if (handle && selectedAnnotationId === annotationId && onAnnotationUpdate) {
-          // Start resizing
           setEditingState({
             annotationId,
             mode: "resize",
@@ -159,7 +207,6 @@ export const BoundingBoxCanvas: React.FC<BoundingBoxCanvasProps> = ({
           e.preventDefault();
           e.stopPropagation();
         } else if (selectedAnnotationId === annotationId && onAnnotationUpdate) {
-          // Start moving
           setEditingState({
             annotationId,
             mode: "move",
@@ -170,38 +217,57 @@ export const BoundingBoxCanvas: React.FC<BoundingBoxCanvasProps> = ({
           e.preventDefault();
           e.stopPropagation();
         } else if (onAnnotationClick) {
-          // Select annotation
           onAnnotationClick(annotationId, e.shiftKey);
         }
+      } else if (annotationElement && shapeMode === "polygon" && onAnnotationClick) {
+        const annotationId = annotationElement.getAttribute("data-annotation-id");
+        if (annotationId) onAnnotationClick(annotationId, e.shiftKey);
       }
     },
-    [isDrawing, selectedCategoryId, selectedAnnotationId, annotations, imageWidth, imageHeight, onAnnotationClick, onAnnotationUpdate]
+    [
+      shapeMode,
+      isDrawing,
+      selectedCategoryId,
+      selectedAnnotationId,
+      annotations,
+      imageWidth,
+      imageHeight,
+      onAnnotationClick,
+      onAnnotationUpdate,
+      onPolygonDrawComplete,
+    ]
   );
 
-  // Handle mouse move - update active box or editing (throttled with RAF)
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      // Safety check: ensure canvas is ready
       if (!canvasRef.current) return;
-      
       const { x, y } = getMousePosition(e);
 
-      // Handle drawing
-      if (drawingState && isDrawing) {
-        pendingUpdate.current = { x, y };
+      if (vertexDrag) {
+        const np = pixelToNormalizedPoint(
+          Math.max(0, Math.min(imageWidth, x)),
+          Math.max(0, Math.min(imageHeight, y)),
+          imageWidth,
+          imageHeight
+        );
+        setVertexDrag((prev) => {
+          if (!prev) return null;
+          const nextPoly = prev.startPolygon.map((p, i) => (i === prev.index ? np : p));
+          return { ...prev, currentPolygon: nextPoly };
+        });
+        pendingUpdate.current = null;
+        return;
+      }
 
+      if (drawingState && isDrawing && shapeMode === "bbox") {
+        pendingUpdate.current = { x, y };
         if (!rafRef.current) {
           rafRef.current = requestAnimationFrame(() => {
-            // Capture the value to avoid race condition
             const update = pendingUpdate.current;
             if (update) {
               setDrawingState((prev) => {
                 if (!prev) return null;
-                return {
-                  ...prev,
-                  currentX: update.x,
-                  currentY: update.y,
-                };
+                return { ...prev, currentX: update.x, currentY: update.y };
               });
               pendingUpdate.current = null;
             }
@@ -211,76 +277,49 @@ export const BoundingBoxCanvas: React.FC<BoundingBoxCanvasProps> = ({
         return;
       }
 
-      // Handle editing (move/resize)
       if (editingState && onAnnotationUpdate) {
         pendingUpdate.current = { x, y };
-
         if (!rafRef.current) {
           rafRef.current = requestAnimationFrame(() => {
-            // Capture values to avoid race condition
             const update = pendingUpdate.current;
             const editing = editingState;
             if (update && editing) {
               const { annotationId, mode, handle, startX, startY, startBbox } = editing;
               const dx = update.x - startX;
               const dy = update.y - startY;
-
               let newBbox: [number, number, number, number];
-
               if (mode === "move") {
-                // Move: translate bbox
                 const [sx, sy, sw, sh] = startBbox;
                 const ndx = dx / imageWidth;
                 const ndy = dy / imageHeight;
-                newBbox = [
-                  Math.max(0, Math.min(1, sx + ndx)),
-                  Math.max(0, Math.min(1, sy + ndy)),
-                  sw,
-                  sh,
-                ];
+                newBbox = [Math.max(0, Math.min(1, sx + ndx)), Math.max(0, Math.min(1, sy + ndy)), sw, sh];
               } else {
-                // Resize: adjust based on handle
                 const pixelBbox = denormalizeBbox(startBbox, imageWidth, imageHeight);
                 let newPixelBbox = { ...pixelBbox };
-
                 if (handle?.includes("w")) {
                   newPixelBbox.left = Math.max(0, pixelBbox.left + dx);
                   newPixelBbox.width = pixelBbox.width - dx;
                 }
-                if (handle?.includes("e")) {
-                  newPixelBbox.width = Math.max(10, pixelBbox.width + dx);
-                }
+                if (handle?.includes("e")) newPixelBbox.width = Math.max(10, pixelBbox.width + dx);
                 if (handle?.includes("n")) {
                   newPixelBbox.top = Math.max(0, pixelBbox.top + dy);
                   newPixelBbox.height = pixelBbox.height - dy;
                 }
-                if (handle?.includes("s")) {
-                  newPixelBbox.height = Math.max(10, pixelBbox.height + dy);
-                }
-
-                // Ensure minimum size
+                if (handle?.includes("s")) newPixelBbox.height = Math.max(10, pixelBbox.height + dy);
                 if (newPixelBbox.width < 10) {
                   newPixelBbox.width = 10;
-                  if (handle?.includes("w")) {
-                    newPixelBbox.left = pixelBbox.left + pixelBbox.width - 10;
-                  }
+                  if (handle?.includes("w")) newPixelBbox.left = pixelBbox.left + pixelBbox.width - 10;
                 }
                 if (newPixelBbox.height < 10) {
                   newPixelBbox.height = 10;
-                  if (handle?.includes("n")) {
-                    newPixelBbox.top = pixelBbox.top + pixelBbox.height - 10;
-                  }
+                  if (handle?.includes("n")) newPixelBbox.top = pixelBbox.top + pixelBbox.height - 10;
                 }
-
-                // Clamp to image bounds
                 newPixelBbox.left = Math.max(0, Math.min(imageWidth - newPixelBbox.width, newPixelBbox.left));
                 newPixelBbox.top = Math.max(0, Math.min(imageHeight - newPixelBbox.height, newPixelBbox.top));
                 newPixelBbox.width = Math.min(imageWidth - newPixelBbox.left, newPixelBbox.width);
                 newPixelBbox.height = Math.min(imageHeight - newPixelBbox.top, newPixelBbox.height);
-
                 newBbox = normalizeBbox(newPixelBbox, imageWidth, imageHeight);
               }
-
               onAnnotationUpdate(annotationId, newBbox);
               pendingUpdate.current = null;
             }
@@ -289,51 +328,44 @@ export const BoundingBoxCanvas: React.FC<BoundingBoxCanvasProps> = ({
         }
       }
     },
-    [drawingState, isDrawing, editingState, imageWidth, imageHeight, onAnnotationUpdate]
+    [vertexDrag, drawingState, isDrawing, shapeMode, editingState, imageWidth, imageHeight, onAnnotationUpdate]
   );
 
-  // Handle mouse up - finalize box or editing
   const handleMouseUp = useCallback(() => {
-    // Finalize drawing
-    if (drawingState && isDrawing && selectedCategoryId) {
+    if (vertexDrag && onPolygonUpdate) {
+      onPolygonUpdate(vertexDrag.annotationId, vertexDrag.currentPolygon);
+    }
+    setVertexDrag(null);
+    if (drawingState && isDrawing && selectedCategoryId && shapeMode === "bbox") {
       const { startX, startY, currentX, currentY } = drawingState;
-
-      // Calculate box coordinates in displayed-image pixels
       const bbox = calculateBbox(startX, startY, currentX, currentY);
-
-      // Validate minimum size (10x10 pixels)
       const MIN_SIZE = 10;
       if (!validateBbox(bbox, MIN_SIZE)) {
         setDrawingState(null);
         return;
       }
-
-      // Normalize coordinates using displayed-image dimensions.
-      // With uniform scaling between natural and displayed size and offsets removed
-      // earlier, this is mathematically equivalent to normalizing against
-      // naturalWidth / naturalHeight, which is what the backend expects.
       const normalizedBbox = normalizeBbox(bbox, imageWidth, imageHeight);
-
-      // Call callback to create annotation
-      if (onBboxDraw) {
-        onBboxDraw(normalizedBbox);
-      }
-
+      onBboxDraw?.(normalizedBbox);
       setDrawingState(null);
       return;
     }
+    if (editingState) setEditingState(null);
+  }, [
+    vertexDrag,
+    onPolygonUpdate,
+    drawingState,
+    isDrawing,
+    selectedCategoryId,
+    shapeMode,
+    imageWidth,
+    imageHeight,
+    onBboxDraw,
+    editingState,
+  ]);
 
-    // Finalize editing
-    if (editingState) {
-      setEditingState(null);
-    }
-  }, [drawingState, isDrawing, selectedCategoryId, editingState, imageWidth, imageHeight, onBboxDraw]);
-
-  // Calculate active box (while drawing) - memoized
   const activeBox = useMemo(() => {
     if (!drawingState) return null;
-    const { startX, startY, currentX, currentY } = drawingState;
-    return calculateBbox(startX, startY, currentX, currentY);
+    return calculateBbox(drawingState.startX, drawingState.startY, drawingState.currentX, drawingState.currentY);
   }, [drawingState]);
 
   const activeCategoryColor = useMemo(
@@ -341,27 +373,22 @@ export const BoundingBoxCanvas: React.FC<BoundingBoxCanvasProps> = ({
     [selectedCategoryId, categories]
   );
 
-  // Memoized bounding box component with resize handles
   const MemoizedBoundingBox = React.memo<{
     annotation: Annotation;
     imageWidth: number;
     imageHeight: number;
     categoryColor: string;
     isSelected: boolean;
+    shapeMode: "bbox" | "polygon";
     onAnnotationClick?: (id: string, multiSelect?: boolean) => void;
   }>(
-    ({ annotation, imageWidth, imageHeight, categoryColor, isSelected, onAnnotationClick }) => {
-      const [x, y, width, height] = annotation.bbox;
-      // Convert normalized coords (relative to actual image) into displayed-image
-      // pixel coords, then add offsets so the box is positioned correctly inside
-      // the canvas/container.
-      const left = x * imageWidth + offsetX;
-      const top = y * imageHeight + offsetY;
-      const boxWidth = width * imageWidth;
-      const boxHeight = height * imageHeight;
-
-      // Resize handles (corners and edges)
-      const handles = isSelected
+    ({ annotation, imageWidth, imageHeight, categoryColor, isSelected, shapeMode, onAnnotationClick }) => {
+      const [bx, by, bw, bh] = annotation.bbox;
+      const left = bx * imageWidth + offsetX;
+      const top = by * imageHeight + offsetY;
+      const boxWidth = bw * imageWidth;
+      const boxHeight = bh * imageHeight;
+      const handles = isSelected && shapeMode === "bbox"
         ? [
             { pos: "nw", style: { left: "-4px", top: "-4px", cursor: "nw-resize" } },
             { pos: "ne", style: { right: "-4px", top: "-4px", cursor: "ne-resize" } },
@@ -373,7 +400,7 @@ export const BoundingBoxCanvas: React.FC<BoundingBoxCanvasProps> = ({
             { pos: "e", style: { right: "-4px", top: "50%", transform: "translateY(-50%)", cursor: "e-resize" } },
           ]
         : [];
-
+      const thin = annotation.polygon && annotation.polygon.length >= 3;
       return (
         <div
           data-annotation-id={annotation.id}
@@ -388,52 +415,39 @@ export const BoundingBoxCanvas: React.FC<BoundingBoxCanvasProps> = ({
             width: `${boxWidth}px`,
             height: `${boxHeight}px`,
             borderColor: categoryColor,
-            borderWidth: isSelected ? "3px" : "2px",
+            borderWidth: isSelected ? "3px" : thin ? "1px" : "2px",
+            borderStyle: thin ? "dashed" : "solid",
+            opacity: thin ? 0.85 : 1,
           }}
-          onClick={(e) => {
+          onClick={(ev) => {
             if (onAnnotationClick) {
-              e.stopPropagation();
-              onAnnotationClick(annotation.id, e.shiftKey);
-            }
-          }}
-          onMouseEnter={(e) => {
-            if (!isSelected) {
-              e.currentTarget.style.borderWidth = "2.5px";
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!isSelected) {
-              e.currentTarget.style.borderWidth = "2px";
+              ev.stopPropagation();
+              onAnnotationClick(annotation.id, ev.shiftKey);
             }
           }}
         >
-          {/* Resize handles */}
-          {handles.map((handle) => (
+          {handles.map((h) => (
             <div
-              key={handle.pos}
+              key={h.pos}
               className="absolute w-2 h-2 bg-blue-500 border border-blue-700 rounded-sm z-20"
-              style={handle.style}
-              data-resize-handle={handle.pos}
+              style={h.style}
+              data-resize-handle={h.pos}
             />
           ))}
-
-          {/* Category label */}
           <div
             className="absolute -top-5 left-0 px-1 text-[10px] text-white rounded"
             style={{ backgroundColor: categoryColor }}
           >
             {annotation.categoryName}
           </div>
-
-          {/* State badge (Phase 6) */}
           {annotation.state && annotation.state !== "draft" && (
             <div
               className={`absolute -bottom-5 left-0 px-1 text-[9px] rounded ${
                 annotation.state === "approved"
                   ? "bg-green-500 text-white"
                   : annotation.state === "reviewed"
-                  ? "bg-blue-500 text-white"
-                  : "bg-red-500 text-white"
+                    ? "bg-blue-500 text-white"
+                    : "bg-red-500 text-white"
               }`}
             >
               {annotation.state.charAt(0).toUpperCase()}
@@ -442,24 +456,20 @@ export const BoundingBoxCanvas: React.FC<BoundingBoxCanvasProps> = ({
         </div>
       );
     },
-    (prev, next) => {
-      return (
-        prev.annotation.id === next.annotation.id &&
-        prev.isSelected === next.isSelected &&
-        prev.categoryColor === next.categoryColor &&
-        prev.annotation.bbox[0] === next.annotation.bbox[0] &&
-        prev.annotation.bbox[1] === next.annotation.bbox[1] &&
-        prev.annotation.bbox[2] === next.annotation.bbox[2] &&
-        prev.annotation.bbox[3] === next.annotation.bbox[3]
-      );
-    }
+    (prev, next) =>
+      prev.annotation.id === next.annotation.id &&
+      prev.isSelected === next.isSelected &&
+      prev.categoryColor === next.categoryColor &&
+      prev.shapeMode === next.shapeMode &&
+      prev.annotation.bbox.join(",") === next.annotation.bbox.join(",") &&
+      JSON.stringify(prev.annotation.polygon) === JSON.stringify(next.annotation.polygon)
   );
 
-  // Memoize rendered bounding boxes
   const renderedBoxes = useMemo(() => {
-    return annotations.map((annotation) => {
+    return annotationsForRender.map((annotation) => {
       const categoryColor = getCategoryColor(annotation.categoryId);
-      const isSelected = annotation.id === selectedAnnotationId || selectedAnnotationIds.includes(annotation.id);
+      const isSelected =
+        annotation.id === selectedAnnotationId || selectedAnnotationIds.includes(annotation.id);
       return (
         <MemoizedBoundingBox
           key={annotation.id}
@@ -468,41 +478,122 @@ export const BoundingBoxCanvas: React.FC<BoundingBoxCanvasProps> = ({
           imageHeight={imageHeight}
           categoryColor={categoryColor}
           isSelected={isSelected}
+          shapeMode={shapeMode}
           onAnnotationClick={onAnnotationClick}
         />
       );
     });
-  }, [annotations, imageWidth, imageHeight, selectedAnnotationId, selectedAnnotationIds, categories, onAnnotationClick]);
+  }, [annotationsForRender, imageWidth, imageHeight, selectedAnnotationId, selectedAnnotationIds, categories, onAnnotationClick, shapeMode]);
 
-  // Cleanup RAF on unmount
-  React.useEffect(() => {
+  const polygonSvgPoints = (poly: PolygonPoint[]) =>
+    poly.map((p) => `${p[0] * imageWidth + offsetX},${p[1] * imageHeight + offsetY}`).join(" ");
+
+  const renderedPolygonFills = useMemo(() => {
+    return annotationsForRender
+      .filter((a) => a.polygon && a.polygon.length >= 3)
+      .map((a) => {
+        const color = getCategoryColor(a.categoryId);
+        return (
+          <polygon
+            key={`poly-${a.id}`}
+            fill={`${color}40`}
+            stroke={color}
+            strokeWidth={2}
+            vectorEffect="non-scaling-stroke"
+            points={polygonSvgPoints(a.polygon!)}
+          />
+        );
+      });
+  }, [annotationsForRender, imageWidth, imageHeight, offsetX, offsetY, categories]);
+
+  const selectedVertices = useMemo(() => {
+    if (shapeMode !== "polygon" || !selectedAnnotationId) return null;
+    const ann = annotationsForRender.find((a) => a.id === selectedAnnotationId);
+    if (!ann?.polygon || ann.polygon.length < 3) return null;
+    return ann.polygon;
+  }, [shapeMode, selectedAnnotationId, annotationsForRender]);
+
+  useEffect(() => {
     return () => {
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-      }
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, []);
+
+  const draftLinePoints = useMemo(() => {
+    if (polygonDraft.length === 0) return "";
+    return polygonSvgPoints(polygonDraft);
+  }, [polygonDraft, imageWidth, imageHeight, offsetX, offsetY]);
 
   return (
     <div
       ref={canvasRef}
       className={`absolute inset-0 ${isDrawing ? "cursor-crosshair" : "cursor-default"}`}
-      aria-label={`Bounding box canvas with ${annotations.length} annotations`}
+      aria-label={`Annotation canvas with ${annotationsForRender.length} annotations`}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={() => {
         handleMouseUp();
-        if (editingState) {
-          setEditingState(null);
-        }
+        if (editingState) setEditingState(null);
       }}
     >
-      {/* Render saved annotations */}
+      <svg
+        className="absolute inset-0 overflow-visible pointer-events-none"
+        style={{ width: "100%", height: "100%" }}
+        aria-hidden
+      >
+        {renderedPolygonFills}
+        {polygonDraft.length > 0 && (
+          <polyline
+            fill="none"
+            stroke={activeCategoryColor}
+            strokeWidth={2}
+            strokeDasharray="6 4"
+            points={draftLinePoints}
+          />
+        )}
+        {polygonDraft.length > 0 && (
+          <circle
+            cx={polygonDraft[0][0] * imageWidth + offsetX}
+            cy={polygonDraft[0][1] * imageHeight + offsetY}
+            r={CLOSE_VERTEX_PIXELS}
+            fill="none"
+            stroke={activeCategoryColor}
+            strokeWidth={1}
+            strokeDasharray="2 2"
+          />
+        )}
+      </svg>
+
       {renderedBoxes}
 
-      {/* Render active box (while drawing) */}
-      {activeBox && (
+      {selectedVertices &&
+        selectedAnnotationId &&
+        onPolygonUpdate &&
+        selectedVertices.map((p, i) => (
+          <div
+            key={`v-${selectedAnnotationId}-${i}`}
+            role="presentation"
+            className="absolute w-3 h-3 rounded-full bg-white border-2 border-blue-600 z-30 cursor-grab active:cursor-grabbing"
+            style={{
+              left: `${p[0] * imageWidth + offsetX - 6}px`,
+              top: `${p[1] * imageHeight + offsetY - 6}px`,
+            }}
+            onMouseDown={(ev) => {
+              ev.stopPropagation();
+              ev.preventDefault();
+              const copy = selectedVertices.map((q) => [...q] as PolygonPoint);
+              setVertexDrag({
+                annotationId: selectedAnnotationId,
+                index: i,
+                startPolygon: copy,
+                currentPolygon: copy.map((pt) => [...pt] as PolygonPoint),
+              });
+            }}
+          />
+        ))}
+
+      {activeBox && shapeMode === "bbox" && (
         <div
           className="absolute border-2 border-dashed opacity-70 pointer-events-none"
           style={{
@@ -516,6 +607,6 @@ export const BoundingBoxCanvas: React.FC<BoundingBoxCanvasProps> = ({
       )}
     </div>
   );
-};
+});
 
-
+BoundingBoxCanvas.displayName = "BoundingBoxCanvas";
