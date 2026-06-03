@@ -619,6 +619,16 @@ const PredictionPage = () => {
 
   // Refs
   const pollIntervalRef = useRef<number | null>(null);
+  const modelFetchSeqRef = useRef<number>(0);
+  const latestModelFetchDebugRef = useRef<{
+    seq: number;
+    runLabel: "first_open" | "second_open" | "later_open";
+    requestStartMs: number;
+    responseMs?: number;
+    parseDoneMs?: number;
+    normalizeDoneMs?: number;
+    setStateMs?: number;
+  } | null>(null);
   const projectIdRef = useRef<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -1090,6 +1100,18 @@ const PredictionPage = () => {
 
     setLoadingModels(true);
     try {
+      const fetchSeq = ++modelFetchSeqRef.current;
+      const requestStartMs = performance.now();
+      const runLabel: "first_open" | "second_open" | "later_open" =
+        fetchSeq === 1 ? "first_open" : fetchSeq === 2 ? "second_open" : "later_open";
+      latestModelFetchDebugRef.current = {
+        seq: fetchSeq,
+        runLabel,
+        requestStartMs,
+      };
+      // #region agent log
+      fetch('http://127.0.0.1:7502/ingest/f7975ffe-af69-4878-8f1e-977e34a9070c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3a5f19'},body:JSON.stringify({sessionId:'3a5f19',runId:runLabel,hypothesisId:'D',location:'PredictionPage.tsx:fetchModels:start',message:'fetchModels invoked',data:{fetchSeq,companyName,projectName,selectedProjectId,sessionReady},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       const headers = await getAuthHeaders();
       const qs = new URLSearchParams({
         company: companyName,
@@ -1097,6 +1119,13 @@ const PredictionPage = () => {
       });
       const url = apiUrl(`/inference/models?${qs.toString()}`);
       const res = await fetch(url, { headers });
+      const responseMs = performance.now();
+      if (latestModelFetchDebugRef.current?.seq === fetchSeq) {
+        latestModelFetchDebugRef.current.responseMs = responseMs;
+      }
+      // #region agent log
+      fetch('http://127.0.0.1:7502/ingest/f7975ffe-af69-4878-8f1e-977e34a9070c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3a5f19'},body:JSON.stringify({sessionId:'3a5f19',runId:runLabel,hypothesisId:'A',location:'PredictionPage.tsx:fetchModels:response',message:'models response received',data:{fetchSeq,url,status:res.status,ok:res.ok,networkMs:Number((responseMs-requestStartMs).toFixed(2)),contentLength:res.headers.get('content-length')},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
 
       if (!res.ok) {
         if (res.status !== 404) {
@@ -1109,17 +1138,42 @@ const PredictionPage = () => {
         return;
       }
 
+      const parseStartMs = performance.now();
       const json = await res.json();
+      const parseDoneMs = performance.now();
+      if (latestModelFetchDebugRef.current?.seq === fetchSeq) {
+        latestModelFetchDebugRef.current.parseDoneMs = parseDoneMs;
+      }
       const rawList: unknown[] = Array.isArray(json)
         ? json
         : json.models || json.data?.models || [];
+      // #region agent log
+      fetch('http://127.0.0.1:7502/ingest/f7975ffe-af69-4878-8f1e-977e34a9070c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3a5f19'},body:JSON.stringify({sessionId:'3a5f19',runId:runLabel,hypothesisId:'B',location:'PredictionPage.tsx:fetchModels:parse',message:'models payload parsed',data:{fetchSeq,parseMs:Number((parseDoneMs-parseStartMs).toFixed(2)),rawListCount:rawList.length},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      const normalizeStartMs = performance.now();
       const modelsList = rawList.map(normalizeInferenceModelFromApi);
+      const normalizeDoneMs = performance.now();
+      if (latestModelFetchDebugRef.current?.seq === fetchSeq) {
+        latestModelFetchDebugRef.current.normalizeDoneMs = normalizeDoneMs;
+      }
       setModels(modelsList);
+      const setStateMs = performance.now();
+      if (latestModelFetchDebugRef.current?.seq === fetchSeq) {
+        latestModelFetchDebugRef.current.setStateMs = setStateMs;
+      }
+      // #region agent log
+      fetch('http://127.0.0.1:7502/ingest/f7975ffe-af69-4878-8f1e-977e34a9070c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3a5f19'},body:JSON.stringify({sessionId:'3a5f19',runId:runLabel,hypothesisId:'B',location:'PredictionPage.tsx:fetchModels:normalized',message:'models normalized and setState called',data:{fetchSeq,normalizedCount:modelsList.length,normalizeMs:Number((normalizeDoneMs-normalizeStartMs).toFixed(2)),setStateCallMs:Number((setStateMs-normalizeDoneMs).toFixed(2))},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
 
       // Validate that selected model still exists in the list
       setSelectedModelId((currentId) => {
         if (currentId) {
+          const validateStartMs = performance.now();
           const modelExists = modelsList.some((m) => modelRowMatchesId(m, currentId));
+          const validateDoneMs = performance.now();
+          // #region agent log
+          fetch('http://127.0.0.1:7502/ingest/f7975ffe-af69-4878-8f1e-977e34a9070c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3a5f19'},body:JSON.stringify({sessionId:'3a5f19',runId:runLabel,hypothesisId:'C',location:'PredictionPage.tsx:fetchModels:validateSelection',message:'selected model validation scanned model list',data:{fetchSeq,hasCurrentId:true,modelExists,scanMs:Number((validateDoneMs-validateStartMs).toFixed(2)),listCount:modelsList.length},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           if (!modelExists) {
             saveToStorage("modelId", null);
             return null;
@@ -1148,6 +1202,18 @@ const PredictionPage = () => {
       setModels([]);
     }
   }, [sessionReady, companyName, projectName, selectedProjectId, fetchDatasets, fetchModels]);
+
+  useEffect(() => {
+    const debug = latestModelFetchDebugRef.current;
+    if (!debug || debug.setStateMs == null) return;
+    const commitMs = performance.now();
+    const renderMs = commitMs - debug.setStateMs;
+    const totalMs = commitMs - debug.requestStartMs;
+    // #region agent log
+    fetch('http://127.0.0.1:7502/ingest/f7975ffe-af69-4878-8f1e-977e34a9070c',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3a5f19'},body:JSON.stringify({sessionId:'3a5f19',runId:debug.runLabel,hypothesisId:'E',location:'PredictionPage.tsx:useEffect(models):commit',message:'models state committed to render cycle',data:{fetchSeq:debug.seq,modelsCount:models.length,renderAfterSetStateMs:Number(renderMs.toFixed(2)),totalFromRequestStartMs:Number(totalMs.toFixed(2)),networkMs:debug.responseMs!=null?Number((debug.responseMs-debug.requestStartMs).toFixed(2)):null,parseMs:debug.parseDoneMs!=null&&debug.responseMs!=null?Number((debug.parseDoneMs-debug.responseMs).toFixed(2)):null,normalizeMs:debug.normalizeDoneMs!=null&&debug.parseDoneMs!=null?Number((debug.normalizeDoneMs-debug.parseDoneMs).toFixed(2)):null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    latestModelFetchDebugRef.current = null;
+  }, [models]);
 
   // Handle project selection
   const handleProjectSelect = (projectId: string) => {

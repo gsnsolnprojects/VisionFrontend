@@ -70,6 +70,8 @@ type TrainedModelSummary = {
   modelVersion?: string;
   modelType?: string;
   status?: string;
+  datasetVersion?: string;
+  datasetId?: string | null;
   metrics?: any;
   insights?: any;
   createdAt?: string;
@@ -2529,6 +2531,15 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                                   ? new Date(model.createdAt).toLocaleString()
                                   : "Created time unknown"}
                               </div>
+                              {(model.datasetVersion || model.datasetId) && (
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  Trained on dataset:{" "}
+                                  <span className="font-medium text-foreground">
+                                    {model.datasetVersion ?? "Unknown version"}
+                                  </span>
+                                  {model.datasetId ? ` (${model.datasetId})` : ""}
+                                </div>
+                              )}
                             </button>
                             {/* Delete button - hidden for viewer and operator roles */}
                             {userRole !== 'viewer' && userRole !== 'operator' && (
