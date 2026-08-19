@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { fadeInUpVariants } from "@/utils/animations";
 import { Canvas, useFrame } from "@react-three/fiber";
@@ -516,6 +517,29 @@ const Landing = () => {
         .brand-visible {
           color: #67e8f9 !important;
           text-shadow: 0 2px 14px rgba(14, 165, 233, 0.35);
+        }
+        .landing-navbar-inner {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 1rem;
+        }
+        .landing-navbar-actions {
+          display: flex;
+          align-items: center;
+          gap: 0.65rem;
+        }
+        .landing-nav-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          text-decoration: none;
+          padding: 0.45rem 0.95rem;
+          border-radius: 0.55rem;
+          font-weight: 700;
+          font-size: 0.9rem;
+          white-space: nowrap;
+          line-height: 1.2;
         }
         .hero-title {
           max-width: 18ch;
@@ -2469,6 +2493,10 @@ const Landing = () => {
           100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
         }
         @media (max-width: 991.98px) {
+          .landing-nav-btn {
+            padding: 0.38rem 0.75rem;
+            font-size: 0.82rem;
+          }
           .hero-layout {
             grid-template-columns: 1fr;
           }
@@ -2686,8 +2714,16 @@ const Landing = () => {
       `}</style>
 
       <nav className="navbar navbar-expand-lg bg-transparent">
-        <div className="container py-2">
+        <div className="container py-2 landing-navbar-inner">
           <span className="navbar-brand fw-bold fs-3 brand-visible">VisionM</span>
+          <div className="landing-navbar-actions">
+            <Link to="/auth?mode=signin" className="landing-nav-btn btn-cyan-outline">
+              Login
+            </Link>
+            <Link to="/auth?mode=signup" className="landing-nav-btn btn-cyan-primary">
+              Sign up
+            </Link>
+          </div>
         </div>
       </nav>
 
