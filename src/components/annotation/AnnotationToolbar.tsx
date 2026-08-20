@@ -1,6 +1,6 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { Undo2, Redo2 } from "lucide-react";
+import { Undo2, Redo2, Copy } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -13,8 +13,10 @@ interface AnnotationToolbarProps {
   onDelete?: () => void;
   onUndo?: () => void;
   onRedo?: () => void;
+  onCopy?: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
+  canCopy?: boolean;
   isDrawing?: boolean;
   /** Detection vs segmentation annotation shape (locked after server has saved annotations). */
   annotationShapeMode?: "BBOX" | "POLYGON";
@@ -27,8 +29,10 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
   onDelete,
   onUndo,
   onRedo,
+  onCopy,
   canUndo,
   canRedo,
+  canCopy = false,
   isDrawing,
   annotationShapeMode = "BBOX",
   onAnnotationShapeModeChange,
@@ -38,6 +42,7 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
     <TooltipProvider>
       <div className="flex flex-col gap-2" role="toolbar" aria-label="Annotation tools">
         <div className="flex flex-wrap gap-2">
+          {/* Draw button */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -51,9 +56,38 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>{isDrawing ? "Exit drawing mode (Esc)" : "Enter drawing mode (D)"}</p>
+              <p>{isDrawing ? "Exit drawing mode (Esc)" : "Enter drawing mode (W)"}</p>
             </TooltipContent>
           </Tooltip>
+
+          {/* Copy button */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  onClick={onCopy}
+                  disabled={!canCopy}
+                  aria-label={canCopy ? "Copy all boxes on this image" : "No boxes to copy"}
+                  className="gap-1"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  Copy
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>
+                {canCopy
+                  ? "Copy all boxes on this image (Ctrl+C). Paste on next image with Ctrl+V."
+                  : "No boxes to copy on this image"}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+
+          {/* Undo button */}
           <Tooltip>
             <TooltipTrigger asChild>
               <span>
@@ -79,6 +113,8 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
               </p>
             </TooltipContent>
           </Tooltip>
+
+          {/* Delete button */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -96,6 +132,8 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
             </TooltipContent>
           </Tooltip>
         </div>
+
+        {/* Annotation type selector */}
         {onAnnotationShapeModeChange && (
           <div className="flex flex-col gap-1">
             <span className="text-xs text-muted-foreground">Annotation type</span>
@@ -149,6 +187,8 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
             </div>
           </div>
         )}
+
+        {/* Redo button */}
         <div className="flex gap-2">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -176,5 +216,3 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
     </TooltipProvider>
   );
 };
-
-

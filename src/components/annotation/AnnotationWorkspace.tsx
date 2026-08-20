@@ -12,6 +12,7 @@ import {
   type BoundingBoxCanvasHandle,
 } from "@/components/annotation/BoundingBoxCanvas";
 import { AnnotationErrorBoundary } from "@/components/annotation/AnnotationErrorBoundary";
+import { CategoryPickerMenu } from "@/components/annotation/CategoryPickerMenu";
 import { ConvertToYOLOButton } from "@/components/annotation/ConvertToYOLOButton";
 import { AnnotationMetadata } from "@/components/annotation/AnnotationMetadata";
 import { AnnotationExportButton } from "@/components/annotation/AnnotationExportButton";
@@ -22,6 +23,7 @@ import { useAnnotation } from "@/hooks/useAnnotation";
 import { useAnnotationSelection } from "@/hooks/useAnnotationSelection";
 import { useImageLoader } from "@/hooks/useImageLoader";
 import { useAnnotationShortcuts } from "@/hooks/useAnnotationShortcuts";
+import { useShortcutKeys, matchesShortcut } from "@/hooks/useShortcutKeys";
 import { supabase } from "@/integrations/supabase/client";
 import * as annotationsApi from "@/lib/api/annotations";
 import * as categoriesApi from "@/lib/api/categories";
@@ -162,6 +164,27 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   } | null>(null);
   const [isFocused, setIsFocused] = useState(false);
   const workspaceRef = useRef<HTMLDivElement>(null);
+
+  // --- Copy / paste clipboard (survives image navigation) ---
+  type CopiedAnnotation = {
+    bbox: [number, number, number, number];
+    polygon?: PolygonPoint[];
+    categoryId: string;
+    categoryName: string;
+  };
+  const [copiedAnnotations, setCopiedAnnotations] = useState<CopiedAnnotation[]>([]);
+
+  // --- Category picker (left-click / W shortcut) ---
+  const [categoryPicker, setCategoryPicker] = useState<{ open: boolean; x: number; y: number }>({
+    open: false,
+    x: 0,
+    y: 0,
+  });
+  // Last cursor position over the image (relative to image container) — used by W shortcut
+  const cursorOnImageRef = useRef<{ x: number; y: number } | null>(null);
+
+  // --- Custom shortcut keys (reads from localStorage) ---
+  const { keys: shortcutKeys } = useShortcutKeys();
   
   // Phase 6: Multi-select and review workflow
   const selection = useAnnotationSelection();
@@ -545,12 +568,13 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       cancelled = true;
       clearTimeout(timeoutId);
     };
+    // ❗ Do NOT depend on hasAnnotations — flipping it when the first local box is
+    // drawn re-fetches and can wipe that box before the save finishes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     currentImage?.id,
     datasetId,
     currentImage?.hasLabels,
-    currentImage?.hasAnnotations,
   ]);
 
   // Phase 6: Conflict detection - poll for updates (CRITICAL FIX: Only depend on imageId)
@@ -875,6 +899,154 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       markSaved();
     }
   }, [currentImageIndex, images.length, unsavedChanges, selectImage, markSaved]);
+
+  // --- Category picker helpers ---
+  const closeCategoryPicker = useCallback(() => {
+    setCategoryPicker((prev) => ({ ...prev, open: false }));
+  }, []);
+
+  const openCategoryPickerAt = useCallback(
+    (x: number, y: number) => {
+      if (!hasCategories) {
+        toast({
+          title: "Categories required",
+          description: "Please add at least one category before annotating.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setCategoryPicker({ open: true, x, y });
+    },
+    [hasCategories, toast]
+  );
+
+  /** Called when user left-clicks empty canvas area */
+  const handleEmptyCanvasClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const container = imageContainerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      openCategoryPickerAt(e.clientX - rect.left, e.clientY - rect.top);
+    },
+    [openCategoryPickerAt]
+  );
+
+  /** Called when user presses W — opens picker at the current cursor on the image */
+  const handleOpenDrawPicker = useCallback(() => {
+    if (!hasCategories) {
+      toast({
+        title: "Categories required",
+        description: "Please add at least one category before drawing.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const container = imageContainerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+
+    // ✅ Prefer last known cursor position on the image; fall back to center only if unknown
+    const cursor = cursorOnImageRef.current;
+    if (cursor) {
+      const x = Math.max(8, Math.min(cursor.x, rect.width - 8));
+      const y = Math.max(8, Math.min(cursor.y, rect.height - 8));
+      openCategoryPickerAt(x, y);
+      return;
+    }
+
+    openCategoryPickerAt(
+      Math.max(16, rect.width / 2 - 90),
+      Math.max(16, rect.height / 2 - 40)
+    );
+  }, [hasCategories, openCategoryPickerAt, toast]);
+
+  /** User picks a class from the picker: select it and enter draw mode */
+  const handlePickerCategorySelect = useCallback(
+    (categoryId: string) => {
+      setCategory(categoryId);
+      setDrawing(true);
+      closeCategoryPicker();
+    },
+    [setCategory, setDrawing, closeCategoryPicker]
+  );
+
+  // --- Copy / paste handlers ---
+  const handleCopyAnnotations = useCallback(() => {
+    if (!currentImage) return;
+    if (annotations.length === 0) {
+      toast({ title: "Nothing to copy", description: "This image has no bounding boxes yet." });
+      return;
+    }
+    setCopiedAnnotations(
+      annotations.map((ann) => ({
+        bbox: ann.bbox,
+        polygon: ann.polygon,
+        categoryId: ann.categoryId,
+        categoryName: ann.categoryName,
+      }))
+    );
+    toast({
+      title: "Copied",
+      description: `${annotations.length} box${annotations.length === 1 ? "" : "es"} copied. Go to another image and press Ctrl+V.`,
+    });
+  }, [currentImage, annotations, toast]);
+
+  const handlePasteAnnotations = useCallback(async () => {
+    if (!currentImage) return;
+    if (copiedAnnotations.length === 0) {
+      toast({
+        title: "Clipboard empty",
+        description: "Click Copy on an image first, then paste with Ctrl+V.",
+      });
+      return;
+    }
+    if (!imageLoaded) {
+      toast({ title: "Image loading", description: "Please wait for the image to load.", variant: "destructive" });
+      return;
+    }
+
+    copiedAnnotations.forEach((item) => {
+      addAnnotation({
+        imageId: currentImage.id,
+        bbox: item.bbox,
+        polygon: item.polygon,
+        categoryId: item.categoryId,
+        categoryName: item.categoryName,
+      });
+    });
+
+    try {
+      await annotationsApi.batchSaveAnnotations(
+        datasetId,
+        copiedAnnotations.map((item) =>
+          annotationToWritePayload(
+            {
+              id: "pending",
+              imageId: currentImage.id,
+              bbox: item.bbox,
+              polygon: item.polygon,
+              categoryId: item.categoryId,
+              categoryName: item.categoryName,
+            } as Annotation,
+            annotationShapeMode
+          )
+        )
+      );
+      markSaved();
+      setShapeModeLocked(true);
+      toast({
+        title: "Pasted",
+        description: `${copiedAnnotations.length} box${copiedAnnotations.length === 1 ? "" : "es"} pasted and saved.`,
+      });
+    } catch (error) {
+      console.error("Paste save failed:", error);
+      toast({
+        title: "Paste saved locally only",
+        description: "Boxes added on screen but the server save failed.",
+        variant: "destructive",
+      });
+    }
+  }, [currentImage, copiedAnnotations, imageLoaded, addAnnotation, datasetId, annotationShapeMode, markSaved, toast]);
 
   // Handle delete annotation
   const handleDeleteAnnotation = useCallback(
@@ -1393,32 +1565,47 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
 
       if (isTypingInInput) return;
 
-      // D → draw mode
-      if ((e.key === "d" || e.key === "D") && !e.ctrlKey && !e.metaKey) {
+      // Ctrl+C → copy current image boxes (customisable)
+      if (matchesShortcut(e, shortcutKeys.copyBoxes)) {
         e.preventDefault();
-        if (!hasCategories) {
-          toast({
-            title: "Categories required",
-            description: "Please add at least one category before drawing.",
-            variant: "destructive",
-          });
-          return;
-        }
-        if (!selectedCategoryId) {
-          toast({
-            title: "Category required",
-            description: "Please select a category before drawing.",
-            variant: "destructive",
-          });
-          return;
-        }
-        setDrawing(true);
+        handleCopyAnnotations();
+        return;
       }
 
-      // Esc → cancel draw
+      // Ctrl+V → paste boxes onto this image (customisable)
+      if (matchesShortcut(e, shortcutKeys.pasteBoxes)) {
+        e.preventDefault();
+        void handlePasteAnnotations();
+        return;
+      }
+
+      // W → open class picker then draw (customisable)
+      if (matchesShortcut(e, shortcutKeys.drawMode)) {
+        e.preventDefault();
+        handleOpenDrawPicker();
+        return;
+      }
+
+      // A → previous image (customisable)
+      if (matchesShortcut(e, shortcutKeys.previousImage)) {
+        e.preventDefault();
+        handlePreviousImage();
+        return;
+      }
+
+      // D → next image (customisable)
+      if (matchesShortcut(e, shortcutKeys.nextImage)) {
+        e.preventDefault();
+        handleNextImage();
+        return;
+      }
+
+      // Esc → cancel draw + close picker
       if (e.key === "Escape") {
         setDrawing(false);
         setSelectedAnnotation(null);
+        closeCategoryPicker();
+        return;
       }
 
       // Delete → delete selected annotation
@@ -1426,18 +1613,21 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         e.preventDefault();
         handleDeleteAnnotation(selectedAnnotationId);
         setSelectedAnnotation(null);
+        return;
       }
 
       // Ctrl+Z / Cmd+Z → undo
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
         handleUndo();
+        return;
       }
 
       // Ctrl+Shift+Z / Cmd+Shift+Z → redo
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && e.shiftKey) {
         e.preventDefault();
         redo();
+        return;
       }
 
       // Ctrl/Cmd+S → manual save
@@ -1446,6 +1636,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         if (unsavedChanges && annotations.length > 0 && saveStatus !== "saving") {
           void handleSaveAnnotations();
         }
+        return;
       }
 
       // 1-9 → select category
@@ -1458,26 +1649,28 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       ) {
         e.preventDefault();
         setCategory(categories[categoryIndex].id);
+        return;
       }
 
-      // Arrow keys → image navigation
+      // Arrow keys → image navigation (always works)
       if (e.key === "ArrowLeft") {
         e.preventDefault();
         handlePreviousImage();
+        return;
       }
       if (e.key === "ArrowRight") {
         e.preventDefault();
         handleNextImage();
+        return;
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
-    selectedCategoryId,
+    shortcutKeys,
     selectedAnnotationId,
     categories,
-    hasCategories,
     setDrawing,
     setSelectedAnnotation,
     setCategory,
@@ -1486,11 +1679,14 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     handleDeleteAnnotation,
     handlePreviousImage,
     handleNextImage,
+    handleCopyAnnotations,
+    handlePasteAnnotations,
+    handleOpenDrawPicker,
+    closeCategoryPicker,
     annotations.length,
     unsavedChanges,
     saveStatus,
     handleSaveAnnotations,
-    toast,
   ]);
 
   // Warn user before leaving the page with unsaved changes
@@ -1797,8 +1993,13 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
             </div>
           )}
           {selectedCategoryId && imageLoaded && hasCategories && (
-            <div className="text-xs text-muted-foreground">
-              Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">D</kbd> to draw
+            <div className="text-xs text-muted-foreground space-y-1">
+              <div>Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">W</kbd> to draw</div>
+              <div>
+                <kbd className="px-1 py-0.5 bg-muted rounded text-xs">A</kbd> prev ·{" "}
+                <kbd className="px-1 py-0.5 bg-muted rounded text-xs">D</kbd> next
+              </div>
+              <div>Or left-click empty image to pick class</div>
             </div>
           )}
         </div>
@@ -1808,6 +2009,17 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           <div
             ref={imageContainerRef}
             className="relative w-full aspect-video border rounded-md overflow-hidden bg-muted flex items-center justify-center"
+            onMouseMove={(e) => {
+              // Track cursor so W opens the class menu under the pointer
+              const rect = e.currentTarget.getBoundingClientRect();
+              cursorOnImageRef.current = {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top,
+              };
+            }}
+            onMouseLeave={() => {
+              cursorOnImageRef.current = null;
+            }}
           >
             <ImageViewer
               imageUrl={currentImage?.url ?? null}
@@ -1871,6 +2083,16 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
                   onAnnotationClick={handleAnnotationClick}
                   onAnnotationUpdate={handleAnnotationUpdate}
                   onPolygonDraftChange={setPolygonDraftPointCount}
+                  onEmptyCanvasClick={handleEmptyCanvasClick}
+                />
+                {/* Category picker popup — shows on left-click empty canvas or W key */}
+                <CategoryPickerMenu
+                  open={categoryPicker.open}
+                  x={categoryPicker.x}
+                  y={categoryPicker.y}
+                  categories={categories}
+                  onSelect={handlePickerCategorySelect}
+                  onClose={closeCategoryPicker}
                 />
               </>
             )}
@@ -1904,24 +2126,14 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
             shapeModeLocked={shapeModeLocked}
             isDrawing={isDrawing}
             onDraw={() => {
-              if (!hasCategories) {
-                toast({
-                  title: "Categories required",
-                  description: "Please add at least one category before drawing.",
-                  variant: "destructive",
-                });
+              if (isDrawing) {
+                setDrawing(false);
                 return;
               }
-              if (!selectedCategoryId) {
-                toast({
-                  title: "Category required",
-                  description: "Please select a category before drawing.",
-                  variant: "destructive",
-                });
-                return;
-              }
-              setDrawing(!isDrawing);
+              handleOpenDrawPicker();
             }}
+            onCopy={handleCopyAnnotations}
+            canCopy={annotations.length > 0}
             onUndo={handleUndo}
             onRedo={redo}
             canUndo={canUndoToolbar}

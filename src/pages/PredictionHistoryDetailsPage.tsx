@@ -27,7 +27,7 @@ import { Loader2, ArrowLeft, ZoomIn, ZoomOut, ChevronLeft, ChevronRight } from "
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import { getAuthHeaders, apiUrl } from "@/lib/api/config";
+import { getAuthHeaders, apiUrl, API_BASE_URL } from "@/lib/api/config";
 
 interface HistoryInferenceResults {
   totalDetections: number;
@@ -279,7 +279,7 @@ const PredictionHistoryDetailsPage = () => {
   ): Array<{ filename: string; url: string; tag: string }> => {
     if (!images) return [];
     
-    const apiBase = (import.meta.env.VITE_API_BASE_URL || "").trim().replace(/\/+$/, "");
+    const apiBase = API_BASE_URL.replace(/\/+$/, "");
     
     // Check if new structure (object with good/defect/all)
     if (images && typeof images === 'object' && !Array.isArray(images) && 'all' in images) {
@@ -319,7 +319,7 @@ const PredictionHistoryDetailsPage = () => {
   ): Array<{ filename: string; url: string; fileType?: string }> => {
     if (!videos || !Array.isArray(videos)) return [];
 
-    const apiBase = (import.meta.env.VITE_API_BASE_URL || "").trim().replace(/\/+$/, "");
+    const apiBase = API_BASE_URL.replace(/\/+$/, "");
 
     return videos.map((vid) => {
       // Ensure filename is always present

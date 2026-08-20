@@ -6,7 +6,7 @@ import { useProfile } from "@/hooks/useProfile";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { ProtectedComponent } from "@/components/permissions/ProtectedComponent";
 import { supabase } from "@/integrations/supabase/client";
-import { getAuthHeaders } from "@/lib/api/config";
+import { getAuthHeaders, apiUrl } from "@/lib/api/config";
 import { PageHeader } from "@/components/pages/PageHeader";
 import {
   Card,
@@ -91,8 +91,6 @@ import {
 } from "@/components/ui/chart";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts";
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
-
 /** Default "good" classes for live verdict when user hasn't customized yet */
 function defaultLiveGoodClasses(classNames: string[] | undefined): string[] {
   const names = classNames ?? [];
@@ -142,12 +140,6 @@ function formatInferenceModelTypeLabel(modelType?: string): string {
   if (t === "YOLO") return "YOLO";
   return modelType ?? "";
 }
-
-const apiUrl = (path: string) => {
-  const base = API_BASE_URL.replace(/\/+$/, "");
-  const p = path.replace(/^\/+/, "");
-  return base ? `${base}/${p}` : `/${p}`;
-};
 
 interface Dataset {
   datasetId: string; // MongoDB _id from backend

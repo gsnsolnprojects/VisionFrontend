@@ -62,11 +62,8 @@ export const useAnnotation = () => {
       : [];
 
     setHistory((prev) => {
-      // Remove any history after current index (clears redo stack when making new change)
       const newHistory = prev.slice(0, historyIndex + 1);
-      // Add new state
       newHistory.push([...currentAnnotations]);
-      // Limit history to 50 steps
       if (newHistory.length > 50) {
         newHistory.shift();
         setHistoryIndex(49);
@@ -76,7 +73,6 @@ export const useAnnotation = () => {
     });
     setHistoryIndex((prev) => {
       const newIndex = prev + 1;
-      // If we're adding after an undo, limit to 50
       return newIndex >= 50 ? 49 : newIndex;
     });
   }, [currentImage, allAnnotations, historyIndex]);
@@ -93,6 +89,7 @@ export const useAnnotation = () => {
     setAllAnnotations((prev) => [...prev, newAnnotation]);
     setUnsavedChanges(true);
     // Mark current image as having annotations in local metadata
+    // (does not re-fetch — AnnotationWorkspace no longer depends on hasAnnotations for load)
     setImages((prev) =>
       prev.map((img) =>
         currentImage && img.id === currentImage.id
@@ -100,8 +97,25 @@ export const useAnnotation = () => {
           : img
       )
     );
-    saveToHistory();
-  }, [currentImage, saveToHistory]);
+
+    // ✅ History snapshot includes the new box (avoids stale empty snapshot from old saveToHistory)
+    setHistory((prev) => {
+      const base = prev.slice(0, historyIndex + 1);
+      const last = base.length > 0 ? base[base.length - 1] : [];
+      const nextSnap = [...last, newAnnotation];
+      const newHistory = [...base, nextSnap];
+      if (newHistory.length > 50) {
+        newHistory.shift();
+        setHistoryIndex(49);
+        return newHistory;
+      }
+      return newHistory;
+    });
+    setHistoryIndex((prev) => {
+      const newIndex = prev + 1;
+      return newIndex >= 50 ? 49 : newIndex;
+    });
+  }, [currentImage, historyIndex]);
 
   // Update annotation
   const updateAnnotation = useCallback((id: string, updates: Partial<Pick<Annotation, "bbox" | "polygon" | "categoryId" | "categoryName">>) => {

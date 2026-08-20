@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { API_BASE_URL } from "@/lib/api/config";
 
 interface BackendStatus {
   isOnline: boolean;
@@ -26,7 +27,7 @@ export const useBackendStatus = (): BackendStatus => {
 
   const checkBackendHealth = async (): Promise<void> => {
     // Get API base URL from environment
-    const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "").trim();
+    const apiBaseUrl = API_BASE_URL.trim();
     
     // If no API URL configured, consider backend offline
     if (!apiBaseUrl) {

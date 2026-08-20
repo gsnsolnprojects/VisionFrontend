@@ -46,6 +46,8 @@ interface BoundingBoxCanvasProps {
   onPolygonUpdate?: (annotationId: string, polygon: PolygonPoint[]) => void;
   /** Fired when in-progress polygon vertex count changes (for undo button state). */
   onPolygonDraftChange?: (pointCount: number) => void;
+  /** Fired when user left-clicks empty canvas (not on a box, not already drawing). */
+  onEmptyCanvasClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
 }
 
 interface DrawingState {
@@ -75,6 +77,7 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
       onAnnotationUpdate,
       onPolygonUpdate,
       onPolygonDraftChange,
+      onEmptyCanvasClick,
     },
     ref
   ) {
@@ -144,6 +147,34 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
     return { x: rawX - offsetX, y: rawY - offsetY };
   };
 
+  /** Area of a normalized bbox (smaller = more nested / preferred for clicks). */
+  const bboxArea = (bbox: [number, number, number, number]) =>
+    Math.max(0, bbox[2]) * Math.max(0, bbox[3]);
+
+  /**
+   * ✅ Nested-box fix: find ALL boxes containing the point, pick the smallest.
+   * DOM hit-testing alone always returns the topmost (often the larger outer box).
+   */
+  const findBestAnnotationAt = useCallback(
+    (x: number, y: number): Annotation | null => {
+      const hits: { annotation: Annotation; area: number }[] = [];
+      for (const annotation of annotations) {
+        const [nx, ny, nw, nh] = annotation.bbox;
+        const left = nx * imageWidth;
+        const top = ny * imageHeight;
+        const right = left + nw * imageWidth;
+        const bottom = top + nh * imageHeight;
+        if (x >= left && x <= right && y >= top && y <= bottom) {
+          hits.push({ annotation, area: bboxArea(annotation.bbox) });
+        }
+      }
+      if (hits.length === 0) return null;
+      hits.sort((a, b) => a.area - b.area);
+      return hits[0].annotation;
+    },
+    [annotations, imageWidth, imageHeight]
+  );
+
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!canvasRef.current) return;
@@ -175,17 +206,12 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
         return;
       }
 
-      const target = e.target as HTMLElement;
-      const annotationElement = target.closest("[data-annotation-id]");
+      // Geometric hit-test (smallest box under cursor wins — nested boxes stay clickable)
+      const hitAnnotation = findBestAnnotationAt(x, y);
 
-      if (annotationElement && shapeMode === "bbox") {
-        const annotationId = annotationElement.getAttribute("data-annotation-id");
-        if (!annotationId) return;
-
-        const annotation = annotations.find((a) => a.id === annotationId);
-        if (!annotation) return;
-
-        const [nx, ny, nw, nh] = annotation.bbox;
+      if (hitAnnotation && shapeMode === "bbox") {
+        const annotationId = hitAnnotation.id;
+        const [nx, ny, nw, nh] = hitAnnotation.bbox;
         const pixelBbox = {
           left: nx * imageWidth,
           top: ny * imageHeight,
@@ -202,7 +228,7 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
             handle,
             startX: x,
             startY: y,
-            startBbox: annotation.bbox,
+            startBbox: hitAnnotation.bbox,
           });
           e.preventDefault();
           e.stopPropagation();
@@ -212,16 +238,28 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
             mode: "move",
             startX: x,
             startY: y,
-            startBbox: annotation.bbox,
+            startBbox: hitAnnotation.bbox,
           });
           e.preventDefault();
           e.stopPropagation();
         } else if (onAnnotationClick) {
           onAnnotationClick(annotationId, e.shiftKey);
+          e.preventDefault();
+          e.stopPropagation();
         }
-      } else if (annotationElement && shapeMode === "polygon" && onAnnotationClick) {
-        const annotationId = annotationElement.getAttribute("data-annotation-id");
-        if (annotationId) onAnnotationClick(annotationId, e.shiftKey);
+        return;
+      }
+
+      if (hitAnnotation && shapeMode === "polygon" && onAnnotationClick) {
+        onAnnotationClick(hitAnnotation.id, e.shiftKey);
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
+      if (!isDrawing && !hitAnnotation && onEmptyCanvasClick) {
+        // Left-click on empty canvas → show class picker
+        onEmptyCanvasClick(e);
       }
     },
     [
@@ -229,12 +267,14 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
       isDrawing,
       selectedCategoryId,
       selectedAnnotationId,
-      annotations,
       imageWidth,
       imageHeight,
+      findBestAnnotationAt,
       onAnnotationClick,
       onAnnotationUpdate,
       onPolygonDrawComplete,
+      onEmptyCanvasClick,
+      polygonDraft,
     ]
   );
 
@@ -380,9 +420,10 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
     categoryColor: string;
     isSelected: boolean;
     shapeMode: "bbox" | "polygon";
-    onAnnotationClick?: (id: string, multiSelect?: boolean) => void;
+    /** Higher z = drawn on top (smaller / nested boxes get higher values). */
+    stackZIndex: number;
   }>(
-    ({ annotation, imageWidth, imageHeight, categoryColor, isSelected, shapeMode, onAnnotationClick }) => {
+    ({ annotation, imageWidth, imageHeight, categoryColor, isSelected, shapeMode, stackZIndex }) => {
       const [bx, by, bw, bh] = annotation.bbox;
       const left = bx * imageWidth + offsetX;
       const top = by * imageHeight + offsetY;
@@ -404,11 +445,11 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
       return (
         <div
           data-annotation-id={annotation.id}
-          className={`absolute border-2 transition-all ${
+          className={`absolute border-2 transition-all pointer-events-none ${
             isSelected
-              ? "ring-2 ring-blue-500 shadow-lg z-10 cursor-move"
-              : "hover:ring-1 hover:ring-blue-300 hover:shadow-md z-0"
-          } ${onAnnotationClick ? "cursor-pointer" : "pointer-events-none"}`}
+              ? "ring-2 ring-blue-500 shadow-lg cursor-move"
+              : "hover:ring-1 hover:ring-blue-300 hover:shadow-md"
+          }`}
           style={{
             left: `${left}px`,
             top: `${top}px`,
@@ -418,19 +459,15 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
             borderWidth: isSelected ? "3px" : thin ? "1px" : "2px",
             borderStyle: thin ? "dashed" : "solid",
             opacity: thin ? 0.85 : 1,
-          }}
-          onClick={(ev) => {
-            if (onAnnotationClick) {
-              ev.stopPropagation();
-              onAnnotationClick(annotation.id, ev.shiftKey);
-            }
+            // Selected always on top; otherwise smaller boxes stack above larger ones
+            zIndex: isSelected ? 10000 : stackZIndex,
           }}
         >
           {handles.map((h) => (
             <div
               key={h.pos}
-              className="absolute w-2 h-2 bg-blue-500 border border-blue-700 rounded-sm z-20"
-              style={h.style}
+              className="absolute w-2 h-2 bg-blue-500 border border-blue-700 rounded-sm pointer-events-auto"
+              style={{ ...h.style, zIndex: 20 }}
               data-resize-handle={h.pos}
             />
           ))}
@@ -461,12 +498,17 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
       prev.isSelected === next.isSelected &&
       prev.categoryColor === next.categoryColor &&
       prev.shapeMode === next.shapeMode &&
+      prev.stackZIndex === next.stackZIndex &&
       prev.annotation.bbox.join(",") === next.annotation.bbox.join(",") &&
       JSON.stringify(prev.annotation.polygon) === JSON.stringify(next.annotation.polygon)
   );
 
   const renderedBoxes = useMemo(() => {
-    return annotationsForRender.map((annotation) => {
+    // Large boxes first (lower z), small/nested last (higher z) for correct stacking
+    const sorted = [...annotationsForRender].sort(
+      (a, b) => bboxArea(b.bbox) - bboxArea(a.bbox)
+    );
+    return sorted.map((annotation, index) => {
       const categoryColor = getCategoryColor(annotation.categoryId);
       const isSelected =
         annotation.id === selectedAnnotationId || selectedAnnotationIds.includes(annotation.id);
@@ -479,11 +521,11 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
           categoryColor={categoryColor}
           isSelected={isSelected}
           shapeMode={shapeMode}
-          onAnnotationClick={onAnnotationClick}
+          stackZIndex={index + 1}
         />
       );
     });
-  }, [annotationsForRender, imageWidth, imageHeight, selectedAnnotationId, selectedAnnotationIds, categories, onAnnotationClick, shapeMode]);
+  }, [annotationsForRender, imageWidth, imageHeight, selectedAnnotationId, selectedAnnotationIds, categories, shapeMode]);
 
   const polygonSvgPoints = (poly: PolygonPoint[]) =>
     poly.map((p) => `${p[0] * imageWidth + offsetX},${p[1] * imageHeight + offsetY}`).join(" ");

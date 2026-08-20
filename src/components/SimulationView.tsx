@@ -28,7 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { useProfile } from "@/hooks/useProfile";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
-import { getAuthHeaders } from "@/lib/api/config";
+import { getAuthHeaders, API_BASE_URL } from "@/lib/api/config";
 import * as datasetsApi from "@/lib/api/datasets";
 import { useAugmentationStatus, type AugmentationStatusState } from "@/hooks/useAugmentationStatus";
 import { ProtectedComponent } from "@/components/permissions/ProtectedComponent";
@@ -82,10 +82,8 @@ interface SimulationViewProps {
   profile: any;
 }
 
-// single, safe API base resolution for Vite with fallback
-const API_BASE: string =
-  ((typeof import.meta !== "undefined" && (import.meta as any).env && (import.meta as any).env.VITE_API_BASE_URL) as string) ||
-  "/api";
+// Shared API base resolution from central config
+const API_BASE: string = API_BASE_URL || "/api";
 
 console.info("[SimulationView] API_BASE =", API_BASE);
 

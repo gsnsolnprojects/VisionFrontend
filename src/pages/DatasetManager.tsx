@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/hooks/useProfile";
-import { getAuthHeaders } from "@/lib/api/config";
+import { getAuthHeaders, apiUrl, API_BASE_URL } from "@/lib/api/config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -70,13 +70,6 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
-const apiUrl = (path: string) => {
-  const base = API_BASE_URL.replace(/\/+$/, "");
-  const p = path.replace(/^\/+/, "");
-  return base ? `${base}/${p}` : `/${p}`;
-};
 
 // ✅ Resolves display id when GET /dataset/:id returns `_id` or `datasetId` but not `id`
 function resolveDatasetRecordId(
