@@ -452,14 +452,45 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
       augmentationSourceDatasetIdRef.current = null;
       toast({
         title: "Augmentation completed",
-        description: "The dataset has been successfully augmented and replaced.",
+        description: "The new augmented version is ready. Select it below to train or edit.",
         variant: "default",
       });
       if (selectedDatasetId && selectedProjectId) {
         stopAugmentationPolling();
-        setTimeout(() => {
+        setTimeout(async () => {
+          try {
+            const companyName =
+              (profile as any)?.companies?.name ??
+              (profile as any)?.company?.name ??
+              (userProfile as any)?.companies?.name ??
+              (userProfile as any)?.company?.name ??
+              "";
+            const projectName =
+              projects.find(
+                (p) =>
+                  String(p.id) === String(selectedProjectId) ||
+                  String(p.name) === String(selectedProjectId)
+              )?.name ?? selectedProjectId;
+
+            if (companyName && projectName) {
+              const active = await datasetsApi.fetchActiveDataset(
+                String(companyName),
+                String(projectName)
+              );
+              const activeId = active?.datasetId ?? active?._id ?? active?.id;
+              if (activeId) {
+                setSelectedDatasetId(String(activeId));
+                void fetchDatasetDetails(String(activeId));
+              } else {
+                void fetchDatasetDetails(selectedDatasetId);
+              }
+            } else {
+              void fetchDatasetDetails(selectedDatasetId);
+            }
+          } catch {
+            void fetchDatasetDetails(selectedDatasetId);
+          }
           void fetchDatasets(selectedProjectId);
-          void fetchDatasetDetails(selectedDatasetId);
         }, 100);
       }
     } else if (isTransitionToFailed) {
@@ -2420,6 +2451,10 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                         datasetDetails.valCount ?? 0,
                         datasetDetails.testCount ?? 0,
                       ].join(" / ")}
+                      <span className="block text-xs text-muted-foreground font-normal mt-0.5">
+                        {/* ✅ These three should sum to Total Images (disjoint splits) */}
+                        Splits are disjoint (each image in one folder)
+                      </span>
                     </div>
 
                     <div className="text-sm text-muted-foreground">Status</div>
@@ -2834,9 +2869,13 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
               }
               isLoading={augmentingDataset}
               title="Augment this dataset?"
-              description="Enter a name for the new augmented version. The original dataset will be backed up and replaced only after augmentation completes successfully."
+              description="Enter a name for the new version and how many images you want after augmentation. The original is kept as a backup."
               cancelLabel="Cancel"
               confirmLabel="Start Augmentation"
+              defaultTargetImageCount={Math.max(
+                1,
+                (Number(datasetDetails?.totalImages) || 0) * 2 || 100
+              )}
               onConfirm={async (versionName, options) => {
                 if (!selectedDatasetId || augmentingDataset) return;
                 setAugmentingDataset(true);

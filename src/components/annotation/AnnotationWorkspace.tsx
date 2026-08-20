@@ -206,8 +206,6 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   const [replaceLabelsConfirmOpen, setReplaceLabelsConfirmOpen] = useState(false);
   const [augmenting, setAugmenting] = useState(false);
   const [augmentDatasetVersion, setAugmentDatasetVersion] = useState<string | number | null>(null);
-  const [augmentMultiplierPreset, setAugmentMultiplierPreset] = useState<2 | 5 | "custom">(2);
-  const [customTargetTrainTotal, setCustomTargetTrainTotal] = useState<number>(1000);
   const [augmentingDatasetId, setAugmentingDatasetId] = useState<string | null>(null);
   const augmentationHandledRef = useRef<string | null>(null);
   const prevAugmentationStatusRef = useRef<AugmentationStatusState | null>(null);
@@ -2278,9 +2276,10 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         currentVersion={augmentDatasetVersion}
         isLoading={augmenting}
         title="Augment this dataset?"
-        description="Your annotations have been saved and converted. Enter a name for the new augmented version and choose augmentation size below."
+        description="Your annotations have been saved and converted. Enter a name for the new augmented version and how many images you want after augmentation."
         cancelLabel="No, skip for now"
         confirmLabel="Yes, augment dataset"
+        defaultTargetImageCount={Math.max(images.length * 2, images.length || 1)}
         onConfirm={async (versionName, options) => {
           setAugmenting(true);
           try {

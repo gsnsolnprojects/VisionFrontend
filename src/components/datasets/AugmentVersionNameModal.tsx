@@ -16,8 +16,10 @@ import {
 } from "@/lib/augmentVersionValidation";
 
 export interface AugmentOptions {
-  augmentationMultiplier?: number;
+  /** Desired total image count after augmentation (train+val+test combined). */
   targetTrainTotal?: number;
+  /** @deprecated Prefer targetTrainTotal — kept for API compatibility */
+  augmentationMultiplier?: number;
 }
 
 interface AugmentVersionNameModalProps {
@@ -33,8 +35,10 @@ interface AugmentVersionNameModalProps {
   description?: string;
   cancelLabel?: string;
   confirmLabel?: string;
-  /** If true, include augmentation size selector (2x, 5x, custom). Default true. */
+  /** If true, show the target image count field. Default true. */
   showAugmentationSize?: boolean;
+  /** Optional hint for a sensible default (e.g. current image count * 2). */
+  defaultTargetImageCount?: number;
 }
 
 export const AugmentVersionNameModal: React.FC<AugmentVersionNameModalProps> = ({
@@ -48,15 +52,16 @@ export const AugmentVersionNameModal: React.FC<AugmentVersionNameModalProps> = (
   cancelLabel = "Cancel",
   confirmLabel = "Start Augmentation",
   showAugmentationSize = true,
+  defaultTargetImageCount = 100,
 }) => {
   const suggestedName = getSuggestedVersionName(currentVersion);
   const [versionName, setVersionName] = useState(suggestedName);
   const [error, setError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
-  const [augmentMultiplierPreset, setAugmentMultiplierPreset] = useState<
-    2 | 5 | "custom"
-  >(2);
-  const [customTargetTrainTotal, setCustomTargetTrainTotal] = useState(1000);
+  const [targetImageCount, setTargetImageCount] = useState(
+    Math.max(1, defaultTargetImageCount)
+  );
+  const [countError, setCountError] = useState<string | null>(null);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -65,10 +70,10 @@ export const AugmentVersionNameModal: React.FC<AugmentVersionNameModalProps> = (
       setVersionName(nextSuggested);
       setError(null);
       setTouched(false);
-      setAugmentMultiplierPreset(2);
-      setCustomTargetTrainTotal(1000);
+      setTargetImageCount(Math.max(1, defaultTargetImageCount));
+      setCountError(null);
     }
-  }, [open, currentVersion]);
+  }, [open, currentVersion, defaultTargetImageCount]);
 
   const runValidation = (value: string) => {
     const result = validateVersionName(value, currentVersion);
@@ -78,6 +83,19 @@ export const AugmentVersionNameModal: React.FC<AugmentVersionNameModalProps> = (
     }
     setError(result.message ?? "Invalid version name");
     return false;
+  };
+
+  const validateCount = (n: number) => {
+    if (!Number.isFinite(n) || n < 1) {
+      setCountError("Enter at least 1 image.");
+      return false;
+    }
+    if (n > 100000) {
+      setCountError("Maximum is 100,000 images.");
+      return false;
+    }
+    setCountError(null);
+    return true;
   };
 
   const handleBlur = () => {
@@ -96,17 +114,18 @@ export const AugmentVersionNameModal: React.FC<AugmentVersionNameModalProps> = (
   const handleConfirm = async () => {
     const trimmed = versionName.trim();
     if (!runValidation(trimmed)) return;
+    if (showAugmentationSize && !validateCount(targetImageCount)) return;
 
-    const options: AugmentOptions =
-      augmentMultiplierPreset === "custom"
-        ? { targetTrainTotal: customTargetTrainTotal }
-        : { augmentationMultiplier: augmentMultiplierPreset };
+    const options: AugmentOptions = showAugmentationSize
+      ? { targetTrainTotal: targetImageCount }
+      : {};
 
     await onConfirm(trimmed, options);
   };
 
   const isValid = validateVersionName(versionName.trim(), currentVersion).valid;
-  const canSubmit = isValid && !isLoading;
+  const countOk = !showAugmentationSize || (targetImageCount >= 1 && !countError);
+  const canSubmit = isValid && countOk && !isLoading;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -141,52 +160,29 @@ export const AugmentVersionNameModal: React.FC<AugmentVersionNameModalProps> = (
           </div>
           {showAugmentationSize && (
             <div className="space-y-2">
-              <Label>Preset multiplier</Label>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant={augmentMultiplierPreset === 2 ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setAugmentMultiplierPreset(2)}
-                >
-                  2x
-                </Button>
-                <Button
-                  type="button"
-                  variant={augmentMultiplierPreset === 5 ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setAugmentMultiplierPreset(5)}
-                >
-                  5x
-                </Button>
-                <Button
-                  type="button"
-                  variant={
-                    augmentMultiplierPreset === "custom" ? "default" : "outline"
-                  }
-                  size="sm"
-                  onClick={() => setAugmentMultiplierPreset("custom")}
-                >
-                  Custom
-                </Button>
-              </div>
-              {augmentMultiplierPreset === "custom" && (
-                <div className="space-y-2">
-                  <Label htmlFor="augment-custom-target">
-                    Target train image count
-                  </Label>
-                  <Input
-                    id="augment-custom-target"
-                    type="number"
-                    min={1}
-                    value={customTargetTrainTotal}
-                    onChange={(e) =>
-                      setCustomTargetTrainTotal(
-                        Math.max(1, parseInt(e.target.value, 10) || 1)
-                      )
-                    }
-                  />
-                </div>
+              <Label htmlFor="augment-target-count">
+                Number of images after augmentation
+              </Label>
+              <Input
+                id="augment-target-count"
+                type="number"
+                min={1}
+                max={100000}
+                value={targetImageCount}
+                onChange={(e) => {
+                  const n = Math.max(1, parseInt(e.target.value, 10) || 1);
+                  setTargetImageCount(n);
+                  validateCount(n);
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Total images you want in the new version (originals + augmented).
+                Must be at least as large as your current labeled set.
+              </p>
+              {countError && (
+                <p className="text-sm text-destructive" role="alert">
+                  {countError}
+                </p>
               )}
             </div>
           )}

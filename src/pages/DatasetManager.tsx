@@ -1660,7 +1660,7 @@ const DatasetManager = () => {
 
       toast({
         title: "Upload queued",
-        description: `Dataset ${datasetId} queued with ${json.totalImages} files.`,
+        description: `Dataset ${datasetId} queued with ${json.totalImages} images.`,
       });
 
       // Capture before clearing state — used for detected-classes popup (labeled vs unlabeled)
@@ -2602,7 +2602,7 @@ const DatasetManager = () => {
 
       {statusProgress && (
         <div className="text-sm text-muted-foreground mb-8 space-x-4">
-          {typeof statusProgress.totalImages === "number" && <span>Total files: {statusProgress.totalImages}</span>}
+          {typeof statusProgress.totalImages === "number" && <span>Total images: {statusProgress.totalImages}</span>}
           {typeof statusProgress.trainCount === "number" && <span>Train: {statusProgress.trainCount}</span>}
           {typeof statusProgress.valCount === "number" && <span>Val: {statusProgress.valCount}</span>}
           {typeof statusProgress.testCount === "number" && <span>Test: {statusProgress.testCount}</span>}
@@ -3063,8 +3063,21 @@ const DatasetManager = () => {
               {searchQuery || filterType !== "all" || filterFolder !== "all" ? (
                 <div className="text-xs text-muted-foreground">
                   Showing {getFilteredFiles().length} of {fileManifest.length} files
+                  {" "}({navigableImageFiles.length} images
+                  {navigableFiles.length - navigableImageFiles.length > 0
+                    ? `, ${navigableFiles.length - navigableImageFiles.length} label files`
+                    : ""}
+                  )
                 </div>
-              ) : null}
+              ) : (
+                <div className="text-xs text-muted-foreground">
+                  {/* ✅ Clarify images vs YOLO .txt so 30 images + 30 labels is not read as "60 photos" */}
+                  {navigableImageFiles.length} image{navigableImageFiles.length !== 1 ? "s" : ""}
+                  {navigableFiles.length - navigableImageFiles.length > 0
+                    ? ` · ${navigableFiles.length - navigableImageFiles.length} label file${navigableFiles.length - navigableImageFiles.length !== 1 ? "s" : ""} on disk`
+                    : ""}
+                </div>
+              )}
             </div>
 
             {/* File Manager Layout */}
@@ -3086,7 +3099,12 @@ const DatasetManager = () => {
                           <Folder className="h-4 w-4" />
                           All Files
                         </span>
-                        <span className="text-xs opacity-70">{navigableFiles.length}</span>
+                        <span className="text-xs opacity-70" title="Images · label .txt files">
+                          {navigableImageFiles.length}
+                          {navigableFiles.length - navigableImageFiles.length > 0
+                            ? ` · ${navigableFiles.length - navigableImageFiles.length}`
+                            : ""}
+                        </span>
                       </div>
                     </button>
                     {folders.map((folder) => (
@@ -3474,9 +3492,15 @@ const DatasetManager = () => {
         }
         isLoading={!!augmentingDatasetId}
         title="Augment dataset"
-        description="Enter a name for the new augmented version. The original dataset will be backed up and replaced when complete."
+        description="Enter a name for the new version and how many images you want after augmentation."
         cancelLabel="Cancel"
         confirmLabel="Start Augmentation"
+        defaultTargetImageCount={Math.max(
+          1,
+          (Number(
+            versions.find((v) => v.datasetId === augmentOptionsDatasetId)?.totalImages
+          ) || 0) * 2 || 100
+        )}
         onConfirm={async (versionName, options) => {
           const datasetId = augmentOptionsDatasetId;
           if (!datasetId) return;
