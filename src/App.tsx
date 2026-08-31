@@ -21,6 +21,7 @@ import { SettingsPage } from "@/pages/SettingsPage";
 import { SettingsWorkspacePage } from "@/pages/SettingsWorkspacePage";
 import { SettingsBillingPage } from "@/pages/SettingsBillingPage";
 import { SettingsUsagePage } from "@/pages/SettingsUsagePage";
+import { SettingsMobileInspectPage } from "@/pages/SettingsMobileInspectPage";
 import { AccountPage } from "@/pages/AccountPage";
 import { AccountProfilePage } from "@/pages/AccountProfilePage";
 import { AccountSecurityPage } from "@/pages/AccountSecurityPage";
@@ -108,6 +109,7 @@ const ProtectedRoutes = () => {
         <Route path="/dashboard/settings/workspace" element={<SettingsWorkspacePage />} />
         <Route path="/dashboard/settings/billing" element={<SettingsBillingPage />} />
         <Route path="/dashboard/settings/usage" element={<SettingsUsagePage />} />
+        <Route path="/dashboard/settings/mobile-inspect" element={<SettingsMobileInspectPage />} />
         
         {/* Account */}
         <Route path="/account" element={<AccountPage />} />

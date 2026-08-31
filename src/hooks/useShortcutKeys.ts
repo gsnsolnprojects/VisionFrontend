@@ -6,6 +6,7 @@ export interface ShortcutKeys {
   previousImage: string;
   nextImage: string;
   drawMode: string;
+  clickToMask: string;
   copyBoxes: string;
   pasteBoxes: string;
 }
@@ -14,6 +15,7 @@ export const DEFAULT_SHORTCUT_KEYS: ShortcutKeys = {
   previousImage: "a",
   nextImage: "d",
   drawMode: "w",
+  clickToMask: "m",
   copyBoxes: "ctrl+c",
   pasteBoxes: "ctrl+v",
 };

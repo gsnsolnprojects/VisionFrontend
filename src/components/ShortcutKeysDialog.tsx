@@ -29,6 +29,7 @@ const ROWS: ShortcutRow[] = [
   { id: "previousImage", label: "Previous image", description: "Navigate to the previous image" },
   { id: "nextImage", label: "Next image", description: "Navigate to the next image" },
   { id: "drawMode", label: "Draw mode", description: "Open class picker then draw a bounding box" },
+  { id: "clickToMask", label: "Click to mask", description: "Click an object and auto-draw a polygon around it" },
   { id: "copyBoxes", label: "Copy boxes", description: "Copy all bounding boxes on the current image" },
   { id: "pasteBoxes", label: "Paste boxes", description: "Paste copied boxes onto the current image" },
 ];

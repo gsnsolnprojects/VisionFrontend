@@ -38,6 +38,7 @@ import type {
 } from "@/types/annotation";
 import { mapApiRecordToAnnotation, annotationToWritePayload } from "@/lib/utils/mapApiAnnotation";
 import { validatePolygonNormalized, polygonToBoundingBox } from "@/lib/utils/polygonUtils";
+import { isMongoObjectId, annotationsMatchGeometry } from "@/lib/utils/annotationSync";
 import { Loader2, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAugmentationStatus, type AugmentationStatusState } from "@/hooks/useAugmentationStatus";
@@ -134,6 +135,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     redo,
     markSaved,
     deleteAnnotation,
+    replaceAnnotationId,
   } = annotationState;
 
   const { toast } = useToast();
@@ -182,6 +184,10 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   });
   // Last cursor position over the image (relative to image container) — used by W shortcut
   const cursorOnImageRef = useRef<{ x: number; y: number } | null>(null);
+  const [isClickToMask, setIsClickToMask] = useState(false);
+  const [clickToMaskPending, setClickToMaskPending] = useState(false);
+  const [clickToMaskPendingPoint, setClickToMaskPendingPoint] = useState<PolygonPoint | null>(null);
+  const enterMaskAfterPickerRef = useRef(false);
 
   // --- Custom shortcut keys (reads from localStorage) ---
   const { keys: shortcutKeys } = useShortcutKeys();
@@ -720,16 +726,31 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   const canUndoToolbar =
     canUndo || (isDrawing && annotationShapeMode === "POLYGON" && polygonDraftPointCount > 0);
 
-  const handleUndo = useCallback(() => {
-    if (
-      isDrawing &&
-      annotationShapeMode === "POLYGON" &&
-      canvasRef.current?.undoLastPolygonDraftPoint()
-    ) {
-      return;
-    }
-    undo();
-  }, [isDrawing, annotationShapeMode, undo]);
+  const persistLockRef = useRef(Promise.resolve());
+
+  const adoptServerIds = useCallback(
+    async (imageId: string, localCreated: Annotation[]) => {
+      const temps = localCreated.filter((a) => a && !isMongoObjectId(a.id));
+      if (temps.length === 0) return;
+      try {
+        const data = await annotationsApi.getAnnotations(datasetId, imageId);
+        const server = (data.annotations ?? []).map((raw) =>
+          mapApiRecordToAnnotation(raw as unknown as Record<string, unknown>)
+        );
+        const used = new Set<string>();
+        for (const local of temps) {
+          const match = server.find((s) => !used.has(s.id) && annotationsMatchGeometry(local, s));
+          if (match) {
+            used.add(match.id);
+            replaceAnnotationId(local.id, match.id);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to adopt server annotation ids:", error);
+      }
+    },
+    [datasetId, replaceAnnotationId]
+  );
 
   const handleAnnotationShapeModeChange = useCallback(
     (mode: AnnotationShapeMode) => {
@@ -852,7 +873,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
 
   // Handle image selection with unsaved changes confirmation
   const handleImageSelect = useCallback(
-    (targetImageId: string) => {
+    async (targetImageId: string) => {
       const targetIndex = images.findIndex((img) => img.id === targetImageId);
       if (targetIndex === -1) return;
 
@@ -863,15 +884,15 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         if (!confirmed) return;
       }
 
-      // Navigate to new image
+      await persistLockRef.current;
       selectImage(targetIndex);
-      markSaved(); // Reset unsaved changes for new image
+      markSaved();
     },
     [images, unsavedChanges, selectImage, markSaved]
   );
 
   // Handle previous image
-  const handlePreviousImage = useCallback(() => {
+  const handlePreviousImage = useCallback(async () => {
     if (currentImageIndex > 0) {
       if (unsavedChanges) {
         const confirmed = window.confirm(
@@ -879,13 +900,14 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         );
         if (!confirmed) return;
       }
+      await persistLockRef.current;
       selectImage(currentImageIndex - 1);
       markSaved();
     }
   }, [currentImageIndex, unsavedChanges, selectImage, markSaved]);
 
   // Handle next image
-  const handleNextImage = useCallback(() => {
+  const handleNextImage = useCallback(async () => {
     if (currentImageIndex < images.length - 1) {
       if (unsavedChanges) {
         const confirmed = window.confirm(
@@ -893,6 +915,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         );
         if (!confirmed) return;
       }
+      await persistLockRef.current;
       selectImage(currentImageIndex + 1);
       markSaved();
     }
@@ -931,6 +954,11 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
 
   /** Called when user presses W — opens picker at the current cursor on the image */
   const handleOpenDrawPicker = useCallback(() => {
+    const forMask = enterMaskAfterPickerRef.current;
+    if (!forMask) {
+      enterMaskAfterPickerRef.current = false;
+      setIsClickToMask(false);
+    }
     if (!hasCategories) {
       toast({
         title: "Categories required",
@@ -958,14 +986,29 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     );
   }, [hasCategories, openCategoryPickerAt, toast]);
 
-  /** User picks a class from the picker: select it and enter draw mode */
+  /** User picks a class from the picker: select it and enter draw or click-to-mask mode */
   const handlePickerCategorySelect = useCallback(
     (categoryId: string) => {
       setCategory(categoryId);
-      setDrawing(true);
       closeCategoryPicker();
+      if (enterMaskAfterPickerRef.current) {
+        enterMaskAfterPickerRef.current = false;
+        setDrawing(false);
+        if (!shapeModeLocked) {
+          setAnnotationShapeMode("POLYGON");
+          try {
+            window.localStorage.setItem(shapePrefStorageKey, "POLYGON");
+          } catch {
+            /* ignore */
+          }
+        }
+        setIsClickToMask(true);
+        return;
+      }
+      setIsClickToMask(false);
+      setDrawing(true);
     },
-    [setCategory, setDrawing, closeCategoryPicker]
+    [setCategory, setDrawing, closeCategoryPicker, shapeModeLocked, shapePrefStorageKey]
   );
 
   // --- Copy / paste handlers ---
@@ -1003,14 +1046,16 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       return;
     }
 
+    const createdLocals: Annotation[] = [];
     copiedAnnotations.forEach((item) => {
-      addAnnotation({
+      const created = addAnnotation({
         imageId: currentImage.id,
         bbox: item.bbox,
         polygon: item.polygon,
         categoryId: item.categoryId,
         categoryName: item.categoryName,
       });
+      if (created) createdLocals.push(created);
     });
 
     try {
@@ -1030,6 +1075,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           )
         )
       );
+      await adoptServerIds(currentImage.id, createdLocals);
       markSaved();
       setShapeModeLocked(true);
       toast({
@@ -1044,7 +1090,73 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         variant: "destructive",
       });
     }
-  }, [currentImage, copiedAnnotations, imageLoaded, addAnnotation, datasetId, annotationShapeMode, markSaved, toast]);
+  }, [currentImage, copiedAnnotations, imageLoaded, addAnnotation, datasetId, annotationShapeMode, markSaved, toast, adoptServerIds]);
+
+  const reconcileImageAnnotations = useCallback(
+    async (imageId: string, desired: Annotation[]) => {
+      const data = await annotationsApi.getAnnotations(datasetId, imageId);
+      const server = (data.annotations ?? []).map((raw) =>
+        mapApiRecordToAnnotation(raw as unknown as Record<string, unknown>)
+      );
+      const desiredPersistedIds = new Set(
+        desired.filter((a) => isMongoObjectId(a.id)).map((a) => a.id)
+      );
+
+      for (const s of server) {
+        const keepById = desiredPersistedIds.has(s.id);
+        const keepByGeometry = desired.some((d) => annotationsMatchGeometry(d, s));
+        if (!keepById && !keepByGeometry) {
+          await annotationsApi.deleteAnnotation(datasetId, s.id);
+        }
+      }
+
+      const remainingServer = server.filter((s) => {
+        const keepById = desiredPersistedIds.has(s.id);
+        const keepByGeometry = desired.some((d) => annotationsMatchGeometry(d, s));
+        return keepById || keepByGeometry;
+      });
+      const toCreate = desired.filter(
+        (a) => !remainingServer.some((s) => annotationsMatchGeometry(a, s) || s.id === a.id)
+      );
+      if (toCreate.length > 0) {
+        const payloads = toCreate.map((ann) =>
+          annotationToWritePayload(ann, annotationShapeMode)
+        );
+        await annotationsApi.batchSaveAnnotations(datasetId, payloads);
+        await adoptServerIds(imageId, toCreate);
+      }
+      markSaved();
+    },
+    [datasetId, annotationShapeMode, adoptServerIds, markSaved]
+  );
+
+  const enqueuePersist = useCallback((fn: () => Promise<void>) => {
+    persistLockRef.current = persistLockRef.current.then(fn).catch((error) => {
+      console.error("Failed to persist annotation change:", error);
+    });
+    return persistLockRef.current;
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (
+      isDrawing &&
+      annotationShapeMode === "POLYGON" &&
+      canvasRef.current?.undoLastPolygonDraftPoint()
+    ) {
+      return;
+    }
+    const desired = undo();
+    if (desired && currentImage?.id) {
+      void enqueuePersist(() => reconcileImageAnnotations(currentImage.id, desired));
+    }
+  }, [isDrawing, annotationShapeMode, undo, currentImage, enqueuePersist, reconcileImageAnnotations]);
+
+  const handleRedo = useCallback(() => {
+    const desired = redo();
+    if (desired && currentImage?.id) {
+      void enqueuePersist(() => reconcileImageAnnotations(currentImage.id, desired));
+    }
+  }, [redo, currentImage, enqueuePersist, reconcileImageAnnotations]);
 
   // Handle delete annotation
   const handleDeleteAnnotation = useCallback(
@@ -1055,71 +1167,61 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       // Remove immediately for responsive UI
       deleteAnnotation(annotationId);
 
-      // Local temporary annotations are not persisted yet
-      const isLocalOnly = annotationId.startsWith("ann_");
-      if (isLocalOnly) return;
+      const persistDelete = async () => {
+        try {
+          let persistedId: string | null = isMongoObjectId(annotationId) ? annotationId : null;
 
-      try {
-        const persistedAnnotationId =
-          String((annotationToDelete as any)?._id ?? annotationToDelete.id ?? annotationId);
-
-        // Some backend environments expect a dataset version identifier shape different
-        // from the route param used to open this page. Try known candidates safely.
-        const datasetCandidates = Array.from(
-          new Set(
-            [
-              datasetId,
-              (annotationToDelete as any)?.datasetId,
-              (annotationToDelete as any)?.datasetVersionId,
-              (currentImage as any)?.datasetId,
-              (currentImage as any)?.datasetVersionId,
-            ]
-              .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
-              .map((v) => v.trim())
-          )
-        );
-
-        let deleteSucceeded = false;
-        let lastError: unknown = null;
-        for (const dsId of datasetCandidates) {
-          try {
-            await annotationsApi.deleteAnnotation(dsId, persistedAnnotationId);
-            deleteSucceeded = true;
-            break;
-          } catch (candidateError) {
-            lastError = candidateError;
-          }
-        }
-
-        if (!deleteSucceeded) {
-          throw (lastError ?? new Error("Delete failed"));
-        }
-        // Keep UX consistent with other immediately-persisted actions
-        markSaved();
-      } catch (error) {
-        console.error("Failed to delete annotation:", error);
-        toast({
-          title: "Failed to delete annotation",
-          description: error instanceof Error ? error.message : "The annotation could not be deleted.",
-          variant: "destructive",
-        });
-
-        // Roll back to backend state so deleted box does not disappear temporarily
-        if (currentImage?.id) {
-          try {
+          if (!persistedId && currentImage?.id) {
             const data = await annotationsApi.getAnnotations(datasetId, currentImage.id);
-            loadAnnotations(
-          (data.annotations ?? []).map((raw) =>
-            mapApiRecordToAnnotation(raw as unknown as Record<string, unknown>)
-          )
-        );
-          } catch (reloadError) {
-            console.error("Failed to reload annotations after delete error:", reloadError);
+            const server = (data.annotations ?? []).map((raw) =>
+              mapApiRecordToAnnotation(raw as unknown as Record<string, unknown>)
+            );
+            const match = server.find((s) => annotationsMatchGeometry(annotationToDelete, s));
+            persistedId = match?.id ?? null;
+          }
+
+          if (!persistedId) {
+            markSaved();
+            return;
+          }
+
+          await annotationsApi.deleteAnnotation(datasetId, persistedId);
+          markSaved();
+        } catch (error) {
+          console.error("Failed to delete annotation:", error);
+          toast({
+            title: "Failed to delete annotation",
+            description: error instanceof Error ? error.message : "The annotation could not be deleted.",
+            variant: "destructive",
+          });
+
+          if (currentImage?.id) {
+            try {
+              const data = await annotationsApi.getAnnotations(datasetId, currentImage.id);
+              loadAnnotations(
+                (data.annotations ?? []).map((raw) =>
+                  mapApiRecordToAnnotation(raw as unknown as Record<string, unknown>)
+                )
+              );
+            } catch (reloadError) {
+              console.error("Failed to reload annotations after delete error:", reloadError);
+            }
           }
         }
-      }
+      };
+
+      await enqueuePersist(persistDelete);
     },
-    [annotations, deleteAnnotation, datasetId, markSaved, toast, currentImage, loadAnnotations]
+    [
+      annotations,
+      deleteAnnotation,
+      datasetId,
+      markSaved,
+      toast,
+      currentImage,
+      loadAnnotations,
+      enqueuePersist,
+    ]
   );
 
   // Calculate annotated images count across dataset
@@ -1165,7 +1267,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       };
       
       // Add to local state immediately
-      addAnnotation(newAnnotation);
+      const createdLocal = addAnnotation(newAnnotation);
 
       // Phase 4: Save immediately when box is complete (one box → one API call)
       try {
@@ -1182,6 +1284,9 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           ),
         ]);
 
+        if (createdLocal) {
+          await adoptServerIds(currentImage.id, [createdLocal]);
+        }
         markSaved();
         setShapeModeLocked(true);
         
@@ -1216,7 +1321,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         });
       }
     },
-    [currentImage, selectedCategoryId, categories, addAnnotation, toast, imageLoaded, datasetId, markSaved, setUnsavedBoxes, annotationShapeMode]
+    [currentImage, selectedCategoryId, categories, addAnnotation, toast, imageLoaded, datasetId, markSaved, setUnsavedBoxes, annotationShapeMode, adoptServerIds]
   );
 
   const handlePolygonDrawComplete = useCallback(
@@ -1258,7 +1363,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         categoryId: selectedCategoryId,
         categoryName: category.name,
       };
-      addAnnotation(newAnnotation);
+      const createdLocal = addAnnotation(newAnnotation);
 
       try {
         await annotationsApi.batchSaveAnnotations(datasetId, [
@@ -1268,6 +1373,9 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
             polygon,
           },
         ]);
+        if (createdLocal) {
+          await adoptServerIds(currentImage.id, [createdLocal]);
+        }
         markSaved();
         setShapeModeLocked(true);
       } catch (error) {
@@ -1289,6 +1397,147 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       imageLoaded,
       datasetId,
       markSaved,
+      adoptServerIds,
+    ]
+  );
+
+  const activateClickToMask = useCallback(() => {
+    setDrawing(false);
+    closeCategoryPicker();
+    if (!shapeModeLocked) {
+      setAnnotationShapeMode("POLYGON");
+      try {
+        window.localStorage.setItem(shapePrefStorageKey, "POLYGON");
+      } catch {
+        /* ignore */
+      }
+    }
+    setIsClickToMask(true);
+    if (shapeModeLocked && annotationShapeMode === "BBOX") {
+      toast({
+        title: "Click to mask",
+        description: "This dataset is locked to boxes, so the mask will be saved as a bounding box.",
+      });
+    }
+  }, [
+    setDrawing,
+    closeCategoryPicker,
+    shapeModeLocked,
+    shapePrefStorageKey,
+    annotationShapeMode,
+    toast,
+  ]);
+
+  const handleToggleClickToMask = useCallback(() => {
+    if (isClickToMask) {
+      setIsClickToMask(false);
+      setClickToMaskPending(false);
+      setClickToMaskPendingPoint(null);
+      return;
+    }
+    if (!hasCategories) {
+      toast({
+        title: "Categories required",
+        description: "Please add at least one category before using click-to-mask.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!selectedCategoryId) {
+      enterMaskAfterPickerRef.current = true;
+      handleOpenDrawPicker();
+      return;
+    }
+    activateClickToMask();
+  }, [
+    isClickToMask,
+    hasCategories,
+    selectedCategoryId,
+    toast,
+    handleOpenDrawPicker,
+    activateClickToMask,
+  ]);
+
+  const handleClickToMaskPoint = useCallback(
+    async (point: PolygonPoint) => {
+      if (!currentImage || !selectedCategoryId) {
+        toast({
+          title: "Category required",
+          description: "Select a class first, then click the defect.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (clickToMaskPending) return;
+
+      const category = categories.find((c) => c.id === selectedCategoryId);
+      if (!category) return;
+
+      setClickToMaskPending(true);
+      setClickToMaskPendingPoint(point);
+      try {
+        const result = await annotationsApi.clickToMask(datasetId, {
+          imageId: currentImage.id,
+          x: point[0],
+          y: point[1],
+        });
+        const polygon = result.polygon;
+        const v = validatePolygonNormalized(polygon);
+        if (!v.ok) {
+          toast({
+            title: "Mask was invalid",
+            description: v.errors[0] ?? "Try clicking closer to the center of the defect.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const bbox = polygonToBoundingBox(polygon);
+        const saveAsPolygon = annotationShapeMode === "POLYGON";
+        const createdLocal = addAnnotation({
+          imageId: currentImage.id,
+          bbox,
+          polygon: saveAsPolygon ? polygon : undefined,
+          categoryId: selectedCategoryId,
+          categoryName: category.name,
+        });
+
+        await annotationsApi.batchSaveAnnotations(datasetId, [
+          saveAsPolygon
+            ? { imageId: currentImage.id, categoryId: selectedCategoryId, polygon }
+            : { imageId: currentImage.id, categoryId: selectedCategoryId, bbox },
+        ]);
+        if (createdLocal) {
+          await adoptServerIds(currentImage.id, [createdLocal]);
+        }
+        markSaved();
+        setShapeModeLocked(true);
+      } catch (error) {
+        console.error("Click-to-mask failed:", error);
+        toast({
+          title: "Click-to-mask failed",
+          description:
+            error instanceof Error
+              ? error.message
+              : "Could not generate a mask. Try again, or draw the polygon by hand.",
+          variant: "destructive",
+        });
+      } finally {
+        setClickToMaskPending(false);
+        setClickToMaskPendingPoint(null);
+      }
+    },
+    [
+      currentImage,
+      selectedCategoryId,
+      clickToMaskPending,
+      categories,
+      datasetId,
+      annotationShapeMode,
+      addAnnotation,
+      markSaved,
+      toast,
+      adoptServerIds,
     ]
   );
 
@@ -1305,7 +1554,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       }
       const bbox = polygonToBoundingBox(polygon);
       updateAnnotation(annotationId, { polygon, bbox });
-      if (annotationId.startsWith("ann_")) return;
+      if (!isMongoObjectId(annotationId)) return;
       try {
         await annotationsApi.updateAnnotation(datasetId, annotationId, { polygon, bbox });
       } catch (error) {
@@ -1336,7 +1585,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   const handleAnnotationUpdate = useCallback(
     async (annotationId: string, bbox: [number, number, number, number]) => {
       updateAnnotation(annotationId, { bbox });
-      if (annotationId.startsWith("ann_")) return;
+      if (!isMongoObjectId(annotationId)) return;
       try {
         await annotationsApi.updateAnnotation(datasetId, annotationId, { bbox });
       } catch (error) {
@@ -1580,7 +1829,15 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       // W → open class picker then draw (customisable)
       if (matchesShortcut(e, shortcutKeys.drawMode)) {
         e.preventDefault();
+        enterMaskAfterPickerRef.current = false;
         handleOpenDrawPicker();
+        return;
+      }
+
+      // M → click-to-mask (customisable)
+      if (matchesShortcut(e, shortcutKeys.clickToMask)) {
+        e.preventDefault();
+        handleToggleClickToMask();
         return;
       }
 
@@ -1598,9 +1855,12 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         return;
       }
 
-      // Esc → cancel draw + close picker
+      // Esc → cancel draw + click-to-mask + close picker
       if (e.key === "Escape") {
         setDrawing(false);
+        setIsClickToMask(false);
+        setClickToMaskPending(false);
+        setClickToMaskPendingPoint(null);
         setSelectedAnnotation(null);
         closeCategoryPicker();
         return;
@@ -1624,7 +1884,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       // Ctrl+Shift+Z / Cmd+Shift+Z → redo
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && e.shiftKey) {
         e.preventDefault();
-        redo();
+        handleRedo();
         return;
       }
 
@@ -1673,13 +1933,14 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     setSelectedAnnotation,
     setCategory,
     handleUndo,
-    redo,
+    handleRedo,
     handleDeleteAnnotation,
     handlePreviousImage,
     handleNextImage,
     handleCopyAnnotations,
     handlePasteAnnotations,
     handleOpenDrawPicker,
+    handleToggleClickToMask,
     closeCategoryPicker,
     annotations.length,
     unsavedChanges,
@@ -1984,6 +2245,14 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
               Drawing mode active (Press Esc to cancel)
             </div>
           )}
+          {isClickToMask && imageLoaded && hasCategories && (
+            <div className="text-xs text-cyan-500 font-medium flex items-center gap-1">
+              <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse" />
+              {clickToMaskPending
+                ? "Generating mask… first click can take a minute while the model loads"
+                : "Click-to-mask: click the defect (Esc to cancel)"}
+            </div>
+          )}
           {!imageLoaded && currentImage && (
             <div className="text-xs text-muted-foreground flex items-center gap-1">
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -1993,6 +2262,12 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           {selectedCategoryId && imageLoaded && hasCategories && (
             <div className="text-xs text-muted-foreground space-y-1">
               <div>Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">W</kbd> to draw</div>
+              <div>
+                Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
+                  {shortcutKeys.clickToMask.toUpperCase()}
+                </kbd>{" "}
+                to click-to-mask
+              </div>
               <div>
                 <kbd className="px-1 py-0.5 bg-muted rounded text-xs">A</kbd> prev ·{" "}
                 <kbd className="px-1 py-0.5 bg-muted rounded text-xs">D</kbd> next
@@ -2082,6 +2357,10 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
                   onAnnotationUpdate={handleAnnotationUpdate}
                   onPolygonDraftChange={setPolygonDraftPointCount}
                   onEmptyCanvasClick={handleEmptyCanvasClick}
+                  clickToMaskActive={isClickToMask}
+                  clickToMaskPending={clickToMaskPending}
+                  clickToMaskPendingPoint={clickToMaskPendingPoint}
+                  onClickToMaskPoint={handleClickToMaskPoint}
                 />
                 {/* Category picker popup — shows on left-click empty canvas or W key */}
                 <CategoryPickerMenu
@@ -2123,17 +2402,21 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
             onAnnotationShapeModeChange={handleAnnotationShapeModeChange}
             shapeModeLocked={shapeModeLocked}
             isDrawing={isDrawing}
+            isClickToMask={isClickToMask}
+            onClickToMask={handleToggleClickToMask}
+            clickToMaskShortcut={shortcutKeys.clickToMask}
             onDraw={() => {
               if (isDrawing) {
                 setDrawing(false);
                 return;
               }
+              enterMaskAfterPickerRef.current = false;
               handleOpenDrawPicker();
             }}
             onCopy={handleCopyAnnotations}
             canCopy={annotations.length > 0}
             onUndo={handleUndo}
-            onRedo={redo}
+            onRedo={handleRedo}
             canUndo={canUndoToolbar}
             canRedo={canRedo}
             onDelete={() => {

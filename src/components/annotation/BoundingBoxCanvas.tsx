@@ -48,6 +48,11 @@ interface BoundingBoxCanvasProps {
   onPolygonDraftChange?: (pointCount: number) => void;
   /** Fired when user left-clicks empty canvas (not on a box, not already drawing). */
   onEmptyCanvasClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
+  /** When true, a click on the image asks SAM for a polygon instead of drawing. */
+  clickToMaskActive?: boolean;
+  clickToMaskPending?: boolean;
+  clickToMaskPendingPoint?: PolygonPoint | null;
+  onClickToMaskPoint?: (point: PolygonPoint) => void;
 }
 
 interface DrawingState {
@@ -78,6 +83,10 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
       onPolygonUpdate,
       onPolygonDraftChange,
       onEmptyCanvasClick,
+      clickToMaskActive = false,
+      clickToMaskPending = false,
+      clickToMaskPendingPoint = null,
+      onClickToMaskPoint,
     },
     ref
   ) {
@@ -182,6 +191,14 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
       const { x, y } = getMousePosition(e);
       if (x < 0 || y < 0 || x > imageWidth || y > imageHeight) return;
 
+      if (clickToMaskActive && onClickToMaskPoint) {
+        if (clickToMaskPending) return;
+        onClickToMaskPoint(pixelToNormalizedPoint(x, y, imageWidth, imageHeight));
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
       // Polygon vertex drag is started from vertex handle divs (pointer-events).
 
       // Polygon drawing: add point or close
@@ -275,6 +292,9 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
       onPolygonDrawComplete,
       onEmptyCanvasClick,
       polygonDraft,
+      clickToMaskActive,
+      clickToMaskPending,
+      onClickToMaskPoint,
     ]
   );
 
@@ -569,7 +589,9 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
   return (
     <div
       ref={canvasRef}
-      className={`absolute inset-0 ${isDrawing ? "cursor-crosshair" : "cursor-default"}`}
+      className={`absolute inset-0 ${
+        clickToMaskActive ? "cursor-crosshair" : isDrawing ? "cursor-crosshair" : "cursor-default"
+      }`}
       aria-label={`Annotation canvas with ${annotationsForRender.length} annotations`}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
@@ -605,6 +627,25 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
             strokeDasharray="2 2"
           />
         )}
+        {clickToMaskPending && clickToMaskPendingPoint && (
+          <g>
+            <circle
+              cx={clickToMaskPendingPoint[0] * imageWidth + offsetX}
+              cy={clickToMaskPendingPoint[1] * imageHeight + offsetY}
+              r={10}
+              fill="none"
+              stroke="#22d3ee"
+              strokeWidth={2}
+              className="animate-pulse"
+            />
+            <circle
+              cx={clickToMaskPendingPoint[0] * imageWidth + offsetX}
+              cy={clickToMaskPendingPoint[1] * imageHeight + offsetY}
+              r={3}
+              fill="#22d3ee"
+            />
+          </g>
+        )}
       </svg>
 
       {renderedBoxes}
@@ -612,6 +653,7 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
       {selectedVertices &&
         selectedAnnotationId &&
         onPolygonUpdate &&
+        !clickToMaskActive &&
         selectedVertices.map((p, i) => (
           <div
             key={`v-${selectedAnnotationId}-${i}`}

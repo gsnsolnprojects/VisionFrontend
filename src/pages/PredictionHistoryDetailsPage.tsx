@@ -147,6 +147,12 @@ const PredictionHistoryDetailsPage = () => {
 
   const [loading, setLoading] = useState(true);
   const [results, setResults] = useState<HistoryInferenceResults | null>(null);
+  const [regionName, setRegionName] = useState<string | null>(null);
+  const [corrosionBatch, setCorrosionBatch] = useState<{
+    imageCount?: number;
+    meanCorrosionPercent?: number;
+    byClass?: Array<{ class: string; meanPercent: number; count: number }>;
+  } | null>(null);
   const [imageFilter, setImageFilter] = useState<'all' | 'good' | 'defect'>('all');
   const [hasTags, setHasTags] = useState(false);
 
@@ -365,6 +371,8 @@ const PredictionHistoryDetailsPage = () => {
 
       const response = await res.json();
       const data = response.results || response;
+      setRegionName(typeof response.regionName === "string" ? response.regionName : null);
+      setCorrosionBatch(data.corrosion || null);
 
       // Normalize annotated images from either structure
       const normalizedImages = normalizeAnnotatedImages(data.annotatedImages, inferenceId);
@@ -463,6 +471,7 @@ const PredictionHistoryDetailsPage = () => {
               <CardTitle className="text-sm">Results Summary</CardTitle>
               <CardDescription>
                 Inference ID: {inferenceId}
+                {regionName ? ` · Region: ${regionName}` : ""}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -484,6 +493,29 @@ const PredictionHistoryDetailsPage = () => {
                   <div className="text-xs text-muted-foreground">Classes Detected</div>
                 </div>
               </div>
+              {corrosionBatch && typeof corrosionBatch.meanCorrosionPercent === "number" && (
+                <div className="mt-4 pt-4 border-t space-y-2">
+                  <div className="text-sm font-medium">Photo pixel coverage</div>
+                  <p className="text-xs text-muted-foreground">
+                    % of this photo’s pixels tagged as rust, not % of the real steel surface.
+                  </p>
+                  <div className="text-xl font-bold">
+                    {corrosionBatch.meanCorrosionPercent.toFixed(2)}%
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      mean across {corrosionBatch.imageCount ?? 0} image(s)
+                    </span>
+                  </div>
+                  {Array.isArray(corrosionBatch.byClass) && corrosionBatch.byClass.length > 0 && (
+                    <ul className="text-sm text-muted-foreground space-y-1">
+                      {corrosionBatch.byClass.map((row) => (
+                        <li key={row.class}>
+                          {row.class}: {row.meanPercent.toFixed(2)}% ({row.count} instances)
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
               {/* Statistics row for tagged inference jobs */}
               {results.statistics && results.statistics.hasTags && (
                 <div className="grid gap-4 md:grid-cols-3 mt-4 pt-4 border-t">

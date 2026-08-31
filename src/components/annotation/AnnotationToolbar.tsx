@@ -1,6 +1,6 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { Undo2, Redo2, Copy } from "lucide-react";
+import { Undo2, Redo2, Copy, Wand2 } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -18,6 +18,9 @@ interface AnnotationToolbarProps {
   canRedo?: boolean;
   canCopy?: boolean;
   isDrawing?: boolean;
+  isClickToMask?: boolean;
+  onClickToMask?: () => void;
+  clickToMaskShortcut?: string;
   /** Detection vs segmentation annotation shape (locked after server has saved annotations). */
   annotationShapeMode?: "BBOX" | "POLYGON";
   onAnnotationShapeModeChange?: (mode: "BBOX" | "POLYGON") => void;
@@ -34,6 +37,9 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
   canRedo,
   canCopy = false,
   isDrawing,
+  isClickToMask,
+  onClickToMask,
+  clickToMaskShortcut = "M",
   annotationShapeMode = "BBOX",
   onAnnotationShapeModeChange,
   shapeModeLocked = false,
@@ -59,6 +65,32 @@ export const AnnotationToolbar: React.FC<AnnotationToolbarProps> = ({
               <p>{isDrawing ? "Exit drawing mode (Esc)" : "Enter drawing mode (W)"}</p>
             </TooltipContent>
           </Tooltip>
+
+          {/* Click-to-mask button */}
+          {onClickToMask && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={isClickToMask ? "default" : "outline"}
+                  size="sm"
+                  type="button"
+                  onClick={onClickToMask}
+                  aria-label={isClickToMask ? "Exit click to mask" : "Enter click to mask"}
+                  className="gap-1"
+                >
+                  <Wand2 className="h-3.5 w-3.5" />
+                  {isClickToMask ? "Masking..." : "Click mask"}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>
+                  {isClickToMask
+                    ? "Exit click-to-mask (Esc)"
+                    : `Click an object to auto-draw a mask (${clickToMaskShortcut.toUpperCase()})`}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          )}
 
           {/* Copy button */}
           <Tooltip>

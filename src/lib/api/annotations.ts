@@ -176,14 +176,18 @@ export const deleteAnnotation = async (
  * Batch save annotations
  * POST /api/dataset/:datasetId/annotations/batch
  */
+export type BatchSaveAnnotationsResponse = {
+  saved: number;
+  failed: number;
+  skippedDuplicates?: number;
+  errors?: Array<{ imageId: string; error: string }>;
+  annotations?: Annotation[];
+};
+
 export const batchSaveAnnotations = async (
   datasetId: string,
   annotations: AnnotationWritePayload[]
-): Promise<{
-  saved: number;
-  failed: number;
-  errors?: Array<{ imageId: string; error: string }>;
-}> => {
+): Promise<BatchSaveAnnotationsResponse> => {
   const path = `/dataset/${encodeURIComponent(datasetId)}/annotations/batch`;
 
   return apiRequest(path, {
@@ -232,6 +236,23 @@ export const bulkUpdateAnnotationState = async (
   return apiRequest(path, {
     method: "PUT",
     body: JSON.stringify({ annotationIds, state, userId }),
+  });
+};
+
+/**
+ * Click-to-mask (SAM): one image click → simplified polygon.
+ * POST /api/dataset/:datasetId/click-to-mask
+ * First call can take ~1–2 min while SAM weights download.
+ */
+export const clickToMask = async (
+  datasetId: string,
+  body: { imageId: string; x: number; y: number }
+): Promise<{ polygon: PolygonPoint[]; pointCount: number }> => {
+  const path = `/dataset/${encodeURIComponent(datasetId)}/click-to-mask`;
+  return apiRequest(path, {
+    method: "POST",
+    body: JSON.stringify(body),
+    maxRetries: 1,
   });
 };
 

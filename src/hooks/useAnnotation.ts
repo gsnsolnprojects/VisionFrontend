@@ -78,8 +78,8 @@ export const useAnnotation = () => {
   }, [currentImage, allAnnotations, historyIndex]);
 
   // Add annotation
-  const addAnnotation = useCallback((annotation: Omit<Annotation, "id">) => {
-    if (!currentImage) return;
+  const addAnnotation = useCallback((annotation: Omit<Annotation, "id">): Annotation | undefined => {
+    if (!currentImage) return undefined;
 
     const newAnnotation: Annotation = {
       ...annotation,
@@ -115,6 +115,7 @@ export const useAnnotation = () => {
       const newIndex = prev + 1;
       return newIndex >= 50 ? 49 : newIndex;
     });
+    return newAnnotation;
   }, [currentImage, historyIndex]);
 
   // Update annotation
@@ -153,39 +154,47 @@ export const useAnnotation = () => {
     setSelectedAnnotationId(annotationId);
   }, []);
 
-  // Undo
-  const undo = useCallback(() => {
-    if (!canUndo || !currentImage) return;
+  // Undo. Returns the snapshot the canvas should now match (for persisting delete/restore).
+  const undo = useCallback((): Annotation[] | null => {
+    if (!canUndo || !currentImage) return null;
 
     const previousState = history[historyIndex - 1];
-    if (previousState) {
-      // Remove current image's annotations
-      setAllAnnotations((prev) =>
-        prev.filter((a) => a.imageId !== currentImage.id)
-      );
-      // Add previous state annotations
-      setAllAnnotations((prev) => [...prev, ...previousState]);
-      setHistoryIndex((prev) => prev - 1);
-      setUnsavedChanges(true);
-    }
+    if (!previousState) return null;
+
+    setAllAnnotations((prev) => [
+      ...prev.filter((a) => a.imageId !== currentImage.id),
+      ...previousState,
+    ]);
+    setHistoryIndex((prev) => prev - 1);
+    setUnsavedChanges(true);
+    return previousState;
   }, [canUndo, currentImage, history, historyIndex]);
 
-  // Redo
-  const redo = useCallback(() => {
-    if (!canRedo || !currentImage) return;
+  // Redo. Returns the snapshot the canvas should now match.
+  const redo = useCallback((): Annotation[] | null => {
+    if (!canRedo || !currentImage) return null;
 
     const nextState = history[historyIndex + 1];
-    if (nextState) {
-      // Remove current image's annotations
-      setAllAnnotations((prev) =>
-        prev.filter((a) => a.imageId !== currentImage.id)
-      );
-      // Add next state annotations
-      setAllAnnotations((prev) => [...prev, ...nextState]);
-      setHistoryIndex((prev) => prev + 1);
-      setUnsavedChanges(true);
-    }
+    if (!nextState) return null;
+
+    setAllAnnotations((prev) => [
+      ...prev.filter((a) => a.imageId !== currentImage.id),
+      ...nextState,
+    ]);
+    setHistoryIndex((prev) => prev + 1);
+    setUnsavedChanges(true);
+    return nextState;
   }, [canRedo, currentImage, history, historyIndex]);
+
+  /** After Mongo save, swap temporary `ann_*` ids for real ObjectIds in canvas + undo history. */
+  const replaceAnnotationId = useCallback((oldId: string, newId: string) => {
+    if (!oldId || !newId || oldId === newId) return;
+    setAllAnnotations((prev) => prev.map((a) => (a.id === oldId ? { ...a, id: newId } : a)));
+    setHistory((prev) =>
+      prev.map((snap) => snap.map((a) => (a.id === oldId ? { ...a, id: newId } : a)))
+    );
+    setSelectedAnnotationId((prev) => (prev === oldId ? newId : prev));
+  }, []);
 
   // Mark as saved
   const markSaved = useCallback(() => {
@@ -264,6 +273,7 @@ export const useAnnotation = () => {
     markSaved,
     loadAnnotations,
     saveToHistory,
+    replaceAnnotationId,
     reset,
   };
 };

@@ -5,7 +5,7 @@ import { useProfile } from "@/hooks/useProfile";
 import { PageHeader } from "@/components/pages/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Settings, Building2, CreditCard, BarChart3, ArrowRight } from "lucide-react";
+import { Settings, Building2, CreditCard, BarChart3, ArrowRight, Smartphone } from "lucide-react";
 import { LoadingState } from "@/components/pages/LoadingState";
 import { fadeInUpVariants } from "@/utils/animations";
 
@@ -85,6 +85,21 @@ export const SettingsPage: React.FC = () => {
             </div>
             <CardDescription>
               Monitor your workspace usage and limits
+            </CardDescription>
+          </CardHeader>
+        </Card>
+
+        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/dashboard/settings/mobile-inspect")}>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Smartphone className="h-5 w-5 text-muted-foreground" />
+                <CardTitle>Mobile Inspect</CardTitle>
+              </div>
+              <ArrowRight className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <CardDescription>
+              Pin the YOLO_SEG model used by the Android corrosion inspect app
             </CardDescription>
           </CardHeader>
         </Card>

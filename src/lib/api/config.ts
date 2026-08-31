@@ -249,13 +249,16 @@ export const fetchWithRetry = async (
   throw lastError || new Error("Max retries exceeded");
 };
 
+export type ApiRequestOptions = RequestInit & { maxRetries?: number };
+
 /**
  * Make authenticated API request
  */
 export const apiRequest = async <T>(
   path: string,
-  options: RequestInit = {}
+  options: ApiRequestOptions = {}
 ): Promise<T> => {
+  const { maxRetries = 3, ...fetchOptions } = options;
   const headers = await getAuthHeaders();
   const url = apiUrl(path);
 
@@ -264,10 +267,10 @@ export const apiRequest = async <T>(
   // Don't override Content-Type for FormData
   // Merge headers: auth headers first, then user-provided headers (user headers can override)
   const requestHeaders: HeadersInit = { ...headers };
-  if (!(options.body instanceof FormData)) {
+  if (!(fetchOptions.body instanceof FormData)) {
     // Merge user-provided headers, but ensure auth headers are preserved
-    if (options.headers) {
-      Object.assign(requestHeaders, options.headers);
+    if (fetchOptions.headers) {
+      Object.assign(requestHeaders, fetchOptions.headers);
       // Re-apply critical auth headers to ensure they're not overridden
       if (headers["Authorization"]) {
         requestHeaders["Authorization"] = headers["Authorization"];
@@ -296,11 +299,15 @@ export const apiRequest = async <T>(
     }
   }
 
-  const response = await fetchWithRetry(url, {
-    ...options,
-    headers: requestHeaders,
-    signal: options.signal, // Pass through abort signal
-  });
+  const response = await fetchWithRetry(
+    url,
+    {
+      ...fetchOptions,
+      headers: requestHeaders,
+      signal: fetchOptions.signal,
+    },
+    maxRetries
+  );
 
   console.log(`[apiRequest] Response status: ${response.status} for ${url}`);
 

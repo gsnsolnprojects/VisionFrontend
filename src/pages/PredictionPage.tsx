@@ -7,6 +7,7 @@ import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { ProtectedComponent } from "@/components/permissions/ProtectedComponent";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders, apiUrl } from "@/lib/api/config";
+import { putMobileInspectConfig } from "@/lib/api/mobileInspect";
 import { PageHeader } from "@/components/pages/PageHeader";
 import {
   Card,
@@ -54,6 +55,7 @@ import {
   Info,
   AlertTriangle,
   FolderOpen,
+  Smartphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -243,6 +245,7 @@ interface InferenceJob {
   inferenceId: string;
   status: "queued" | "running" | "completed" | "failed" | "cancelled";
   sourceType?: string;
+  regionName?: string | null;
   progress?: {
     totalImages?: number;
     processedImages?: number;
@@ -502,6 +505,7 @@ const PredictionPage = () => {
   // Loading states
   const [loadingDatasets, setLoadingDatasets] = useState(false);
   const [loadingModels, setLoadingModels] = useState(false);
+  const [pinningMobile, setPinningMobile] = useState(false);
   const [startingInference, setStartingInference] = useState(false);
   const [loadingResults, setLoadingResults] = useState(false);
   const [cancellingInference, setCancellingInference] = useState(false);
@@ -1315,6 +1319,46 @@ const PredictionPage = () => {
   const handleModelSelect = (modelId: string) => {
     setSelectedModelId(modelId);
     saveToStorage("modelId", modelId);
+  };
+
+  const handlePinForMobile = async () => {
+    if (!companyName || !projectName || !selectedModelId) {
+      toast({
+        title: "Select a project and model first",
+        variant: "destructive",
+      });
+      return;
+    }
+    const selected = models.find((x) => modelRowMatchesId(x, selectedModelId));
+    if (!isSegmentationInferenceModel(selected)) {
+      toast({
+        title: "YOLO_SEG only",
+        description: "Pin a segmentation model for the Android inspect app.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setPinningMobile(true);
+    try {
+      await putMobileInspectConfig({
+        company: companyName,
+        project: projectName,
+        modelId: selectedModelId,
+        confidenceThreshold: confidenceThreshold,
+      });
+      toast({
+        title: "Pinned for Android",
+        description: "The inspect app will use this model. Phone does not choose a model.",
+      });
+    } catch (err: unknown) {
+      toast({
+        title: "Could not pin model",
+        description: err instanceof Error ? err.message : "Try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setPinningMobile(false);
+    }
   };
 
   // Handle confidence threshold change
@@ -4500,6 +4544,28 @@ const PredictionPage = () => {
                   })}
                 </div>
               )}
+              {selectedModelId &&
+                isSegmentationInferenceModel(
+                  models.find((x) => modelRowMatchesId(x, selectedModelId)) ?? null
+                ) &&
+                (hasPermission("startTraining") ||
+                  hasPermission("uploadDatasets") ||
+                  hasPermission("manageProjects")) && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={handlePinForMobile}
+                    disabled={pinningMobile || !projectName}
+                  >
+                    {pinningMobile ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Smartphone className="mr-2 h-4 w-4" />
+                    )}
+                    Pin this model for mobile
+                  </Button>
+                )}
             </CardContent>
           </Card>
         </div>
@@ -5313,6 +5379,12 @@ const PredictionPage = () => {
                                 <div className="font-medium">
                                   {job.model.modelType} - {job.model.modelVersion || "v1"}
                                 </div>
+                              </div>
+                            )}
+                            {job.regionName && (
+                              <div>
+                                <div className="text-muted-foreground">Region</div>
+                                <div className="font-medium">{job.regionName}</div>
                               </div>
                             )}
                             {job.dataset && (
