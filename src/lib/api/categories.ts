@@ -137,6 +137,7 @@ export const getDetectedClasses = async (
 export interface CreateCategoriesFromClassesResponse {
   message: string;
   createdCount: number;
+  updatedCount?: number;
   classes: number[];
   categories: Category[];
 }

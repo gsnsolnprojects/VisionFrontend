@@ -19,6 +19,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -30,7 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { List, X, FileText, Search, ZoomIn, ZoomOut, RotateCcw, Maximize2, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, Folder, ChevronRight as ChevronRightIcon, ChevronDown, Trash2, Loader2, Upload, ArrowRight, Info, Pencil, Download, MoreVertical } from "lucide-react";
+import { List, X, FileText, Search, ZoomIn, ZoomOut, RotateCcw, Maximize2, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, Folder, ChevronRight as ChevronRightIcon, ChevronDown, Trash2, Loader2, Upload, ArrowRight, Info, Pencil, Download, MoreVertical, ScanSearch, Tags } from "lucide-react";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { cn } from "@/lib/utils";
 import {
@@ -217,6 +218,11 @@ const DatasetManager = () => {
   const [showCancelAugmentDialog, setShowCancelAugmentDialog] = useState(false);
   const [cancelAugmentDatasetId, setCancelAugmentDatasetId] = useState<string | null>(null);
   const [downloadingDatasetId, setDownloadingDatasetId] = useState<string | null>(null);
+  const [checkingDatasetId, setCheckingDatasetId] = useState<string | null>(null);
+  const [showTypeCheckDialog, setShowTypeCheckDialog] = useState(false);
+  const [typeCheckResult, setTypeCheckResult] = useState<datasetsApi.DatasetTypeCheck | null>(null);
+  const [mappingDatasetId, setMappingDatasetId] = useState<string | null>(null);
+  const [classNameDialogSkipPrompt, setClassNameDialogSkipPrompt] = useState(false);
 
   const augmentingVersion = versions.find((v) => v.augmentation_status === "running");
   const datasetIdToPoll =
@@ -1885,6 +1891,54 @@ const DatasetManager = () => {
     setShowDeleteVersionDialog(true);
   };
 
+  const handleCheckDatasetType = async (datasetId: string) => {
+    setCheckingDatasetId(datasetId);
+    setTypeCheckResult(null);
+    setShowTypeCheckDialog(true);
+    try {
+      const result = await datasetsApi.checkDatasetType(datasetId);
+      setTypeCheckResult(result);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Could not check dataset type";
+      setShowTypeCheckDialog(false);
+      toast({
+        title: "Dataset type check failed",
+        description: msg,
+        variant: "destructive",
+      });
+    } finally {
+      setCheckingDatasetId(null);
+    }
+  };
+
+  const handleMapClasses = async (datasetId: string) => {
+    setMappingDatasetId(datasetId);
+    try {
+      const detectedClasses = await getDetectedClasses(datasetId);
+      if (!detectedClasses.totalClasses || detectedClasses.classIds.length === 0) {
+        toast({
+          title: "No classes found",
+          description: "This dataset has no YOLO class IDs to map. Make sure preprocessing finished and labels exist.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setCurrentDatasetId(datasetId);
+      setDetectedClassesData(detectedClasses);
+      setClassNameDialogSkipPrompt(true);
+      setShowClassNameDialog(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Could not load class IDs";
+      toast({
+        title: "Map classes failed",
+        description: msg,
+        variant: "destructive",
+      });
+    } finally {
+      setMappingDatasetId(null);
+    }
+  };
+
   // ------- Download dataset handler (flat = true → single folder; false/omit → train/val/test) -------
   const handleDownloadDataset = async (datasetId: string, flat: boolean) => {
     setDownloadingDatasetId(datasetId);
@@ -2713,6 +2767,41 @@ const DatasetManager = () => {
                             >
                               View
                             </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={checkingDatasetId === v.datasetId}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleCheckDatasetType(v.datasetId);
+                              }}
+                            >
+                              {checkingDatasetId === v.datasetId ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <ScanSearch className="h-4 w-4" />
+                              )}
+                              <span className="ml-1 hidden sm:inline">Check type</span>
+                            </Button>
+                            <ProtectedComponent requiredPermission="uploadDatasets">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={mappingDatasetId === v.datasetId || v.status === "processing"}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleMapClasses(v.datasetId);
+                                }}
+                                title="Map class IDs to names"
+                              >
+                                {mappingDatasetId === v.datasetId ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Tags className="h-4 w-4" />
+                                )}
+                                <span className="ml-1 hidden sm:inline">Map classes</span>
+                              </Button>
+                            </ProtectedComponent>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button
@@ -3402,6 +3491,75 @@ const DatasetManager = () => {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={showTypeCheckDialog}
+        onOpenChange={(open) => {
+          setShowTypeCheckDialog(open);
+          if (!open) setTypeCheckResult(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Dataset type check</DialogTitle>
+            <DialogDescription>
+              {typeCheckResult?.version
+                ? `Scanned YOLO .txt labels for ${typeCheckResult.version}`
+                : "Scanning YOLO .txt labels on disk…"}
+            </DialogDescription>
+          </DialogHeader>
+          {checkingDatasetId && !typeCheckResult ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Reading label files…
+            </div>
+          ) : typeCheckResult ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge
+                  variant={
+                    typeCheckResult.type === "segmentation"
+                      ? "default"
+                      : typeCheckResult.type === "mixed"
+                        ? "destructive"
+                        : "secondary"
+                  }
+                >
+                  {typeCheckResult.type === "detection"
+                    ? "Detection"
+                    : typeCheckResult.type === "segmentation"
+                      ? "Segmentation"
+                      : typeCheckResult.type === "mixed"
+                        ? "Mixed"
+                        : "Unlabeled"}
+                </Badge>
+              </div>
+              <p className="text-sm text-foreground">{typeCheckResult.summary}</p>
+              <p className="text-sm text-muted-foreground">{typeCheckResult.recommendation}</p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-md border p-2">Images: {typeCheckResult.counts.imageFiles}</div>
+                <div className="rounded-md border p-2">Label files: {typeCheckResult.counts.labelFiles}</div>
+                <div className="rounded-md border p-2">With objects: {typeCheckResult.counts.labeledFiles}</div>
+                <div className="rounded-md border p-2">Empty labels: {typeCheckResult.counts.emptyLabelFiles}</div>
+                <div className="rounded-md border p-2">Box lines: {typeCheckResult.counts.detectionLines}</div>
+                <div className="rounded-md border p-2">Polygon lines: {typeCheckResult.counts.segmentationLines}</div>
+                <div className="rounded-md border p-2">Invalid lines: {typeCheckResult.counts.invalidLines}</div>
+                <div className="rounded-md border p-2">Classes: {typeCheckResult.counts.uniqueClasses}</div>
+              </div>
+              {typeCheckResult.classIds.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Class IDs: {typeCheckResult.classIds.join(", ")}
+                </p>
+              )}
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTypeCheckDialog(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Edit Project Modal */}
       <EditProjectModal
         open={showEditProjectModal}
@@ -3636,15 +3794,16 @@ const DatasetManager = () => {
           datasetId={currentDatasetId}
           detectedClasses={detectedClassesData}
           open={showClassNameDialog}
+          skipPrompt={classNameDialogSkipPrompt}
           onClose={() => {
             setShowClassNameDialog(false);
             setDetectedClassesData(null);
+            setClassNameDialogSkipPrompt(false);
           }}
           onSuccess={() => {
-            // Optionally refresh dataset metadata or show success message
-            // The dialog already shows a success toast, so we can just close
             setShowClassNameDialog(false);
             setDetectedClassesData(null);
+            setClassNameDialogSkipPrompt(false);
           }}
         />
       )}

@@ -290,6 +290,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
   const datasetDetailsAbortRef = useRef<AbortController | null>(null);
   const isRestoringRef = useRef<boolean>(false);
   const hasRestoredRef = useRef<boolean>(false);
+  const startTrainingLockRef = useRef<boolean>(false);
   const completionToastShownRef = useRef<boolean>(false);
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
   const consecutivePollingFailuresRef = useRef<number>(0);
@@ -948,6 +949,19 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
   };
 
   const handleOpenTrainConfirm = async () => {
+    const isTrainingActive =
+      startTrainingLockRef.current ||
+      isSimulating ||
+      (jobId && ["queued", "running"].includes(simulationStatus));
+    if (isTrainingActive) {
+      toast({
+        title: "Training already running",
+        description: jobId
+          ? `Job ${jobId} is still ${simulationStatus}. Cancel it before starting another.`
+          : "A training job is already starting. Wait or cancel it first.",
+      });
+      return;
+    }
     if (modelType === "RF_DETR" && selectedDatasetId) {
       const hasPoly = await datasetHasPolygonAnnotations(selectedDatasetId);
       if (hasPoly) {
@@ -1192,19 +1206,38 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
     if (!sessionReady || hasRestoredRef.current) return;
 
     const restoreTrainingState = async () => {
-      const savedState = loadTrainingState();
-      if (!savedState || !savedState.jobId) {
-        hasRestoredRef.current = true;
-        return;
-      }
-
       isRestoringRef.current = true;
-      console.log("[SimulationView] Restoring training state:", savedState.jobId);
-
       try {
-        // Fetch current status from backend
         const headers = await getAuthHeaders();
-        const resp = await fetch(`${API_BASE}/train/${encodeURIComponent(savedState.jobId)}/status`, {
+
+        // Backend live job wins over localStorage (completed old job / cleared UI).
+        let liveJobId: string | null = null;
+        try {
+          const activeResp = await fetch(`${API_BASE}/train/active`, { headers });
+          if (activeResp.ok) {
+            const activeJson = await activeResp.json();
+            liveJobId = activeJson?.jobId ?? null;
+          }
+        } catch (e) {
+          console.warn("[SimulationView] Could not fetch active training job:", e);
+        }
+
+        const savedState = loadTrainingState();
+        const jobIdToRestore = liveJobId || savedState?.jobId || null;
+        if (!jobIdToRestore) {
+          return;
+        }
+
+        // User started a new job while restore was in flight — do not overwrite.
+        if (startTrainingLockRef.current) {
+          return;
+        }
+
+        console.log("[SimulationView] Restoring training state:", jobIdToRestore, {
+          fromLiveJob: Boolean(liveJobId),
+        });
+
+        const resp = await fetch(`${API_BASE}/train/${encodeURIComponent(jobIdToRestore)}/status`, {
           headers,
         });
 
@@ -1212,9 +1245,9 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
           // Job not found or invalid - clear persisted state
           if (resp.status === 404 || resp.status === 400) {
             console.warn("[SimulationView] Saved job not found, clearing persisted state");
-            clearTrainingState();
-            hasRestoredRef.current = true;
-            isRestoringRef.current = false;
+            if (!liveJobId) {
+              clearTrainingState();
+            }
             consecutivePollingFailuresRef.current = 0;
             backendErrorToastShownRef.current = false;
             queuedAtRef.current = null;
@@ -1229,9 +1262,6 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
               description: "Unable to restore training state. " + errorInfo.description,
               variant: "destructive",
             });
-            clearTrainingState();
-            hasRestoredRef.current = true;
-            isRestoringRef.current = false;
             consecutivePollingFailuresRef.current = 0;
             backendErrorToastShownRef.current = false;
             queuedAtRef.current = null;
@@ -1243,8 +1273,12 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
         const data = await resp.json();
         const status = data.status ?? "idle";
 
+        if (startTrainingLockRef.current) {
+          return;
+        }
+
         // Restore UI state
-        setJobId(savedState.jobId);
+        setJobId(jobIdToRestore);
         setSimulationStatus(status);
 
         const progressPercent =
@@ -1289,28 +1323,31 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
         }
 
         // Restore selections if available
-        if (savedState.projectId && !selectedProjectId) {
+        if (savedState?.projectId && !selectedProjectId) {
           setSelectedProjectId(savedState.projectId);
         }
-        if (savedState.datasetId && !selectedDatasetId) {
-          setSelectedDatasetId(savedState.datasetId);
+        const restoreDatasetId =
+          (typeof data.datasetId === "string" && data.datasetId) || savedState?.datasetId;
+        if (restoreDatasetId && !selectedDatasetId) {
+          setSelectedDatasetId(restoreDatasetId);
         }
-        if (savedState.modelType && !modelType) {
-          const restored = String(savedState.modelType).toUpperCase();
+        const restoreModelType = data.modelType ?? savedState?.modelType;
+        if (restoreModelType) {
+          const restored = String(restoreModelType).toUpperCase();
           if (restored === "YOLO_SEG") setModelType("YOLO_SEG");
           else if (restored === "RF_DETR") setModelType("RF_DETR");
           else setModelType("YOLO");
         }
 
         // Persist latest snapshot for this job
-        saveTrainingState(savedState.jobId, {
-          projectId: savedState.projectId,
-          datasetId: savedState.datasetId,
-          modelType: data.modelType ?? savedState.modelType,
-          modelSize: data.modelSize ?? savedState.modelSize,
+        saveTrainingState(jobIdToRestore, {
+          projectId: savedState?.projectId,
+          datasetId: restoreDatasetId,
+          modelType: data.modelType ?? savedState?.modelType,
+          modelSize: data.modelSize ?? savedState?.modelSize,
           status,
-          startedAt: data.startedAt ?? savedState.startedAt ?? null,
-          completedAt: data.completedAt ?? savedState.completedAt ?? null,
+          startedAt: data.startedAt ?? savedState?.startedAt ?? null,
+          completedAt: data.completedAt ?? savedState?.completedAt ?? null,
           finalMetrics: (data.finalMetrics as FinalMetrics) ?? null,
           hyperparameters: (data.hyperparameters as HyperparametersSnapshot) ?? null,
           modelInfo: data.model
@@ -1319,19 +1356,19 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                 modelVersion: data.model.modelVersion,
                 downloadUrl: data.model.downloadUrl,
               }
-            : savedState.modelInfo ?? null,
+            : savedState?.modelInfo ?? null,
         });
 
         // Resume polling if training is still active
         if (["queued", "running"].includes(status)) {
           setIsSimulating(true);
-          startPollingJob(savedState.jobId);
-          startLogsPolling(savedState.jobId);
+          startPollingJob(jobIdToRestore);
+          startLogsPolling(jobIdToRestore);
           console.log("[SimulationView] Resumed polling for active training");
         } else if (status === "completed") {
           // Completed: show results from snapshot, no polling, no clearing
           setIsSimulating(false);
-          showCompletionToast(savedState.jobId, data.finalMetrics as FinalMetrics | null | undefined);
+          showCompletionToast(jobIdToRestore, data.finalMetrics as FinalMetrics | null | undefined);
           // Refresh trained models list to show newly completed model
           void fetchTrainedModels();
         } else {
@@ -1350,8 +1387,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
             variant: "destructive",
           });
         }
-        // On error, clear persisted state to avoid getting stuck
-        clearTrainingState();
+        // Do not clear a live backend job if restore failed for some other reason
         setIsSimulating(false);
         consecutivePollingFailuresRef.current = 0;
         backendErrorToastShownRef.current = false;
@@ -1365,6 +1401,77 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
     void restoreTrainingState();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionReady]);
+
+  // If the progress card is idle but the GPU job is still running, reconnect.
+  useEffect(() => {
+    if (!sessionReady) return;
+    const uiHasLiveJob =
+      isSimulating || (Boolean(jobId) && ["queued", "running"].includes(simulationStatus));
+    if (uiHasLiveJob) return;
+
+    let cancelled = false;
+    const reconnect = async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const activeResp = await fetch(`${API_BASE}/train/active`, { headers });
+        if (!activeResp.ok || cancelled) return;
+        const activeJson = await activeResp.json();
+        const liveId = (activeJson?.jobId as string | null) ?? null;
+        if (!liveId || cancelled || liveId === jobId) return;
+
+        const statusResp = await fetch(`${API_BASE}/train/${encodeURIComponent(liveId)}/status`, {
+          headers,
+        });
+        if (!statusResp.ok || cancelled) return;
+        const data = await statusResp.json();
+        const status = data.status ?? "idle";
+        if (!["queued", "running"].includes(status) || cancelled) return;
+
+        setJobId(liveId);
+        setSimulationStatus(status);
+        setIsSimulating(true);
+        const cur = data.progress?.currentEpoch ?? 0;
+        const tot = data.progress?.totalEpochs ?? 0;
+        if (data.progress) {
+          setEpochInfo({ current: cur, total: tot });
+        }
+        setSimulationProgress(
+          data.progress?.progressPercent ?? (tot ? Math.round((cur / tot) * 100) : 0)
+        );
+        setSimulationMetrics(data.metrics ?? null);
+        if (data.startedAt) setStartedAt(data.startedAt);
+        if (typeof data.datasetId === "string" && data.datasetId) {
+          setSelectedDatasetId(data.datasetId);
+        }
+        const mt = String(data.modelType ?? "").toUpperCase();
+        if (mt === "YOLO_SEG") setModelType("YOLO_SEG");
+        else if (mt === "RF_DETR") setModelType("RF_DETR");
+
+        saveTrainingState(liveId, {
+          datasetId: data.datasetId,
+          modelType: data.modelType,
+          modelSize: data.modelSize,
+          status,
+          startedAt: data.startedAt ?? null,
+        });
+        startPollingJob(liveId);
+        startLogsPolling(liveId);
+        toast({
+          title: "Training still running",
+          description: "Reconnected to the job that was running in the background.",
+        });
+      } catch (e) {
+        console.warn("[SimulationView] live job reconnect failed:", e);
+      }
+    };
+
+    void reconnect();
+    return () => {
+      cancelled = true;
+    };
+    // startPollingJob / startLogsPolling are stable enough for this reconnect
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionReady, jobId, simulationStatus, isSimulating]);
 
   // cleanup polling on unmount
   useEffect(() => {
@@ -1399,6 +1506,19 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
 
   // --- start training: POST /api/train ---
   const startTraining = async () => {
+    if (startTrainingLockRef.current) {
+      return;
+    }
+    if (jobId && ["queued", "running"].includes(simulationStatus)) {
+      toast({
+        title: "Training already running",
+        description: `Job ${jobId} is still ${simulationStatus}. Cancel it before starting another.`,
+      });
+      return;
+    }
+
+    startTrainingLockRef.current = true;
+    try {
     if (!selectedDatasetId || !modelType) {
       toast({
         title: "Missing inputs",
@@ -1568,6 +1688,9 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
       setSimulationStatus("failed");
       // Ensure no stale persisted state remains after failed start
       clearTrainingState();
+    }
+    } finally {
+      startTrainingLockRef.current = false;
     }
   };
 
@@ -1889,6 +2012,13 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
   // retry job
   const retryJob = async () => {
     if (!jobId) return;
+    if (startTrainingLockRef.current || isSimulating || ["queued", "running"].includes(simulationStatus)) {
+      toast({
+        title: "Training already running",
+        description: "Cancel the current job before retrying another.",
+      });
+      return;
+    }
     try {
       const headers = await getAuthHeaders();
       const resp = await fetch(`${API_BASE}/train/${encodeURIComponent(jobId)}/retry`, {
@@ -2623,7 +2753,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                                       </div>
                                     </div>
                                   )}
-                                  {model.metrics.precision !== undefined && (
+                                  {Number.isFinite(model.metrics.precision) && (
                                     <div className="p-2 border rounded">
                                       <div className="text-xs text-muted-foreground">
                                         Precision
@@ -2633,7 +2763,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                                       </div>
                                     </div>
                                   )}
-                                  {model.metrics.recall !== undefined && (
+                                  {Number.isFinite(model.metrics.recall) && (
                                     <div className="p-2 border rounded">
                                       <div className="text-xs text-muted-foreground">
                                         Recall
@@ -2643,7 +2773,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                                       </div>
                                     </div>
                                   )}
-                                  {model.metrics.mAP50 !== undefined && (
+                                  {Number.isFinite(model.metrics.mAP50) && (
                                     <div className="p-2 border rounded">
                                       <div className="text-xs text-muted-foreground">
                                         mAP@0.5
@@ -2653,7 +2783,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                                       </div>
                                     </div>
                                   )}
-                                  {model.metrics.mAP50_95 !== undefined && (
+                                  {Number.isFinite(model.metrics.mAP50_95) && (
                                     <div className="p-2 border rounded">
                                       <div className="text-xs text-muted-foreground">
                                         mAP@0.5–0.95
@@ -3686,6 +3816,8 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                     <Button
                       onClick={startTraining}
                       disabled={
+                        isSimulating ||
+                        startTrainingLockRef.current ||
                         (datasetDetails?.trainCount ?? 0) <= 0 ||
                         !(datasetDetails?.status === "ready" || datasetDetails?.status === "ready_to_train")
                       }

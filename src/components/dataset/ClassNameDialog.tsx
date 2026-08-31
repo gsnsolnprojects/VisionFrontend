@@ -25,6 +25,8 @@ interface ClassNameDialogProps {
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  /** Skip the yes/no prompt and go straight to the name form (Manage Datasets remap). */
+  skipPrompt?: boolean;
 }
 
 export const ClassNameDialog: React.FC<ClassNameDialogProps> = ({
@@ -33,6 +35,7 @@ export const ClassNameDialog: React.FC<ClassNameDialogProps> = ({
   open,
   onClose,
   onSuccess,
+  skipPrompt = false,
 }) => {
   const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
@@ -54,15 +57,16 @@ export const ClassNameDialog: React.FC<ClassNameDialogProps> = ({
   // Track which full-size images we've already requested
   const fullSizeImageRequestedRef = useRef<Set<number>>(new Set());
 
-  // Initialize form with empty values when dialog opens
+  // Initialize form when dialog opens. Remap prefills existing names and skips the yes/no prompt.
   useEffect(() => {
     if (open && detectedClasses) {
       const initial: Record<string, string> = {};
-      detectedClasses.classIds.forEach((id) => {
-        initial[id.toString()] = "";
+      detectedClasses.classIds.forEach((id, index) => {
+        const existing = detectedClasses.classNames[index] || "";
+        initial[id.toString()] = skipPrompt ? existing : "";
       });
       setClassMappings(initial);
-      setShowForm(false);
+      setShowForm(skipPrompt);
       setErrors({});
       setThumbnailUrls({});
       setThumbnailLoading({});
@@ -71,7 +75,7 @@ export const ClassNameDialog: React.FC<ClassNameDialogProps> = ({
       setFullSizeImageLoading({});
       fullSizeImageRequestedRef.current.clear();
     }
-  }, [open, detectedClasses]);
+  }, [open, detectedClasses, skipPrompt]);
 
   // Load thumbnails when form is shown - fetch with authentication and create blob URLs
   useEffect(() => {
@@ -284,7 +288,9 @@ export const ClassNameDialog: React.FC<ClassNameDialogProps> = ({
 
       toast({
         title: "Success",
-        description: "Class names saved! Dataset ready for training.",
+        description: skipPrompt
+          ? "Class names updated. Training and annotations will use these names."
+          : "Class names saved! Dataset ready for training.",
         variant: "default",
       });
 
@@ -301,11 +307,7 @@ export const ClassNameDialog: React.FC<ClassNameDialogProps> = ({
       // Handle specific error cases
       if (error.message) {
         if (error.message.includes("Categories already exist")) {
-          errorMessage = "Categories already exist for this dataset";
-          // Close dialog on this error (categories already exist)
-          setTimeout(() => {
-            onClose();
-          }, 2000);
+          errorMessage = error.message;
         } else if (error.message.includes("Invalid class ID")) {
           errorMessage = error.message;
           // Extract invalid class IDs from error message if possible
@@ -376,10 +378,11 @@ export const ClassNameDialog: React.FC<ClassNameDialogProps> = ({
           // Form: Input fields for each class ID, with optional thumbnails
           <>
             <DialogHeader>
-              <DialogTitle>Add Class Names</DialogTitle>
+              <DialogTitle>{skipPrompt ? "Map class names" : "Add Class Names"}</DialogTitle>
               <DialogDescription>
-                Enter meaningful names for each class. All fields are optional.
-                Empty fields will use default names (class_0, class_1, etc.).
+                {skipPrompt
+                  ? "Rename each class ID. These names are used in training, annotations, and inference."
+                  : "Enter meaningful names for each class. All fields are optional. Empty fields will use default names (class_0, class_1, etc.)."}
               </DialogDescription>
             </DialogHeader>
             <div className="py-4 max-h-[400px] overflow-y-auto space-y-3">

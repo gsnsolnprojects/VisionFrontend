@@ -165,6 +165,41 @@ export const cancelAugmentation = async (
 };
 
 /**
+ * Scan YOLO .txt labels and report detection vs segmentation vs unlabeled/mixed.
+ */
+export type DatasetTypeCheck = {
+  datasetId: string;
+  version?: string;
+  type: "unlabeled" | "detection" | "segmentation" | "mixed";
+  summary: string;
+  recommendation: string;
+  counts: {
+    imageFiles: number;
+    labelFiles: number;
+    labeledFiles: number;
+    emptyLabelFiles: number;
+    unreadableFiles: number;
+    detectionLines: number;
+    segmentationLines: number;
+    invalidLines: number;
+    uniqueClasses: number;
+  };
+  classIds: number[];
+  recordedDatasetType?: string | null;
+  recordedLabelSource?: string | null;
+};
+
+/**
+ * Scan YOLO .txt labels and report detection vs segmentation vs unlabeled/mixed.
+ */
+export const checkDatasetType = async (
+  datasetId: string
+): Promise<DatasetTypeCheck> => {
+  const path = `/dataset/${encodeURIComponent(datasetId)}/type-check`;
+  return apiRequest<DatasetTypeCheck>(path);
+};
+
+/**
  * Download dataset as a ZIP file.
  * Files use original names for user-friendly export (e.g. after labeling/augmentation).
  * Triggers browser download; returns when download starts.

@@ -4484,13 +4484,13 @@ const PredictionPage = () => {
                         </div>
                         {model.metrics && (
                           <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
-                            {model.metrics.mAP50 !== undefined && (
+                            {Number.isFinite(model.metrics.mAP50) && (
                               <div>mAP50: {model.metrics.mAP50.toFixed(3)}</div>
                             )}
-                            {model.metrics.precision !== undefined && (
+                            {Number.isFinite(model.metrics.precision) && (
                               <div>Precision: {model.metrics.precision.toFixed(3)}</div>
                             )}
-                            {model.metrics.recall !== undefined && (
+                            {Number.isFinite(model.metrics.recall) && (
                               <div>Recall: {model.metrics.recall.toFixed(3)}</div>
                             )}
                           </div>
