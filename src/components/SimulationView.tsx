@@ -1097,6 +1097,22 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProjectId, sessionReady, companyNameForModels]);
 
+  // Refresh split counts after adding photos on Dataset Manager, then coming back to Training
+  useEffect(() => {
+    const refreshCounts = () => {
+      if (document.visibilityState === "hidden") return;
+      if (!selectedProjectId || !sessionReady) return;
+      void fetchDatasets(selectedProjectId);
+    };
+    document.addEventListener("visibilitychange", refreshCounts);
+    window.addEventListener("focus", refreshCounts);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshCounts);
+      window.removeEventListener("focus", refreshCounts);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProjectId, sessionReady]);
+
   // When the Trained Models card is visible but list is empty, refetch once (handles late profile or stale state)
   useEffect(() => {
     if (
@@ -2208,6 +2224,26 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                                   {(dataset.trainCount != null || dataset.valCount != null || dataset.testCount != null)
                                     ? `Train: ${dataset.trainCount ?? 0}, Val: ${dataset.valCount ?? 0}, Test: ${dataset.testCount ?? 0}`
                                     : `${(dataset.totalImages ?? 0)} images`}
+                                  {(() => {
+                                    const train = Number(dataset.trainCount) || 0;
+                                    const val = Number(dataset.valCount) || 0;
+                                    const test = Number(dataset.testCount) || 0;
+                                    const total = Number(dataset.totalImages);
+                                    const other =
+                                      typeof dataset.otherCount === "number"
+                                        ? dataset.otherCount
+                                        : Number.isFinite(total)
+                                          ? Math.max(0, total - train - val - test)
+                                          : 0;
+                                    if (dataset.trainCount == null && dataset.valCount == null && dataset.testCount == null) {
+                                      return "";
+                                    }
+                                    return other > 0 ? `, Other: ${other}` : "";
+                                  })()}
+                                  {typeof dataset.totalImages === "number" &&
+                                  (dataset.trainCount != null || dataset.valCount != null || dataset.testCount != null)
+                                    ? ` • ${dataset.totalImages} images`
+                                    : ""}
                                   {" • "}
                                   {new Date(
                                     dataset.createdAt ?? dataset.created_at ?? Date.now(),

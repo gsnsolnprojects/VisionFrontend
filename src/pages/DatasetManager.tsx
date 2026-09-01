@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { List, X, FileText, Search, ZoomIn, ZoomOut, RotateCcw, Maximize2, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, Folder, ChevronRight as ChevronRightIcon, ChevronDown, Trash2, Loader2, Upload, ArrowRight, Info, Pencil, Download, MoreVertical, ScanSearch, Tags } from "lucide-react";
+import { List, X, FileText, Search, ZoomIn, ZoomOut, RotateCcw, Maximize2, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, Folder, ChevronRight as ChevronRightIcon, ChevronDown, Trash2, Loader2, Upload, ArrowRight, Info, Pencil, Download, MoreVertical, ScanSearch, Tags, Plus } from "lucide-react";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { cn } from "@/lib/utils";
 import {
@@ -145,6 +145,7 @@ interface StatusResponse {
   trainCount?: number;
   valCount?: number;
   testCount?: number;
+  otherCount?: number;
 }
 
 interface VersionEntry {
@@ -394,6 +395,12 @@ const DatasetManager = () => {
   // Delete version state
   const [versionToDelete, setVersionToDelete] = useState<string | null>(null);
   const [showDeleteVersionDialog, setShowDeleteVersionDialog] = useState<boolean>(false);
+  const [fileToDelete, setFileToDelete] = useState<FileEntry | null>(null);
+  const [deletingFile, setDeletingFile] = useState(false);
+  const [showAddPhotosDialog, setShowAddPhotosDialog] = useState(false);
+  const [addPhotosFolder, setAddPhotosFolder] = useState("unlabeled");
+  const [addPhotosFiles, setAddPhotosFiles] = useState<File[]>([]);
+  const [addingPhotos, setAddingPhotos] = useState(false);
   const [deletingVersion, setDeletingVersion] = useState<boolean>(false);
   const [versionDependencies, setVersionDependencies] = useState<{
     hasDependencies: boolean;
@@ -1854,6 +1861,159 @@ const DatasetManager = () => {
     setLabelFileContent(null);
   }, []);
 
+  const refreshOpenDatasetFiles = async (datasetId: string) => {
+    try {
+      const allFiles = await fetchAllFiles(datasetId);
+      setFileManifest(allFiles || []);
+      const summary = await fetchFolderSummary(datasetId);
+      if (summary) {
+        setMetadata((prev) => ({
+          ...(prev ?? {}),
+          ...summary,
+          totalImages: summary.totalImages ?? prev?.totalImages,
+          trainCount: summary.trainCount ?? prev?.trainCount,
+          valCount: summary.valCount ?? prev?.valCount,
+          testCount: summary.testCount ?? prev?.testCount,
+        }));
+      }
+      const headers = await getAuthHeaders();
+      const statusRes = await fetch(apiUrl(`/dataset/${encodeURIComponent(datasetId)}/status`), {
+        method: "GET",
+        headers,
+      });
+      if (statusRes.ok) {
+        const sjson = await statusRes.json();
+        setStatusProgress(sjson);
+        setMetadata((prev) =>
+          prev
+            ? {
+                ...prev,
+                totalImages: sjson.totalImages ?? prev.totalImages,
+                trainCount: sjson.trainCount ?? prev.trainCount,
+                valCount: sjson.valCount ?? prev.valCount,
+                testCount: sjson.testCount ?? prev.testCount,
+              }
+            : prev
+        );
+      }
+      await fetchVersions();
+    } catch (err) {
+      console.warn("Failed to refresh dataset files:", err);
+    }
+  };
+
+  const handleOpenAddPhotos = () => {
+    const splitSum =
+      (Number(statusProgress?.trainCount) || 0) +
+      (Number(statusProgress?.valCount) || 0) +
+      (Number(statusProgress?.testCount) || 0);
+    const selectedVersion = versions.find((v) => v.datasetId === selectedVersionDatasetId);
+    const hasTrainSplit =
+      splitSum > 0 ||
+      selectedVersion?.status === "ready_to_train" ||
+      selectedVersion?.datasetType === "labeled" ||
+      folders.some((f) => ["train", "val", "test"].includes(String(f.name).toLowerCase()));
+
+    if (hasTrainSplit) {
+      const sidebar = String(selectedFolderInSidebar || "").toLowerCase();
+      setAddPhotosFolder(sidebar === "val" || sidebar === "test" ? sidebar : "train");
+    } else {
+      const suggested =
+        selectedFolderInSidebar !== "all"
+          ? selectedFolderInSidebar
+          : folders[0]?.name || "unlabeled";
+      setAddPhotosFolder(suggested);
+    }
+    setAddPhotosFiles([]);
+    setShowAddPhotosDialog(true);
+  };
+
+  const handleAddPhotos = async () => {
+    const datasetId = selectedVersionDatasetId;
+    if (!datasetId) return;
+    if (addPhotosFiles.length === 0) {
+      toast({ title: "No files selected", description: "Pick jpg/png photos (optional matching .txt labels)." });
+      return;
+    }
+    setAddingPhotos(true);
+    try {
+      const splitSum =
+        (Number(statusProgress?.trainCount) || 0) +
+        (Number(statusProgress?.valCount) || 0) +
+        (Number(statusProgress?.testCount) || 0);
+      const selectedVersion = versions.find((v) => v.datasetId === selectedVersionDatasetId);
+      const hasTrainSplit =
+        splitSum > 0 ||
+        selectedVersion?.status === "ready_to_train" ||
+        selectedVersion?.datasetType === "labeled";
+      const folder =
+        hasTrainSplit && addPhotosFolder !== "val" && addPhotosFolder !== "test"
+          ? "train"
+          : addPhotosFolder;
+      const result = await datasetsApi.addDatasetFiles(datasetId, addPhotosFiles, folder);
+      toast({
+        title: "Photos added",
+        description:
+          result.message ||
+          `Added ${result.added} file(s)${result.skipped ? `, skipped ${result.skipped}` : ""}.`,
+      });
+      setShowAddPhotosDialog(false);
+      setAddPhotosFiles([]);
+      if (typeof result.totalImages === "number") {
+        setStatusProgress((prev) => ({
+          ...(prev ?? { status: "ready" }),
+          totalImages: result.totalImages,
+          trainCount: result.trainCount,
+          valCount: result.valCount,
+          testCount: result.testCount,
+        }));
+      }
+      await refreshOpenDatasetFiles(datasetId);
+    } catch (err: unknown) {
+      toast({
+        title: "Could not add photos",
+        description: err instanceof Error ? err.message : "Upload failed",
+        variant: "destructive",
+      });
+    } finally {
+      setAddingPhotos(false);
+    }
+  };
+
+  const handleConfirmDeleteFile = async () => {
+    const datasetId = selectedVersionDatasetId;
+    if (!datasetId || !fileToDelete?.id) return;
+    setDeletingFile(true);
+    try {
+      const result = await datasetsApi.deleteDatasetFile(datasetId, fileToDelete.id);
+      toast({
+        title: "Photo deleted",
+        description: result.message || `Removed ${fileToDelete.originalName}`,
+      });
+      if (selectedImageFile?.id === fileToDelete.id) setSelectedImageFile(null);
+      if (selectedLabelFile?.id === fileToDelete.id) setSelectedLabelFile(null);
+      setFileToDelete(null);
+      if (typeof result.totalImages === "number") {
+        setStatusProgress((prev) => ({
+          ...(prev ?? { status: "ready" }),
+          totalImages: result.totalImages,
+          trainCount: result.trainCount,
+          valCount: result.valCount,
+          testCount: result.testCount,
+        }));
+      }
+      await refreshOpenDatasetFiles(datasetId);
+    } catch (err: unknown) {
+      toast({
+        title: "Could not delete photo",
+        description: err instanceof Error ? err.message : "Delete failed",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingFile(false);
+    }
+  };
+
   // ------- Fetch version dependencies before deletion -------
   const fetchVersionDependencies = async (datasetId: string) => {
     setLoadingDependencies(true);
@@ -2331,6 +2491,21 @@ const DatasetManager = () => {
           </p>
           <p className="text-xs text-muted-foreground truncate">{file.folder || "Uncategorized"}</p>
         </div>
+        {hasPermission("uploadDatasets") && (
+          <Button
+            type="button"
+            variant="destructive"
+            size="icon"
+            className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+            title="Delete photo"
+            onClick={(e) => {
+              e.stopPropagation();
+              setFileToDelete(file);
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
     );
   };
@@ -2348,7 +2523,7 @@ const DatasetManager = () => {
 
     return (
       <div
-        className="grid grid-cols-[48px_1fr_120px_80px] gap-4 p-3 border-b hover:bg-muted/50 cursor-pointer transition-colors"
+        className="grid grid-cols-[48px_1fr_120px_80px_40px] gap-4 p-3 border-b hover:bg-muted/50 cursor-pointer transition-colors"
         onClick={() => {
           if (isImage) {
             handleImageClick(file);
@@ -2383,6 +2558,25 @@ const DatasetManager = () => {
         <div className="text-xs text-muted-foreground flex items-center">
           {isImage ? "Image" : isLabel ? "Label" : "File"}
         </div>
+        {hasPermission("uploadDatasets") ? (
+          <div className="flex items-center justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-destructive hover:text-destructive"
+              title="Delete photo"
+              onClick={(e) => {
+                e.stopPropagation();
+                setFileToDelete(file);
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <div />
+        )}
       </div>
     );
   };
@@ -2660,6 +2854,9 @@ const DatasetManager = () => {
           {typeof statusProgress.trainCount === "number" && <span>Train: {statusProgress.trainCount}</span>}
           {typeof statusProgress.valCount === "number" && <span>Val: {statusProgress.valCount}</span>}
           {typeof statusProgress.testCount === "number" && <span>Test: {statusProgress.testCount}</span>}
+          {typeof statusProgress.otherCount === "number" && statusProgress.otherCount > 0 && (
+            <span>Other: {statusProgress.otherCount}</span>
+          )}
         </div>
       )}
 
@@ -3076,9 +3273,21 @@ const DatasetManager = () => {
                     </Tooltip>
                   </TooltipProvider>
                 </CardTitle>
-                <CardDescription>Browse all dataset files</CardDescription>
+                <CardDescription>Browse, add, or delete photos in this version</CardDescription>
               </div>
               <div className="flex items-center gap-2">
+                {hasPermission("uploadDatasets") && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1"
+                    onClick={handleOpenAddPhotos}
+                    title="Add photos to this version"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add photos
+                  </Button>
+                )}
                 <Button
                   variant={viewMode === "grid" ? "default" : "outline"}
                   size="sm"
@@ -3700,6 +3909,110 @@ const DatasetManager = () => {
           }
         }}
       />
+
+      {/* Add photos to this version */}
+      <Dialog open={showAddPhotosDialog} onOpenChange={(open) => {
+        setShowAddPhotosDialog(open);
+        if (!open) setAddPhotosFiles([]);
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add photos</DialogTitle>
+            <DialogDescription>
+              New photos are saved to the <span className="font-medium text-foreground">train</span> set so they are included in training. Optional matching .txt labels are saved too.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="add-photos-folder">Folder</Label>
+              <Select value={addPhotosFolder} onValueChange={setAddPhotosFolder}>
+                <SelectTrigger id="add-photos-folder">
+                  <SelectValue placeholder="Choose folder" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(
+                    (Number(statusProgress?.trainCount) || 0) +
+                      (Number(statusProgress?.valCount) || 0) +
+                      (Number(statusProgress?.testCount) || 0) >
+                      0 ||
+                    versions.find((v) => v.datasetId === selectedVersionDatasetId)?.status ===
+                      "ready_to_train"
+                      ? ["train", "val", "test"]
+                      : Array.from(
+                          new Set([
+                            ...folders.map((f) => f.name),
+                            "unlabeled",
+                            "train",
+                            "val",
+                            "test",
+                          ])
+                        )
+                  ).map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name === "train" ? "train (used for training)" : name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="add-photos-input">Files</Label>
+              <Input
+                id="add-photos-input"
+                type="file"
+                multiple
+                accept=".jpg,.jpeg,.png,.txt,image/jpeg,image/png"
+                onChange={(e) => setAddPhotosFiles(Array.from(e.target.files || []))}
+              />
+              {addPhotosFiles.length > 0 && (
+                <p className="text-xs text-muted-foreground">{addPhotosFiles.length} file(s) selected</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setShowAddPhotosDialog(false)} disabled={addingPhotos}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void handleAddPhotos()} disabled={addingPhotos || addPhotosFiles.length === 0}>
+              {addingPhotos ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Adding…
+                </>
+              ) : (
+                "Add to dataset"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete one photo */}
+      <AlertDialog open={!!fileToDelete} onOpenChange={(open) => { if (!open && !deletingFile) setFileToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this photo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {fileToDelete?.type === "image"
+                ? `This removes ${fileToDelete.originalName} from the dataset. A matching label file, if any, is deleted too. This cannot be undone.`
+                : `This removes ${fileToDelete?.originalName || "this file"} from the dataset. This cannot be undone.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingFile}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deletingFile}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleConfirmDeleteFile();
+              }}
+            >
+              {deletingFile ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete Version Confirmation Dialog */}
       <AlertDialog open={showDeleteVersionDialog} onOpenChange={(open) => {

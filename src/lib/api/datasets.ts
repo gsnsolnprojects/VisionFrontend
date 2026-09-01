@@ -62,6 +62,10 @@ export interface DatasetStatusResponse {
   status?: string;
   version?: number;
   totalImages?: number;
+  trainCount?: number;
+  valCount?: number;
+  testCount?: number;
+  otherCount?: number;
   sizeBytes?: number;
   createdAt?: string;
   augmentation_status?: AugmentationStatus;
@@ -245,4 +249,57 @@ export const downloadDataset = async (
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(a.href);
+};
+
+/**
+ * Add images / optional .txt labels to an existing dataset version.
+ * POST /api/dataset/:datasetId/files  (multipart: files[], folder)
+ */
+export const addDatasetFiles = async (
+  datasetId: string,
+  files: File[],
+  folder: string
+): Promise<{
+  added: number;
+  addedImages?: number;
+  skipped: number;
+  folder: string;
+  totalImages?: number;
+  trainCount?: number;
+  valCount?: number;
+  testCount?: number;
+  message?: string;
+}> => {
+  const formData = new FormData();
+  formData.append("folder", folder);
+  for (const file of files) {
+    formData.append("files", file, file.name);
+  }
+  return apiRequest(`/dataset/${encodeURIComponent(datasetId)}/files`, {
+    method: "POST",
+    body: formData,
+    maxRetries: 1,
+  });
+};
+
+/**
+ * Delete one photo (and its matching label) from a dataset version.
+ * DELETE /api/dataset/:datasetId/files/:fileId
+ */
+export const deleteDatasetFile = async (
+  datasetId: string,
+  fileId: string
+): Promise<{
+  deleted: number;
+  names?: string[];
+  totalImages?: number;
+  trainCount?: number;
+  valCount?: number;
+  testCount?: number;
+  message?: string;
+}> => {
+  return apiRequest(
+    `/dataset/${encodeURIComponent(datasetId)}/files/${encodeURIComponent(fileId)}`,
+    { method: "DELETE" }
+  );
 };
