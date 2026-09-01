@@ -14,6 +14,7 @@ const ThumbnailButton = React.memo<{
   isActive: boolean;
   onSelect: () => void;
 }>(({ image, index, isActive, onSelect }) => {
+  const isLabeled = image.hasAnnotations === true || image.annotationStatus === "annotated";
   return (
     <button
       type="button"
@@ -23,15 +24,26 @@ const ThumbnailButton = React.memo<{
           ? "border-primary bg-primary/5 ring-1 ring-primary"
           : "border-muted hover:bg-muted"
       }`}
-      aria-label={`Select image ${index + 1}: ${image.filename}`}
+      aria-label={`Select image ${index + 1}: ${image.filename} (${isLabeled ? "labeled" : "unlabeled"})`}
     >
       Image {index + 1}
       <div className="block text-[9px] text-muted-foreground truncate">{image.filename}</div>
+      <span
+        className={`mt-1 inline-block rounded-full px-1.5 py-0.5 text-[8px] font-medium leading-none ${
+          isLabeled
+            ? "bg-emerald-500/15 text-emerald-500"
+            : "bg-muted-foreground/15 text-muted-foreground"
+        }`}
+      >
+        {isLabeled ? "Labeled" : "Unlabeled"}
+      </span>
     </button>
   );
 }, (prev, next) => {
   return (
     prev.image.id === next.image.id &&
+    prev.image.hasAnnotations === next.image.hasAnnotations &&
+    prev.image.annotationStatus === next.image.annotationStatus &&
     prev.isActive === next.isActive &&
     prev.index === next.index
   );

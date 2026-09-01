@@ -39,7 +39,7 @@ import type {
 import { mapApiRecordToAnnotation, annotationToWritePayload } from "@/lib/utils/mapApiAnnotation";
 import { validatePolygonNormalized, polygonToBoundingBox } from "@/lib/utils/polygonUtils";
 import { isMongoObjectId, annotationsMatchGeometry } from "@/lib/utils/annotationSync";
-import { Loader2, Info } from "lucide-react";
+import { Loader2, Info, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAugmentationStatus, type AugmentationStatusState } from "@/hooks/useAugmentationStatus";
 import { Progress } from "@/components/ui/progress";
@@ -71,6 +71,10 @@ import { AugmentVersionNameModal } from "@/components/datasets/AugmentVersionNam
 interface AnnotationWorkspaceProps {
   datasetId: string;
   onClose: () => void;
+  // Jump straight to this image on load (matched by filename — the on-disk/stored name,
+  // not the original upload name) instead of the first image or the restored session image.
+  // Used when opening the workspace from a specific unlabeled thumbnail in the file browser.
+  initialImageFilename?: string;
 }
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -102,6 +106,7 @@ function normalizeDatasetImage(raw: Record<string, unknown>): Image {
 export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   datasetId,
   onClose,
+  initialImageFilename,
 }) => {
   const [annotationShapeMode, setAnnotationShapeMode] = useState<AnnotationShapeMode>("BBOX");
   const [shapeModeLocked, setShapeModeLocked] = useState(false);
@@ -166,6 +171,21 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   } | null>(null);
   const [isFocused, setIsFocused] = useState(false);
   const workspaceRef = useRef<HTMLDivElement>(null);
+
+  // Zoom for precise annotation of small objects. Zoom only changes the RENDERED size of the
+  // image/canvas — annotation coordinates stay normalized (0-1 fractions of the natural image
+  // size), so nothing about stored label coords depends on zoom level; only how big a pixel
+  // on screen is while drawing changes.
+  const ZOOM_MIN = 1;
+  const ZOOM_MAX = 8;
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const zoomIn = useCallback(() => setZoomLevel((z) => Math.min(ZOOM_MAX, Math.round((z + 0.5) * 100) / 100)), []);
+  const zoomOut = useCallback(() => setZoomLevel((z) => Math.max(ZOOM_MIN, Math.round((z - 0.5) * 100) / 100)), []);
+  const resetZoom = useCallback(() => setZoomLevel(1), []);
+  // Each image starts at fit-to-view zoom, not wherever the previous image was left zoomed to
+  useEffect(() => {
+    setZoomLevel(1);
+  }, [currentImage?.id]);
 
   // --- Copy / paste clipboard (survives image navigation) ---
   type CopiedAnnotation = {
@@ -364,8 +384,20 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         );
         console.log("[AnnotationWorkspace] Loaded", imagesData.images.length, "images");
 
-        // Auto-select first image if nothing will restore from session
-        if (imagesData.images.length > 0 && !hasRestoredSessionRef.current) {
+        // Deep link: jump straight to a specific image (e.g. opened from an unlabeled
+        // thumbnail in the file browser). Takes priority over the restored session image,
+        // since clicking a specific image is a stronger, more recent intent.
+        const deepLinkIndex = initialImageFilename
+          ? imagesData.images.findIndex(
+              (img) => String(img.filename ?? "").toLowerCase() === initialImageFilename.toLowerCase()
+            )
+          : -1;
+
+        if (deepLinkIndex >= 0) {
+          selectImage(deepLinkIndex);
+          hasRestoredSessionRef.current = true; // block session-restore from overriding this
+        } else if (imagesData.images.length > 0 && !hasRestoredSessionRef.current) {
+          // Auto-select first image if nothing will restore from session
           selectImage(0);
         } else if (imagesData.images.length === 0) {
           toast({
@@ -871,12 +903,17 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     }
   }, [annotations, datasetId, categories, hasCategories, markSaved, toast, annotationShapeMode]);
 
-  // Handle image selection with unsaved changes confirmation
+  // Handle image selection with unsaved changes confirmation.
+  // Waits for any in-flight save (e.g. a click-to-mask save still saving in the background)
+  // to finish BEFORE checking unsavedChanges — otherwise a save that's still in progress
+  // looks identical to a real unsaved edit and triggers a confusing "unsaved changes" prompt
+  // for work that's actually about to finish saving on its own.
   const handleImageSelect = useCallback(
     async (targetImageId: string) => {
       const targetIndex = images.findIndex((img) => img.id === targetImageId);
       if (targetIndex === -1) return;
 
+      await persistLockRef.current;
       if (unsavedChanges) {
         const confirmed = window.confirm(
           "You have unsaved changes. Navigate away anyway?"
@@ -884,7 +921,6 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         if (!confirmed) return;
       }
 
-      await persistLockRef.current;
       selectImage(targetIndex);
       markSaved();
     },
@@ -894,13 +930,13 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   // Handle previous image
   const handlePreviousImage = useCallback(async () => {
     if (currentImageIndex > 0) {
+      await persistLockRef.current;
       if (unsavedChanges) {
         const confirmed = window.confirm(
           "You have unsaved changes. Navigate away anyway?"
         );
         if (!confirmed) return;
       }
-      await persistLockRef.current;
       selectImage(currentImageIndex - 1);
       markSaved();
     }
@@ -909,13 +945,13 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   // Handle next image
   const handleNextImage = useCallback(async () => {
     if (currentImageIndex < images.length - 1) {
+      await persistLockRef.current;
       if (unsavedChanges) {
         const confirmed = window.confirm(
           "You have unsaved changes. Navigate away anyway?"
         );
         if (!confirmed) return;
       }
-      await persistLockRef.current;
       selectImage(currentImageIndex + 1);
       markSaved();
     }
@@ -947,7 +983,12 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       const container = imageContainerRef.current;
       if (!container) return;
       const rect = container.getBoundingClientRect();
-      openCategoryPickerAt(e.clientX - rect.left, e.clientY - rect.top);
+      // Picker is absolutely positioned inside the (now scrollable, when zoomed) container, so
+      // its left/top must be content-relative — add scroll offset, not just viewport-relative.
+      openCategoryPickerAt(
+        e.clientX - rect.left + container.scrollLeft,
+        e.clientY - rect.top + container.scrollTop
+      );
     },
     [openCategoryPickerAt]
   );
@@ -971,18 +1012,22 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     if (!container) return;
     const rect = container.getBoundingClientRect();
 
-    // ✅ Prefer last known cursor position on the image; fall back to center only if unknown
+    // ✅ Prefer last known cursor position on the image; fall back to center only if unknown.
+    // cursorOnImageRef is content-relative (includes scroll offset — see onMouseMove below),
+    // matching how the picker's absolute left/top are interpreted, so clamp against the full
+    // scrollable content size, not just the currently visible viewport.
     const cursor = cursorOnImageRef.current;
     if (cursor) {
-      const x = Math.max(8, Math.min(cursor.x, rect.width - 8));
-      const y = Math.max(8, Math.min(cursor.y, rect.height - 8));
+      const x = Math.max(8, Math.min(cursor.x, container.scrollWidth - 8));
+      const y = Math.max(8, Math.min(cursor.y, container.scrollHeight - 8));
       openCategoryPickerAt(x, y);
       return;
     }
 
+    // No known cursor position: center within the currently visible (scrolled) viewport.
     openCategoryPickerAt(
-      Math.max(16, rect.width / 2 - 90),
-      Math.max(16, rect.height / 2 - 40)
+      Math.max(16, container.scrollLeft + rect.width / 2 - 90),
+      Math.max(16, container.scrollTop + rect.height / 2 - 40)
     );
   }, [hasCategories, openCategoryPickerAt, toast]);
 
@@ -1475,57 +1520,63 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
 
       setClickToMaskPending(true);
       setClickToMaskPendingPoint(point);
-      try {
-        const result = await annotationsApi.clickToMask(datasetId, {
-          imageId: currentImage.id,
-          x: point[0],
-          y: point[1],
-        });
-        const polygon = result.polygon;
-        const v = validatePolygonNormalized(polygon);
-        if (!v.ok) {
+      // Route the save through the shared persist lock so navigation (Next/Previous/
+      // thumbnail select) waits for it to finish instead of seeing unsavedChanges still
+      // true and showing a confusing "unsaved changes" prompt for a save that's about to
+      // complete on its own. enqueuePersist swallows errors internally (logs only), so the
+      // try/catch that reports failures to the user lives inside the enqueued closure.
+      await enqueuePersist(async () => {
+        try {
+          const result = await annotationsApi.clickToMask(datasetId, {
+            imageId: currentImage.id,
+            x: point[0],
+            y: point[1],
+          });
+          const polygon = result.polygon;
+          const v = validatePolygonNormalized(polygon);
+          if (!v.ok) {
+            toast({
+              title: "Mask was invalid",
+              description: v.errors[0] ?? "Try clicking closer to the center of the defect.",
+              variant: "destructive",
+            });
+            return;
+          }
+
+          const bbox = polygonToBoundingBox(polygon);
+          const saveAsPolygon = annotationShapeMode === "POLYGON";
+          const createdLocal = addAnnotation({
+            imageId: currentImage.id,
+            bbox,
+            polygon: saveAsPolygon ? polygon : undefined,
+            categoryId: selectedCategoryId,
+            categoryName: category.name,
+          });
+
+          await annotationsApi.batchSaveAnnotations(datasetId, [
+            saveAsPolygon
+              ? { imageId: currentImage.id, categoryId: selectedCategoryId, polygon }
+              : { imageId: currentImage.id, categoryId: selectedCategoryId, bbox },
+          ]);
+          if (createdLocal) {
+            await adoptServerIds(currentImage.id, [createdLocal]);
+          }
+          markSaved();
+          setShapeModeLocked(true);
+        } catch (error) {
+          console.error("Click-to-mask failed:", error);
           toast({
-            title: "Mask was invalid",
-            description: v.errors[0] ?? "Try clicking closer to the center of the defect.",
+            title: "Click-to-mask failed",
+            description:
+              error instanceof Error
+                ? error.message
+                : "Could not generate a mask. Try again, or draw the polygon by hand.",
             variant: "destructive",
           });
-          return;
         }
-
-        const bbox = polygonToBoundingBox(polygon);
-        const saveAsPolygon = annotationShapeMode === "POLYGON";
-        const createdLocal = addAnnotation({
-          imageId: currentImage.id,
-          bbox,
-          polygon: saveAsPolygon ? polygon : undefined,
-          categoryId: selectedCategoryId,
-          categoryName: category.name,
-        });
-
-        await annotationsApi.batchSaveAnnotations(datasetId, [
-          saveAsPolygon
-            ? { imageId: currentImage.id, categoryId: selectedCategoryId, polygon }
-            : { imageId: currentImage.id, categoryId: selectedCategoryId, bbox },
-        ]);
-        if (createdLocal) {
-          await adoptServerIds(currentImage.id, [createdLocal]);
-        }
-        markSaved();
-        setShapeModeLocked(true);
-      } catch (error) {
-        console.error("Click-to-mask failed:", error);
-        toast({
-          title: "Click-to-mask failed",
-          description:
-            error instanceof Error
-              ? error.message
-              : "Could not generate a mask. Try again, or draw the polygon by hand.",
-          variant: "destructive",
-        });
-      } finally {
-        setClickToMaskPending(false);
-        setClickToMaskPendingPoint(null);
-      }
+      });
+      setClickToMaskPending(false);
+      setClickToMaskPendingPoint(null);
     },
     [
       currentImage,
@@ -1538,6 +1589,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       markSaved,
       toast,
       adoptServerIds,
+      enqueuePersist,
     ]
   );
 
@@ -2279,70 +2331,141 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
 
         {/* Center: image + canvas */}
         <div className="border rounded-md p-3 flex flex-col gap-3" role="main" aria-label="Image annotation area">
+          {/* Zoom controls — for annotating small objects precisely. Zoom only changes the
+              rendered pixel size; stored annotation coordinates stay normalized (0-1) and
+              are unaffected. */}
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              onClick={zoomOut}
+              disabled={zoomLevel <= ZOOM_MIN}
+              title="Zoom out"
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
+            </Button>
+            <span className="text-xs text-muted-foreground w-12 text-center tabular-nums">
+              {Math.round(zoomLevel * 100)}%
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              onClick={zoomIn}
+              disabled={zoomLevel >= ZOOM_MAX}
+              title="Zoom in"
+            >
+              <ZoomIn className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-7 w-7"
+              onClick={resetZoom}
+              disabled={zoomLevel === 1}
+              title="Reset zoom"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </Button>
+            {zoomLevel > 1 && (
+              <span className="text-xs text-muted-foreground">Scroll to pan</span>
+            )}
+            <span className="text-xs text-muted-foreground ml-auto hidden sm:inline">
+              Ctrl/Cmd + scroll to zoom
+            </span>
+          </div>
           <div
             ref={imageContainerRef}
-            className="relative w-full aspect-video border rounded-md overflow-hidden bg-muted flex items-center justify-center"
+            className={`relative w-full aspect-video border rounded-md bg-muted flex ${
+              zoomLevel > 1
+                ? "overflow-auto items-start justify-start"
+                : "overflow-hidden items-center justify-center"
+            }`}
             onMouseMove={(e) => {
-              // Track cursor so W opens the class menu under the pointer
-              const rect = e.currentTarget.getBoundingClientRect();
+              // Track cursor so W opens the class menu under the pointer. Stored content-
+              // relative (+ scroll offset) since it feeds the picker's absolute left/top,
+              // which move with the scrolled content when zoomed.
+              const container = e.currentTarget;
+              const rect = container.getBoundingClientRect();
               cursorOnImageRef.current = {
-                x: e.clientX - rect.left,
-                y: e.clientY - rect.top,
+                x: e.clientX - rect.left + container.scrollLeft,
+                y: e.clientY - rect.top + container.scrollTop,
               };
             }}
             onMouseLeave={() => {
               cursorOnImageRef.current = null;
             }}
+            onWheel={(e) => {
+              if (!(e.ctrlKey || e.metaKey)) return;
+              e.preventDefault();
+              if (e.deltaY < 0) zoomIn();
+              else zoomOut();
+            }}
           >
-            <ImageViewer
-              imageUrl={currentImage?.url ?? null}
-              imageId={currentImage?.id ?? null}
-              onImageLoad={() => setImageLoaded(true)}
-              onImageError={() => setImageLoaded(false)}
-              onImageMetricsChange={({ naturalWidth, naturalHeight }) => {
-                const container = imageContainerRef.current;
-                if (!container || !naturalWidth || !naturalHeight) {
-                  return;
-                }
-                const rect = container.getBoundingClientRect();
-                const containerWidth = rect.width;
-                const containerHeight = rect.height;
+            <div
+              className="relative shrink-0"
+              style={
+                imageMetrics
+                  ? {
+                      width: `${imageMetrics.displayWidth * zoomLevel}px`,
+                      height: `${imageMetrics.displayHeight * zoomLevel}px`,
+                    }
+                  : { width: "100%", height: "100%" }
+              }
+            >
+              <ImageViewer
+                imageUrl={currentImage?.url ?? null}
+                imageId={currentImage?.id ?? null}
+                onImageLoad={() => setImageLoaded(true)}
+                onImageError={() => setImageLoaded(false)}
+                onImageMetricsChange={({ naturalWidth, naturalHeight }) => {
+                  const container = imageContainerRef.current;
+                  if (!container || !naturalWidth || !naturalHeight) {
+                    return;
+                  }
+                  const rect = container.getBoundingClientRect();
+                  const containerWidth = rect.width;
+                  const containerHeight = rect.height;
 
-                if (containerWidth <= 0 || containerHeight <= 0) {
-                  return;
-                }
+                  if (containerWidth <= 0 || containerHeight <= 0) {
+                    return;
+                  }
 
-                // object-contain style: uniform scaling to fit within container
-                const scale = Math.min(
-                  containerWidth / naturalWidth,
-                  containerHeight / naturalHeight
-                );
+                  // object-contain style: uniform scaling to fit within container at 100% zoom.
+                  // zoomLevel is applied on top of this baseline wherever displayWidth/Height is used.
+                  const scale = Math.min(
+                    containerWidth / naturalWidth,
+                    containerHeight / naturalHeight
+                  );
 
-                const displayWidth = naturalWidth * scale;
-                const displayHeight = naturalHeight * scale;
-                const offsetX = (containerWidth - displayWidth) / 2;
-                const offsetY = (containerHeight - displayHeight) / 2;
+                  const displayWidth = naturalWidth * scale;
+                  const displayHeight = naturalHeight * scale;
 
-                setImageMetrics({
-                  naturalWidth,
-                  naturalHeight,
-                  displayWidth,
-                  displayHeight,
-                  offsetX,
-                  offsetY,
-                });
-              }}
-            />
-            {imageLoaded && imageMetrics && (
-              <>
+                  setImageMetrics({
+                    naturalWidth,
+                    naturalHeight,
+                    displayWidth,
+                    displayHeight,
+                    offsetX: 0,
+                    offsetY: 0,
+                  });
+                }}
+                width={imageMetrics ? imageMetrics.displayWidth * zoomLevel : undefined}
+                height={imageMetrics ? imageMetrics.displayHeight * zoomLevel : undefined}
+              />
+              {imageLoaded && imageMetrics && (
                 <BoundingBoxCanvas
                   ref={canvasRef}
-                  imageWidth={imageMetrics.displayWidth}
-                  imageHeight={imageMetrics.displayHeight}
+                  imageWidth={imageMetrics.displayWidth * zoomLevel}
+                  imageHeight={imageMetrics.displayHeight * zoomLevel}
                   naturalWidth={imageMetrics.naturalWidth}
                   naturalHeight={imageMetrics.naturalHeight}
-                  offsetX={imageMetrics.offsetX}
-                  offsetY={imageMetrics.offsetY}
+                  offsetX={0}
+                  offsetY={0}
                   annotations={filteredAnnotations}
                   categories={categories}
                   selectedCategoryId={selectedCategoryId}
@@ -2362,16 +2485,20 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
                   clickToMaskPendingPoint={clickToMaskPendingPoint}
                   onClickToMaskPoint={handleClickToMaskPoint}
                 />
-                {/* Category picker popup — shows on left-click empty canvas or W key */}
-                <CategoryPickerMenu
-                  open={categoryPicker.open}
-                  x={categoryPicker.x}
-                  y={categoryPicker.y}
-                  categories={categories}
-                  onSelect={handlePickerCategorySelect}
-                  onClose={closeCategoryPicker}
-                />
-              </>
+              )}
+            </div>
+            {/* Category picker popup — shows on left-click empty canvas or W key. Kept as a
+                direct child of the scroll container (not the zoom wrapper) since its x/y are
+                tracked relative to this container. */}
+            {imageLoaded && imageMetrics && (
+              <CategoryPickerMenu
+                open={categoryPicker.open}
+                x={categoryPicker.x}
+                y={categoryPicker.y}
+                categories={categories}
+                onSelect={handlePickerCategorySelect}
+                onClose={closeCategoryPicker}
+              />
             )}
             {/* Phase 3: Show message when no categories */}
             {!hasCategories && imageLoaded && (

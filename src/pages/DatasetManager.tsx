@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { List, X, FileText, Search, ZoomIn, ZoomOut, RotateCcw, Maximize2, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, Folder, ChevronRight as ChevronRightIcon, ChevronDown, Trash2, Loader2, Upload, ArrowRight, Info, Pencil, Download, MoreVertical, Tags, Plus } from "lucide-react";
+import { List, X, FileText, Search, ZoomIn, ZoomOut, RotateCcw, Maximize2, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, Folder, ChevronRight as ChevronRightIcon, ChevronDown, Trash2, Loader2, Upload, ArrowRight, Info, Pencil, Download, MoreVertical, Tags, Plus, CheckCircle2, Copy } from "lucide-react";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { cn } from "@/lib/utils";
 import {
@@ -115,6 +115,10 @@ interface DatasetMetadata {
   labelSource?: string;
   label_source?: string;
   folders?: Record<string, { images: number; labels: number }>;
+  // Base filenames (no extension) computed server-side from label files on disk AND
+  // annotations saved in the DB (see collectLabelBaseKeys in the backend) — authoritative
+  // source for "has label" badges, covering both label-file datasets and in-app annotation.
+  labeledBaseNames?: string[];
   previews?: Array<{ path: string; url?: string; thumbUrl?: string; thumbData?: string }>;
   files?: Array<{
     id?: string;
@@ -176,6 +180,18 @@ interface FileEntry {
 
 const MAX_FILES = 10000;
 const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024; // 200 MB - adjust if needed
+
+// Key used to match an image file to its label: on-disk filename minus extension. Must use
+// storedName (the hashed name actually written to disk), not originalName (the uploader's
+// filename) — labels on disk are named after storedName, so matching on originalName silently
+// fails whenever the two differ. Not folder-scoped: the Image collection (annotation workspace)
+// and dataset.files (file browser) can disagree about which split a file belongs to for the
+// same physical image, so a "folder::baseName" key missed real matches. Stored filenames are
+// content-hash-style and verified collision-free per dataset, so basename alone is safe.
+const getFileBaseKey = (file: FileEntry): string => {
+  const nameOnDisk = file.storedName || file.originalName;
+  return nameOnDisk.replace(/\.[^./]+$/, "");
+};
 
 // Lazy Thumbnail Component - using native lazy loading with IntersectionObserver fallback.
 // Defined at module scope (not inside DatasetManager): nesting components inside a parent's
@@ -304,7 +320,9 @@ const FileCard = ({
   onImageClick,
   onLabelClick,
   onDeleteClick,
+  onAnnotateClick,
   fetchThumbnailAsObjectUrl,
+  labeledBaseNames,
 }: {
   file: FileEntry;
   datasetId: string;
@@ -312,7 +330,9 @@ const FileCard = ({
   onImageClick: (file: FileEntry) => void;
   onLabelClick: (file: FileEntry) => void;
   onDeleteClick: (file: FileEntry) => void;
+  onAnnotateClick: (file: FileEntry) => void;
   fetchThumbnailAsObjectUrl: (datasetId: string, fileId: string) => Promise<string | null>;
+  labeledBaseNames: Set<string>;
 }) => {
   const isImage = file.type === "image";
   const isLabel = file.type === "label";
@@ -322,6 +342,7 @@ const FileCard = ({
     : (datasetId && file.id && isImage
       ? apiUrl(`/dataset/${encodeURIComponent(datasetId)}/file/${encodeURIComponent(file.id)}/thumbnail`)
       : null);
+  const hasLabel = isImage && labeledBaseNames.has(getFileBaseKey(file));
 
   return (
     <div
@@ -350,6 +371,14 @@ const FileCard = ({
         ) : (
           <div className="w-full h-full bg-muted" />
         )}
+        {hasLabel && (
+          <div
+            className="absolute bottom-1.5 right-1.5 bg-emerald-500 text-white rounded-full p-0.5 shadow"
+            title="Has a matching label file"
+          >
+            <CheckCircle2 className="h-3.5 w-3.5" />
+          </div>
+        )}
       </div>
       <div className="p-2">
         <p className="text-xs font-medium truncate" title={file.originalName}>
@@ -357,6 +386,21 @@ const FileCard = ({
         </p>
         <p className="text-xs text-muted-foreground truncate">{file.folder || "Uncategorized"}</p>
       </div>
+      {isImage && !hasLabel && hasPermission("annotateDatasets") && (
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
+          className="absolute top-2 left-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+          title="Annotate this image"
+          onClick={(e) => {
+            e.stopPropagation();
+            onAnnotateClick(file);
+          }}
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+      )}
       {hasPermission("uploadDatasets") && (
         <Button
           type="button"
@@ -384,7 +428,9 @@ const FileListItem = ({
   onImageClick,
   onLabelClick,
   onDeleteClick,
+  onAnnotateClick,
   fetchThumbnailAsObjectUrl,
+  labeledBaseNames,
 }: {
   file: FileEntry;
   datasetId: string;
@@ -392,7 +438,9 @@ const FileListItem = ({
   onImageClick: (file: FileEntry) => void;
   onLabelClick: (file: FileEntry) => void;
   onDeleteClick: (file: FileEntry) => void;
+  onAnnotateClick: (file: FileEntry) => void;
   fetchThumbnailAsObjectUrl: (datasetId: string, fileId: string) => Promise<string | null>;
+  labeledBaseNames: Set<string>;
 }) => {
   const isImage = file.type === "image";
   const isLabel = file.type === "label";
@@ -402,10 +450,12 @@ const FileListItem = ({
     : (datasetId && file.id && isImage
       ? apiUrl(`/dataset/${encodeURIComponent(datasetId)}/file/${encodeURIComponent(file.id)}/thumbnail`)
       : null);
+  const hasLabel = isImage && labeledBaseNames.has(getFileBaseKey(file));
+  const showAnnotateButton = isImage && !hasLabel && hasPermission("annotateDatasets");
 
   return (
     <div
-      className="grid grid-cols-[48px_1fr_120px_80px_40px] gap-4 p-3 border-b hover:bg-muted/50 cursor-pointer transition-colors"
+      className="grid grid-cols-[48px_1fr_120px_80px_80px] gap-4 p-3 border-b hover:bg-muted/50 cursor-pointer transition-colors"
       onClick={() => {
         if (isImage) {
           onImageClick(file);
@@ -414,7 +464,7 @@ const FileListItem = ({
         }
       }}
     >
-      <div className="w-12 h-8 bg-muted rounded flex items-center justify-center overflow-hidden">
+      <div className="relative w-12 h-8 bg-muted rounded flex items-center justify-center overflow-hidden">
         {isImage && thumbEndpoint ? (
           <LazyThumbnail
             thumbEndpoint={thumbEndpoint}
@@ -427,6 +477,14 @@ const FileListItem = ({
         ) : isLabel ? (
           <FileText className="w-6 h-6 text-muted-foreground" />
         ) : null}
+        {hasLabel && (
+          <div
+            className="absolute bottom-0 right-0 bg-emerald-500 text-white rounded-full p-px"
+            title="Has a matching label file"
+          >
+            <CheckCircle2 className="h-2.5 w-2.5" />
+          </div>
+        )}
       </div>
       <div className="min-w-0">
         <p className="text-sm font-medium truncate" title={file.originalName}>
@@ -440,21 +498,38 @@ const FileListItem = ({
       <div className="text-xs text-muted-foreground flex items-center">
         {isImage ? "Image" : isLabel ? "Label" : "File"}
       </div>
-      {hasPermission("uploadDatasets") ? (
-        <div className="flex items-center justify-end">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-destructive hover:text-destructive"
-            title="Delete photo"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDeleteClick(file);
-            }}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+      {showAnnotateButton || hasPermission("uploadDatasets") ? (
+        <div className="flex items-center justify-end gap-1">
+          {showAnnotateButton && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              title="Annotate this image"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAnnotateClick(file);
+              }}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+          )}
+          {hasPermission("uploadDatasets") && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-destructive hover:text-destructive"
+              title="Delete photo"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteClick(file);
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       ) : (
         <div />
@@ -473,7 +548,9 @@ const FolderSection = ({
   onImageClick,
   onLabelClick,
   onDeleteClick,
+  onAnnotateClick,
   fetchThumbnailAsObjectUrl,
+  labeledBaseNames,
 }: {
   folderName: string;
   files: FileEntry[];
@@ -483,7 +560,9 @@ const FolderSection = ({
   onImageClick: (file: FileEntry) => void;
   onLabelClick: (file: FileEntry) => void;
   onDeleteClick: (file: FileEntry) => void;
+  onAnnotateClick: (file: FileEntry) => void;
   fetchThumbnailAsObjectUrl: (datasetId: string, fileId: string) => Promise<string | null>;
+  labeledBaseNames: Set<string>;
 }) => {
   if (files.length === 0) return null;
 
@@ -508,7 +587,9 @@ const FolderSection = ({
               onImageClick={onImageClick}
               onLabelClick={onLabelClick}
               onDeleteClick={onDeleteClick}
+              onAnnotateClick={onAnnotateClick}
               fetchThumbnailAsObjectUrl={fetchThumbnailAsObjectUrl}
+              labeledBaseNames={labeledBaseNames}
             />
           ))}
         </div>
@@ -523,7 +604,9 @@ const FolderSection = ({
               onImageClick={onImageClick}
               onLabelClick={onLabelClick}
               onDeleteClick={onDeleteClick}
+              onAnnotateClick={onAnnotateClick}
               fetchThumbnailAsObjectUrl={fetchThumbnailAsObjectUrl}
+              labeledBaseNames={labeledBaseNames}
             />
           ))}
         </div>
@@ -775,6 +858,11 @@ const DatasetManager = () => {
   // Augment options dialog state
   const [showAugmentOptionsDialog, setShowAugmentOptionsDialog] = useState(false);
   const [augmentOptionsDatasetId, setAugmentOptionsDatasetId] = useState<string | null>(null);
+
+  // Duplicate dataset dialog state
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
+  const [duplicateSourceDatasetId, setDuplicateSourceDatasetId] = useState<string | null>(null);
+  const [duplicatingDatasetId, setDuplicatingDatasetId] = useState<string | null>(null);
 
   // Removed local getAuthHeaders() - using centralized getAuthHeaders() from @/lib/api/config
 
@@ -1514,6 +1602,14 @@ const DatasetManager = () => {
     return () => el.removeEventListener("wheel", onWheel);
   }, [selectedImageFile?.id]);
 
+  // Open the annotation workspace jumped straight to this specific (unlabeled) image.
+  const handleAnnotateClick = useCallback((file: FileEntry) => {
+    const datasetId = selectedVersionDatasetId || currentDatasetId;
+    if (!datasetId) return;
+    const filename = file.storedName || file.originalName;
+    navigate(`/annotation/${encodeURIComponent(datasetId)}?image=${encodeURIComponent(filename)}`);
+  }, [selectedVersionDatasetId, currentDatasetId, navigate]);
+
   const handleImageClick = useCallback(async (file: FileEntry) => {
     setSelectedImageFile(file);
     // Reset zoom and pan when opening new image
@@ -2196,7 +2292,7 @@ const DatasetManager = () => {
           setStatusProgress(sjson);
           setStatusPercent(computePercentFromStatus(sjson));
           setUploadStatus(sjson.status === "processing" ? "processing" : sjson.status === "ready" ? "ready" : "idle");
-          setStatusMessage(sjson.status === "processing" ? "Processing dataset..." : `Status: ${sjson.status}`);
+          setStatusMessage(sjson.status === "processing" ? "Processing dataset..." : String(sjson.status));
         }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') throw err;
@@ -2641,7 +2737,7 @@ const DatasetManager = () => {
   // Group files by folder for display
   const groupedFiles = useMemo(() => {
     const groups = new Map<string, FileEntry[]>();
-    
+
     navigableFiles.forEach(file => {
       const folder = file.folder || "Uncategorized";
       if (!groups.has(folder)) {
@@ -2649,15 +2745,35 @@ const DatasetManager = () => {
       }
       groups.get(folder)!.push(file);
     });
-    
+
+    const compareFiles = (a: FileEntry, b: FileEntry) => {
+      const result = fileSort === "size"
+        ? (a.size ?? 0) - (b.size ?? 0)
+        : a.originalName.localeCompare(b.originalName);
+      return fileSortOrder === "desc" ? -result : result;
+    };
+
     // Convert to array and sort by folder name
     return Array.from(groups.entries())
       .map(([folder, files]) => ({
         folder,
-        files: files.sort((a, b) => a.originalName.localeCompare(b.originalName))
+        files: files.sort(compareFiles)
       }))
       .sort((a, b) => a.folder.localeCompare(b.folder));
-  }, [navigableFiles]);
+  }, [navigableFiles, fileSort, fileSortOrder]);
+
+  // Folder::baseName keys for every label file, used to badge images that have a matching label
+  const labeledBaseNames = useMemo(() => {
+    const set = new Set<string>();
+    // Backend-computed ground truth (scans actual label files on disk) — authoritative,
+    // since dataset.files can be missing label records even when .txt files exist.
+    metadata?.labeledBaseNames?.forEach((key) => set.add(key));
+    // Union with whatever label-type entries the client already has, for robustness.
+    navigableFiles.forEach((file) => {
+      if (file.type === "label") set.add(getFileBaseKey(file));
+    });
+    return set;
+  }, [navigableFiles, metadata?.labeledBaseNames]);
 
   // Extract folder list for sidebar
   const folders = useMemo(() => {
@@ -3118,6 +3234,24 @@ const DatasetManager = () => {
                                     </DropdownMenuItem>
                                   ) : null}
                                 </ProtectedComponent>
+                                <ProtectedComponent requiredPermission="uploadDatasets">
+                                  {v.status !== "processing" && (
+                                    <DropdownMenuItem
+                                      disabled={duplicatingDatasetId === v.datasetId}
+                                      onClick={() => {
+                                        setDuplicateSourceDatasetId(v.datasetId);
+                                        setShowDuplicateDialog(true);
+                                      }}
+                                    >
+                                      {duplicatingDatasetId === v.datasetId ? (
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                      ) : (
+                                        <Copy className="mr-2 h-4 w-4" />
+                                      )}
+                                      Duplicate
+                                    </DropdownMenuItem>
+                                  )}
+                                </ProtectedComponent>
                                 <ProtectedComponent requiredPermission="deleteDatasets">
                                   <>
                                     <DropdownMenuSeparator />
@@ -3420,6 +3554,26 @@ const DatasetManager = () => {
                     ))}
                   </SelectContent>
                 </Select>
+
+                {/* Sort Order */}
+                <Select
+                  value={`${fileSort}-${fileSortOrder}`}
+                  onValueChange={(value) => {
+                    const [sortBy, order] = value.split("-") as ["name" | "size", "asc" | "desc"];
+                    setFileSort(sortBy);
+                    setFileSortOrder(order);
+                  }}
+                >
+                  <SelectTrigger className="w-full sm:w-[170px]">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="name-asc">Name (A–Z)</SelectItem>
+                    <SelectItem value="name-desc">Name (Z–A)</SelectItem>
+                    <SelectItem value="size-desc">Size (Largest first)</SelectItem>
+                    <SelectItem value="size-asc">Size (Smallest first)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               
               {/* Results count */}
@@ -3441,6 +3595,14 @@ const DatasetManager = () => {
                     : ""}
                 </div>
               )}
+
+              {/* Legend: what the badge on an image thumbnail means */}
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="inline-flex items-center justify-center bg-emerald-500 text-white rounded-full p-0.5">
+                  <CheckCircle2 className="h-3 w-3" />
+                </span>
+                <span>= image has a matching label file on disk. No badge = unlabeled.</span>
+              </div>
             </div>
 
             {/* File Manager Layout */}
@@ -3511,7 +3673,9 @@ const DatasetManager = () => {
                       onImageClick={handleImageClick}
                       onLabelClick={handleLabelClick}
                       onDeleteClick={setFileToDelete}
+                      onAnnotateClick={handleAnnotateClick}
                       fetchThumbnailAsObjectUrl={fetchThumbnailAsObjectUrl}
+                      labeledBaseNames={labeledBaseNames}
                     />
                   ))
                 )}
@@ -3908,6 +4072,54 @@ const DatasetManager = () => {
             }
           } finally {
             setAugmentingDatasetId(null);
+          }
+        }}
+      />
+
+      {/* Duplicate Dataset Dialog */}
+      <AugmentVersionNameModal
+        open={showDuplicateDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowDuplicateDialog(false);
+            setDuplicateSourceDatasetId(null);
+          }
+        }}
+        currentVersion={
+          duplicateSourceDatasetId
+            ? versions.find((v) => v.datasetId === duplicateSourceDatasetId)?.version
+            : null
+        }
+        isLoading={!!duplicatingDatasetId}
+        title="Duplicate dataset"
+        description="Enter a name for the new version. It will start as an exact, independent copy — augment it, add or remove photos, or annotate it without affecting the original."
+        cancelLabel="Cancel"
+        confirmLabel="Duplicate"
+        showAugmentationSize={false}
+        suggestedNameSuffix="dup"
+        onConfirm={async (versionName) => {
+          const datasetId = duplicateSourceDatasetId;
+          if (!datasetId) return;
+          setDuplicatingDatasetId(datasetId);
+          try {
+            await datasetsApi.duplicateDataset(datasetId, versionName);
+            setShowDuplicateDialog(false);
+            setDuplicateSourceDatasetId(null);
+            toast({
+              title: "Dataset duplicated",
+              description: `Created "${versionName}" as an independent copy.`,
+            });
+            await fetchVersions();
+          } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : "Failed to duplicate dataset";
+            toast({
+              title: "Duplicate failed",
+              description: msg || "An error occurred while duplicating the dataset.",
+              variant: "destructive",
+            });
+            // Modal stays open for user to correct the version name
+          } finally {
+            setDuplicatingDatasetId(null);
           }
         }}
       />

@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { AnnotationWorkspace } from "@/components/annotation/AnnotationWorkspace";
 import { useProfile } from "@/hooks/useProfile";
 import { useToast } from "@/hooks/use-toast";
@@ -8,6 +8,8 @@ import { Lock } from "lucide-react";
 
 export const AnnotationPage: React.FC = () => {
   const { datasetId } = useParams<{ datasetId: string }>();
+  const [searchParams] = useSearchParams();
+  const initialImageFilename = searchParams.get("image") || undefined;
   const navigate = useNavigate();
   const { hasPermission, loading: profileLoading, userRole, error } = useProfile();
   const { toast } = useToast();
@@ -76,7 +78,11 @@ export const AnnotationPage: React.FC = () => {
 
   return (
     <div className="p-4">
-      <AnnotationWorkspace datasetId={datasetId} onClose={handleClose} />
+      <AnnotationWorkspace
+        datasetId={datasetId}
+        onClose={handleClose}
+        initialImageFilename={initialImageFilename}
+      />
     </div>
   );
 };

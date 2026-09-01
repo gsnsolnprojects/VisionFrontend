@@ -39,6 +39,8 @@ interface AugmentVersionNameModalProps {
   showAugmentationSize?: boolean;
   /** Optional hint for a sensible default (e.g. current image count * 2). */
   defaultTargetImageCount?: number;
+  /** Suffix appended to the source version for the suggested name (e.g. "v1_aug", "v1_dup"). Default "aug". */
+  suggestedNameSuffix?: string;
 }
 
 export const AugmentVersionNameModal: React.FC<AugmentVersionNameModalProps> = ({
@@ -53,8 +55,9 @@ export const AugmentVersionNameModal: React.FC<AugmentVersionNameModalProps> = (
   confirmLabel = "Start Augmentation",
   showAugmentationSize = true,
   defaultTargetImageCount = 100,
+  suggestedNameSuffix = "aug",
 }) => {
-  const suggestedName = getSuggestedVersionName(currentVersion);
+  const suggestedName = getSuggestedVersionName(currentVersion, suggestedNameSuffix);
   const [versionName, setVersionName] = useState(suggestedName);
   const [error, setError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
@@ -66,14 +69,14 @@ export const AugmentVersionNameModal: React.FC<AugmentVersionNameModalProps> = (
   // Reset form when modal opens
   useEffect(() => {
     if (open) {
-      const nextSuggested = getSuggestedVersionName(currentVersion);
+      const nextSuggested = getSuggestedVersionName(currentVersion, suggestedNameSuffix);
       setVersionName(nextSuggested);
       setError(null);
       setTouched(false);
       setTargetImageCount(Math.max(1, defaultTargetImageCount));
       setCountError(null);
     }
-  }, [open, currentVersion, defaultTargetImageCount]);
+  }, [open, currentVersion, defaultTargetImageCount, suggestedNameSuffix]);
 
   const runValidation = (value: string) => {
     const result = validateVersionName(value, currentVersion);

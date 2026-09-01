@@ -108,6 +108,24 @@ export const augmentDataset = async (
 };
 
 /**
+ * Create a fully independent copy of a dataset version under a new version name — same
+ * files, images, categories, and annotations, sharing nothing with the source. Lets a user
+ * experiment (augment, add/remove photos) on the copy without touching the original.
+ */
+export const duplicateDataset = async (
+  datasetId: string,
+  versionName: string
+): Promise<{ datasetId: string; version: string; message?: string }> => {
+  const path = `/dataset/${encodeURIComponent(datasetId)}/duplicate`;
+  return apiRequest(path, {
+    method: "POST",
+    body: JSON.stringify({
+      versionName: versionName.trim(),
+    }),
+  });
+};
+
+/**
  * Fetch high-level dataset status, including augmentation flags when available.
  * This mirrors the backend dataset status shape but keeps fields optional
  * so it won't break if the backend hasn't been updated yet.

@@ -19,6 +19,13 @@ interface ImageViewerProps {
     renderedWidth: number;
     renderedHeight: number;
   }) => void;
+  /**
+   * Explicit render size in pixels (used for zoom: the image renders at exactly this size
+   * instead of being constrained to fit its container). Omit both to fall back to the
+   * default "fit within parent" sizing.
+   */
+  width?: number;
+  height?: number;
 }
 
 export const ImageViewer: React.FC<ImageViewerProps> = ({
@@ -27,6 +34,8 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
   onImageLoad,
   onImageError,
    onImageMetricsChange,
+  width,
+  height,
 }) => {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -239,12 +248,15 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     );
   }
 
+  const hasExplicitSize = typeof width === "number" && typeof height === "number";
+
   return (
     <img
       ref={imgRef}
       src={objectUrl}
       alt={imageId ?? "Annotation image"}
-      className="max-h-full max-w-full object-contain"
+      className={hasExplicitSize ? "block" : "max-h-full max-w-full object-contain"}
+      style={hasExplicitSize ? { width: `${width}px`, height: `${height}px` } : undefined}
       onLoad={handleLoad}
       onError={handleError}
     />

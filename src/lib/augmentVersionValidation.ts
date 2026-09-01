@@ -52,8 +52,9 @@ export function validateVersionName(
 }
 
 export function getSuggestedVersionName(
-  currentVersion: string | number | null | undefined
+  currentVersion: string | number | null | undefined,
+  suffix: string = "aug"
 ): string {
   const base = getSourceVersionString(currentVersion) || "v1";
-  return `${base}_aug`;
+  return `${base}_${suffix}`;
 }
