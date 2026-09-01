@@ -385,7 +385,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
                         onClick={() => setManageOpen(!manageOpen)}
                       >
                         <FileText className="mr-2 h-4 w-4" />
-                        Manage Projects
+                        Projects & Datasets
                         <span className="ml-auto">
                           {manageOpen ? (
                             <ChevronDown className="h-4 w-4" />
@@ -454,7 +454,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
                         onClick={handleSimulation}
                       >
                         <Cpu className="mr-2 h-4 w-4" />
-                        Simulation
+                        Model Training
                       </Button>
 
                       <Button
@@ -471,7 +471,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
                         onClick={handlePrediction}
                       >
                         <BrainCircuit className="mr-2 h-4 w-4" />
-                        Prediction (Testing)
+                        Testing & Inference
                       </Button>
 
                       <Button

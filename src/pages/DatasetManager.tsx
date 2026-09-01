@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { List, X, FileText, Search, ZoomIn, ZoomOut, RotateCcw, Maximize2, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, Folder, ChevronRight as ChevronRightIcon, ChevronDown, Trash2, Loader2, Upload, ArrowRight, Info, Pencil, Download, MoreVertical, ScanSearch, Tags, Plus } from "lucide-react";
+import { List, X, FileText, Search, ZoomIn, ZoomOut, RotateCcw, Maximize2, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, Folder, ChevronRight as ChevronRightIcon, ChevronDown, Trash2, Loader2, Upload, ArrowRight, Info, Pencil, Download, MoreVertical, Tags, Plus } from "lucide-react";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { cn } from "@/lib/utils";
 import {
@@ -177,6 +177,361 @@ interface FileEntry {
 const MAX_FILES = 10000;
 const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024; // 200 MB - adjust if needed
 
+// Lazy Thumbnail Component - using native lazy loading with IntersectionObserver fallback.
+// Defined at module scope (not inside DatasetManager): nesting components inside a parent's
+// render body gives them a new identity on every parent re-render, which makes React unmount
+// and remount every thumbnail (restarting its fetch) each time any file browser state changes.
+const LazyThumbnail = ({
+  thumbEndpoint,
+  fileId,
+  datasetId,
+  alt,
+  onClick,
+  fetchThumbnailAsObjectUrl,
+  className = "w-12 h-8 object-cover rounded cursor-pointer"
+}: {
+  thumbEndpoint: string;
+  fileId: string;
+  datasetId: string;
+  alt: string;
+  onClick: () => void;
+  fetchThumbnailAsObjectUrl: (datasetId: string, fileId: string) => Promise<string | null>;
+  className?: string;
+}) => {
+  const [imgSrc, setImgSrc] = useState<string | null>(null);
+  const [shouldLoad, setShouldLoad] = useState(false);
+  const [hasErrored, setHasErrored] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    // Use IntersectionObserver to detect when element is in viewport
+    // Reduced rootMargin to be less aggressive and prevent too many simultaneous requests
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            // Small delay before loading to batch rapid scrolls (100ms debounce)
+            setTimeout(() => {
+              setShouldLoad(true);
+            }, 100);
+            observer.disconnect();
+          }
+        });
+      },
+      {
+        rootMargin: '50px', // Reduced from 100px - only load when closer to viewport
+        threshold: 0.01
+      }
+    );
+
+    const currentRef = imgRef.current;
+    if (currentRef) {
+      observer.observe(currentRef);
+    }
+
+    // Fallback: if observer doesn't trigger within 5 seconds, load anyway (increased from 2s)
+    const fallbackTimer = setTimeout(() => {
+      setShouldLoad(true);
+    }, 5000);
+
+    return () => {
+      observer.disconnect();
+      clearTimeout(fallbackTimer);
+    };
+  }, []);
+
+  useEffect(() => {
+    // Only load when in view and not already loaded/errored
+    if (!shouldLoad || imgSrc || hasErrored) return;
+    // Use authenticated fetch for our API URLs (file browser raw dataset)
+    const isOurApiUrl = API_BASE_URL && thumbEndpoint.startsWith(API_BASE_URL);
+    if (isOurApiUrl) {
+      let cancelled = false;
+      fetchThumbnailAsObjectUrl(datasetId, fileId)
+        .then((url) => {
+          if (!cancelled && url) setImgSrc(url);
+          else if (!cancelled) setImgSrc(thumbEndpoint);
+        })
+        .catch((err) => {
+          // Swallow cancellation - expected when user switches dataset before load completes
+          if (err?.message === 'Request cancelled due to dataset change') return;
+          throw err;
+        });
+      return () => { cancelled = true; };
+    }
+    setImgSrc(thumbEndpoint);
+  }, [shouldLoad, thumbEndpoint, imgSrc, hasErrored, datasetId, fileId, fetchThumbnailAsObjectUrl]);
+
+  return (
+    <img
+      ref={imgRef}
+      src={imgSrc || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='32'%3E%3Crect width='48' height='32' fill='%23f3f4f6'/%3E%3C/svg%3E"}
+      className={className}
+      alt={alt}
+      onClick={onClick}
+      loading="lazy"
+      onError={async (e) => {
+        // Only attempt fallback if we haven't errored before and imgSrc matches thumbEndpoint
+        if (!hasErrored && imgSrc === thumbEndpoint) {
+          setHasErrored(true); // Mark as errored to prevent retries
+          try {
+            const objUrl = await fetchThumbnailAsObjectUrl(datasetId, fileId);
+            if (objUrl) {
+              setImgSrc(objUrl); // Update React state
+              setHasErrored(false); // Reset error flag if fallback succeeds
+            } else {
+              // Both attempts failed - set placeholder in both React state and DOM
+              const placeholder = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='32'%3E%3Crect width='48' height='32' fill='%23f3f4f6'/%3E%3C/svg%3E";
+              setImgSrc(placeholder); // Update React state to prevent re-render resets
+              (e.target as HTMLImageElement).src = placeholder; // Update DOM immediately
+              (e.target as HTMLImageElement).style.opacity = "0.5";
+            }
+          } catch (err) {
+            // Swallow cancellation - expected when user switches dataset before load completes
+            if ((err as Error)?.message !== 'Request cancelled due to dataset change') throw err;
+          }
+        }
+      }}
+    />
+  );
+};
+
+// File Card Component (Grid View) - module scope, see LazyThumbnail comment above.
+const FileCard = ({
+  file,
+  datasetId,
+  hasPermission,
+  onImageClick,
+  onLabelClick,
+  onDeleteClick,
+  fetchThumbnailAsObjectUrl,
+}: {
+  file: FileEntry;
+  datasetId: string;
+  hasPermission: (perm: string) => boolean;
+  onImageClick: (file: FileEntry) => void;
+  onLabelClick: (file: FileEntry) => void;
+  onDeleteClick: (file: FileEntry) => void;
+  fetchThumbnailAsObjectUrl: (datasetId: string, fileId: string) => Promise<string | null>;
+}) => {
+  const isImage = file.type === "image";
+  const isLabel = file.type === "label";
+  // Use thumbnailUrl from backend if available, otherwise construct URL as fallback
+  const thumbEndpoint = isImage && file.thumbnailUrl
+    ? file.thumbnailUrl
+    : (datasetId && file.id && isImage
+      ? apiUrl(`/dataset/${encodeURIComponent(datasetId)}/file/${encodeURIComponent(file.id)}/thumbnail`)
+      : null);
+
+  return (
+    <div
+      className="group relative bg-card border rounded-lg overflow-hidden cursor-pointer hover:shadow-lg transition-all duration-200 hover:-translate-y-1"
+      onClick={() => {
+        if (isImage) {
+          onImageClick(file);
+        } else if (isLabel) {
+          onLabelClick(file);
+        }
+      }}
+    >
+      <div className="aspect-[4/3] bg-muted flex items-center justify-center overflow-hidden relative">
+        {isImage && thumbEndpoint ? (
+          <LazyThumbnail
+            thumbEndpoint={thumbEndpoint}
+            fileId={file.id!}
+            datasetId={datasetId}
+            alt={file.originalName}
+            onClick={() => onImageClick(file)}
+            fetchThumbnailAsObjectUrl={fetchThumbnailAsObjectUrl}
+            className="w-full h-full object-cover cursor-pointer"
+          />
+        ) : isLabel ? (
+          <FileText className="w-16 h-16 text-muted-foreground" />
+        ) : (
+          <div className="w-full h-full bg-muted" />
+        )}
+      </div>
+      <div className="p-2">
+        <p className="text-xs font-medium truncate" title={file.originalName}>
+          {file.originalName}
+        </p>
+        <p className="text-xs text-muted-foreground truncate">{file.folder || "Uncategorized"}</p>
+      </div>
+      {hasPermission("uploadDatasets") && (
+        <Button
+          type="button"
+          variant="destructive"
+          size="icon"
+          className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+          title="Delete photo"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteClick(file);
+          }}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      )}
+    </div>
+  );
+};
+
+// File List Item Component (List View) - module scope, see LazyThumbnail comment above.
+const FileListItem = ({
+  file,
+  datasetId,
+  hasPermission,
+  onImageClick,
+  onLabelClick,
+  onDeleteClick,
+  fetchThumbnailAsObjectUrl,
+}: {
+  file: FileEntry;
+  datasetId: string;
+  hasPermission: (perm: string) => boolean;
+  onImageClick: (file: FileEntry) => void;
+  onLabelClick: (file: FileEntry) => void;
+  onDeleteClick: (file: FileEntry) => void;
+  fetchThumbnailAsObjectUrl: (datasetId: string, fileId: string) => Promise<string | null>;
+}) => {
+  const isImage = file.type === "image";
+  const isLabel = file.type === "label";
+  // Use thumbnailUrl from backend if available, otherwise construct URL as fallback
+  const thumbEndpoint = isImage && file.thumbnailUrl
+    ? file.thumbnailUrl
+    : (datasetId && file.id && isImage
+      ? apiUrl(`/dataset/${encodeURIComponent(datasetId)}/file/${encodeURIComponent(file.id)}/thumbnail`)
+      : null);
+
+  return (
+    <div
+      className="grid grid-cols-[48px_1fr_120px_80px_40px] gap-4 p-3 border-b hover:bg-muted/50 cursor-pointer transition-colors"
+      onClick={() => {
+        if (isImage) {
+          onImageClick(file);
+        } else if (isLabel) {
+          onLabelClick(file);
+        }
+      }}
+    >
+      <div className="w-12 h-8 bg-muted rounded flex items-center justify-center overflow-hidden">
+        {isImage && thumbEndpoint ? (
+          <LazyThumbnail
+            thumbEndpoint={thumbEndpoint}
+            fileId={file.id!}
+            datasetId={datasetId}
+            alt={file.originalName}
+            onClick={() => onImageClick(file)}
+            fetchThumbnailAsObjectUrl={fetchThumbnailAsObjectUrl}
+          />
+        ) : isLabel ? (
+          <FileText className="w-6 h-6 text-muted-foreground" />
+        ) : null}
+      </div>
+      <div className="min-w-0">
+        <p className="text-sm font-medium truncate" title={file.originalName}>
+          {file.originalName}
+        </p>
+        <p className="text-xs text-muted-foreground truncate">{file.folder || "Uncategorized"}</p>
+      </div>
+      <div className="text-xs text-muted-foreground flex items-center">
+        {file.size ? `${(file.size / 1024).toFixed(1)} KB` : "-"}
+      </div>
+      <div className="text-xs text-muted-foreground flex items-center">
+        {isImage ? "Image" : isLabel ? "Label" : "File"}
+      </div>
+      {hasPermission("uploadDatasets") ? (
+        <div className="flex items-center justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-destructive hover:text-destructive"
+            title="Delete photo"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteClick(file);
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      ) : (
+        <div />
+      )}
+    </div>
+  );
+};
+
+// Folder Section Component - module scope, see LazyThumbnail comment above.
+const FolderSection = ({
+  folderName,
+  files,
+  datasetId,
+  viewMode,
+  hasPermission,
+  onImageClick,
+  onLabelClick,
+  onDeleteClick,
+  fetchThumbnailAsObjectUrl,
+}: {
+  folderName: string;
+  files: FileEntry[];
+  datasetId: string;
+  viewMode: "grid" | "list";
+  hasPermission: (perm: string) => boolean;
+  onImageClick: (file: FileEntry) => void;
+  onLabelClick: (file: FileEntry) => void;
+  onDeleteClick: (file: FileEntry) => void;
+  fetchThumbnailAsObjectUrl: (datasetId: string, fileId: string) => Promise<string | null>;
+}) => {
+  if (files.length === 0) return null;
+
+  return (
+    <div className="mb-6">
+      <div className="sticky top-0 bg-background z-10 py-3 border-b mb-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-sm">{folderName}</h3>
+            <p className="text-xs text-muted-foreground">{files.length} file{files.length !== 1 ? 's' : ''}</p>
+          </div>
+        </div>
+      </div>
+      {viewMode === "grid" ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+          {files.map((file) => (
+            <FileCard
+              key={file.id}
+              file={file}
+              datasetId={datasetId}
+              hasPermission={hasPermission}
+              onImageClick={onImageClick}
+              onLabelClick={onLabelClick}
+              onDeleteClick={onDeleteClick}
+              fetchThumbnailAsObjectUrl={fetchThumbnailAsObjectUrl}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-0">
+          {files.map((file) => (
+            <FileListItem
+              key={file.id}
+              file={file}
+              datasetId={datasetId}
+              hasPermission={hasPermission}
+              onImageClick={onImageClick}
+              onLabelClick={onLabelClick}
+              onDeleteClick={onDeleteClick}
+              fetchThumbnailAsObjectUrl={fetchThumbnailAsObjectUrl}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const DatasetManager = () => {
   const { id: projectId } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -219,9 +574,9 @@ const DatasetManager = () => {
   const [showCancelAugmentDialog, setShowCancelAugmentDialog] = useState(false);
   const [cancelAugmentDatasetId, setCancelAugmentDatasetId] = useState<string | null>(null);
   const [downloadingDatasetId, setDownloadingDatasetId] = useState<string | null>(null);
-  const [checkingDatasetId, setCheckingDatasetId] = useState<string | null>(null);
-  const [showTypeCheckDialog, setShowTypeCheckDialog] = useState(false);
-  const [typeCheckResult, setTypeCheckResult] = useState<datasetsApi.DatasetTypeCheck | null>(null);
+  // Dataset type shown inline in the Dataset Summary card (auto-fetched on version select)
+  const [summaryDatasetType, setSummaryDatasetType] = useState<datasetsApi.DatasetTypeCheck | null>(null);
+  const [summaryDatasetTypeLoading, setSummaryDatasetTypeLoading] = useState(false);
   const [mappingDatasetId, setMappingDatasetId] = useState<string | null>(null);
   const [classNameDialogSkipPrompt, setClassNameDialogSkipPrompt] = useState(false);
 
@@ -1502,7 +1857,7 @@ const DatasetManager = () => {
                   if (isUnlabeled) {
                     toast({
                       title: "Upload completed",
-                      description: "Please go to Simulation and annotate the images before training.",
+                      description: "Please go to Model Training and annotate the images before training.",
                       variant: "default",
                     });
                   }
@@ -1740,6 +2095,20 @@ const DatasetManager = () => {
       setSelectedFolder(null); // Reset folder selection
       setMetadata(null); // Clear stale metadata immediately to avoid showing previous dataset's info
       setMetadataLoading(true);
+      setSummaryDatasetType(null); // Clear stale type info from a previous version
+      setSummaryDatasetTypeLoading(true);
+      datasetsApi.checkDatasetType(datasetId)
+        .then((result) => {
+          if (signal.aborted) return;
+          setSummaryDatasetType(result);
+        })
+        .catch((err) => {
+          if (signal.aborted) return;
+          console.warn("checkDatasetType failed for dataset summary:", err);
+        })
+        .finally(() => {
+          if (!signal.aborted) setSummaryDatasetTypeLoading(false);
+        });
 
       // Fetch full dataset metadata first (lightweight)
       let metaJson: any = null;
@@ -1859,6 +2228,8 @@ const DatasetManager = () => {
     setSelectedImageFile(null);
     setSelectedLabelFile(null);
     setLabelFileContent(null);
+    setSummaryDatasetType(null);
+    setSummaryDatasetTypeLoading(false);
   }, []);
 
   const refreshOpenDatasetFiles = async (datasetId: string) => {
@@ -2051,26 +2422,6 @@ const DatasetManager = () => {
     setShowDeleteVersionDialog(true);
   };
 
-  const handleCheckDatasetType = async (datasetId: string) => {
-    setCheckingDatasetId(datasetId);
-    setTypeCheckResult(null);
-    setShowTypeCheckDialog(true);
-    try {
-      const result = await datasetsApi.checkDatasetType(datasetId);
-      setTypeCheckResult(result);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Could not check dataset type";
-      setShowTypeCheckDialog(false);
-      toast({
-        title: "Dataset type check failed",
-        description: msg,
-        variant: "destructive",
-      });
-    } finally {
-      setCheckingDatasetId(null);
-    }
-  };
-
   const handleMapClasses = async (datasetId: string) => {
     setMappingDatasetId(datasetId);
     try {
@@ -2090,7 +2441,7 @@ const DatasetManager = () => {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Could not load class IDs";
       toast({
-        title: "Map classes failed",
+        title: "Edit classes failed",
         description: msg,
         variant: "destructive",
       });
@@ -2329,288 +2680,6 @@ const DatasetManager = () => {
     }
     return groupedFiles.filter(group => group.folder === selectedFolderInSidebar);
   }, [groupedFiles, selectedFolderInSidebar]);
-
-  // Lazy Thumbnail Component - using native lazy loading with IntersectionObserver fallback
-  const LazyThumbnail = ({ 
-    thumbEndpoint, 
-    fileId, 
-    datasetId, 
-    alt, 
-    onClick,
-    fetchThumbnailAsObjectUrl,
-    className = "w-12 h-8 object-cover rounded cursor-pointer"
-  }: { 
-    thumbEndpoint: string; 
-    fileId: string; 
-    datasetId: string; 
-    alt: string; 
-    onClick: () => void;
-    fetchThumbnailAsObjectUrl: (datasetId: string, fileId: string) => Promise<string | null>;
-    className?: string;
-  }) => {
-    const [imgSrc, setImgSrc] = useState<string | null>(null);
-    const [shouldLoad, setShouldLoad] = useState(false);
-    const [hasErrored, setHasErrored] = useState(false);
-    const imgRef = useRef<HTMLImageElement>(null);
-
-    useEffect(() => {
-      // Use IntersectionObserver to detect when element is in viewport
-      // Reduced rootMargin to be less aggressive and prevent too many simultaneous requests
-      const observer = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              // Small delay before loading to batch rapid scrolls (100ms debounce)
-              setTimeout(() => {
-                setShouldLoad(true);
-              }, 100);
-              observer.disconnect();
-            }
-          });
-        },
-        { 
-          rootMargin: '50px', // Reduced from 100px - only load when closer to viewport
-          threshold: 0.01
-        }
-      );
-
-      const currentRef = imgRef.current;
-      if (currentRef) {
-        observer.observe(currentRef);
-      }
-
-      // Fallback: if observer doesn't trigger within 5 seconds, load anyway (increased from 2s)
-      const fallbackTimer = setTimeout(() => {
-        setShouldLoad(true);
-      }, 5000);
-
-      return () => {
-        observer.disconnect();
-        clearTimeout(fallbackTimer);
-      };
-    }, []);
-
-    useEffect(() => {
-      // Only load when in view and not already loaded/errored
-      if (!shouldLoad || imgSrc || hasErrored) return;
-      // Use authenticated fetch for our API URLs (file browser raw dataset)
-      const isOurApiUrl = API_BASE_URL && thumbEndpoint.startsWith(API_BASE_URL);
-      if (isOurApiUrl) {
-        let cancelled = false;
-        fetchThumbnailAsObjectUrl(datasetId, fileId)
-          .then((url) => {
-            if (!cancelled && url) setImgSrc(url);
-            else if (!cancelled) setImgSrc(thumbEndpoint);
-          })
-          .catch((err) => {
-            // Swallow cancellation - expected when user switches dataset before load completes
-            if (err?.message === 'Request cancelled due to dataset change') return;
-            throw err;
-          });
-        return () => { cancelled = true; };
-      }
-      setImgSrc(thumbEndpoint);
-    }, [shouldLoad, thumbEndpoint, imgSrc, hasErrored, datasetId, fileId, fetchThumbnailAsObjectUrl]);
-
-    return (
-      <img
-        ref={imgRef}
-        src={imgSrc || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='32'%3E%3Crect width='48' height='32' fill='%23f3f4f6'/%3E%3C/svg%3E"}
-        className={className}
-        alt={alt}
-        onClick={onClick}
-        loading="lazy"
-        onError={async (e) => {
-          // Only attempt fallback if we haven't errored before and imgSrc matches thumbEndpoint
-          if (!hasErrored && imgSrc === thumbEndpoint) {
-            setHasErrored(true); // Mark as errored to prevent retries
-            try {
-              const objUrl = await fetchThumbnailAsObjectUrl(datasetId, fileId);
-              if (objUrl) {
-                setImgSrc(objUrl); // Update React state
-                setHasErrored(false); // Reset error flag if fallback succeeds
-              } else {
-                // Both attempts failed - set placeholder in both React state and DOM
-                const placeholder = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='32'%3E%3Crect width='48' height='32' fill='%23f3f4f6'/%3E%3C/svg%3E";
-                setImgSrc(placeholder); // Update React state to prevent re-render resets
-                (e.target as HTMLImageElement).src = placeholder; // Update DOM immediately
-                (e.target as HTMLImageElement).style.opacity = "0.5";
-              }
-            } catch (err) {
-              // Swallow cancellation - expected when user switches dataset before load completes
-              if ((err as Error)?.message !== 'Request cancelled due to dataset change') throw err;
-            }
-          }
-        }}
-      />
-    );
-  };
-
-  // File Card Component (Grid View)
-  const FileCard = ({ file, datasetId }: { file: FileEntry; datasetId: string }) => {
-    const isImage = file.type === "image";
-    const isLabel = file.type === "label";
-    // Use thumbnailUrl from backend if available, otherwise construct URL as fallback
-    const thumbEndpoint = isImage && file.thumbnailUrl
-      ? file.thumbnailUrl
-      : (datasetId && file.id && isImage
-        ? apiUrl(`/dataset/${encodeURIComponent(datasetId)}/file/${encodeURIComponent(file.id)}/thumbnail`)
-        : null);
-
-    return (
-      <div
-        className="group relative bg-card border rounded-lg overflow-hidden cursor-pointer hover:shadow-lg transition-all duration-200 hover:-translate-y-1"
-        onClick={() => {
-          if (isImage) {
-            handleImageClick(file);
-          } else if (isLabel) {
-            handleLabelClick(file);
-          }
-        }}
-      >
-        <div className="aspect-[4/3] bg-muted flex items-center justify-center overflow-hidden relative">
-          {isImage && thumbEndpoint ? (
-            <LazyThumbnail
-              thumbEndpoint={thumbEndpoint}
-              fileId={file.id!}
-              datasetId={datasetId}
-              alt={file.originalName}
-              onClick={() => handleImageClick(file)}
-              fetchThumbnailAsObjectUrl={fetchThumbnailAsObjectUrl}
-              className="w-full h-full object-cover cursor-pointer"
-            />
-          ) : isLabel ? (
-            <FileText className="w-16 h-16 text-muted-foreground" />
-          ) : (
-            <div className="w-full h-full bg-muted" />
-          )}
-        </div>
-        <div className="p-2">
-          <p className="text-xs font-medium truncate" title={file.originalName}>
-            {file.originalName}
-          </p>
-          <p className="text-xs text-muted-foreground truncate">{file.folder || "Uncategorized"}</p>
-        </div>
-        {hasPermission("uploadDatasets") && (
-          <Button
-            type="button"
-            variant="destructive"
-            size="icon"
-            className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity z-10"
-            title="Delete photo"
-            onClick={(e) => {
-              e.stopPropagation();
-              setFileToDelete(file);
-            }}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        )}
-      </div>
-    );
-  };
-
-  // File List Item Component (List View)
-  const FileListItem = ({ file, datasetId }: { file: FileEntry; datasetId: string }) => {
-    const isImage = file.type === "image";
-    const isLabel = file.type === "label";
-    // Use thumbnailUrl from backend if available, otherwise construct URL as fallback
-    const thumbEndpoint = isImage && file.thumbnailUrl
-      ? file.thumbnailUrl
-      : (datasetId && file.id && isImage
-        ? apiUrl(`/dataset/${encodeURIComponent(datasetId)}/file/${encodeURIComponent(file.id)}/thumbnail`)
-        : null);
-
-    return (
-      <div
-        className="grid grid-cols-[48px_1fr_120px_80px_40px] gap-4 p-3 border-b hover:bg-muted/50 cursor-pointer transition-colors"
-        onClick={() => {
-          if (isImage) {
-            handleImageClick(file);
-          } else if (isLabel) {
-            handleLabelClick(file);
-          }
-        }}
-      >
-        <div className="w-12 h-8 bg-muted rounded flex items-center justify-center overflow-hidden">
-          {isImage && thumbEndpoint ? (
-            <LazyThumbnail
-              thumbEndpoint={thumbEndpoint}
-              fileId={file.id!}
-              datasetId={datasetId}
-              alt={file.originalName}
-              onClick={() => handleImageClick(file)}
-              fetchThumbnailAsObjectUrl={fetchThumbnailAsObjectUrl}
-            />
-          ) : isLabel ? (
-            <FileText className="w-6 h-6 text-muted-foreground" />
-          ) : null}
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-medium truncate" title={file.originalName}>
-            {file.originalName}
-          </p>
-          <p className="text-xs text-muted-foreground truncate">{file.folder || "Uncategorized"}</p>
-        </div>
-        <div className="text-xs text-muted-foreground flex items-center">
-          {file.size ? `${(file.size / 1024).toFixed(1)} KB` : "-"}
-        </div>
-        <div className="text-xs text-muted-foreground flex items-center">
-          {isImage ? "Image" : isLabel ? "Label" : "File"}
-        </div>
-        {hasPermission("uploadDatasets") ? (
-          <div className="flex items-center justify-end">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-destructive hover:text-destructive"
-              title="Delete photo"
-              onClick={(e) => {
-                e.stopPropagation();
-                setFileToDelete(file);
-              }}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        ) : (
-          <div />
-        )}
-      </div>
-    );
-  };
-
-  // Folder Section Component
-  const FolderSection = ({ folderName, files, datasetId }: { folderName: string; files: FileEntry[]; datasetId: string }) => {
-    if (files.length === 0) return null;
-
-    return (
-      <div className="mb-6">
-        <div className="sticky top-0 bg-background z-10 py-3 border-b mb-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold text-sm">{folderName}</h3>
-              <p className="text-xs text-muted-foreground">{files.length} file{files.length !== 1 ? 's' : ''}</p>
-            </div>
-          </div>
-        </div>
-        {viewMode === "grid" ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            {files.map((file) => (
-              <FileCard key={file.id} file={file} datasetId={datasetId} />
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-0">
-            {files.map((file) => (
-              <FileListItem key={file.id} file={file} datasetId={datasetId} />
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
 
   // ------- Render -------
   return (
@@ -2964,22 +3033,6 @@ const DatasetManager = () => {
                             >
                               View
                             </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={checkingDatasetId === v.datasetId}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleCheckDatasetType(v.datasetId);
-                              }}
-                            >
-                              {checkingDatasetId === v.datasetId ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <ScanSearch className="h-4 w-4" />
-                              )}
-                              <span className="ml-1 hidden sm:inline">Check type</span>
-                            </Button>
                             <ProtectedComponent requiredPermission="uploadDatasets">
                               <Button
                                 variant="outline"
@@ -2989,14 +3042,14 @@ const DatasetManager = () => {
                                   e.stopPropagation();
                                   void handleMapClasses(v.datasetId);
                                 }}
-                                title="Map class IDs to names"
+                                title="Edit class ID to name mapping"
                               >
                                 {mappingDatasetId === v.datasetId ? (
                                   <Loader2 className="h-4 w-4 animate-spin" />
                                 ) : (
                                   <Tags className="h-4 w-4" />
                                 )}
-                                <span className="ml-1 hidden sm:inline">Map classes</span>
+                                <span className="ml-1 hidden sm:inline">Edit classes</span>
                               </Button>
                             </ProtectedComponent>
                             <DropdownMenu>
@@ -3196,42 +3249,54 @@ const DatasetManager = () => {
                     {typeof metadata.thumbnailsGenerated === "boolean" && <p><span className="font-medium">Thumbnails: </span>{metadata.thumbnailsGenerated ? "Generated" : "Pending"}</p>}
                   </div>
                   
-                  {metadata.folders && Object.keys(metadata.folders).length > 0 && (
-                    <div className="pt-3 border-t">
-                      <p className="font-medium mb-2 flex items-center gap-2">
-                        Folder breakdown:
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="inline-flex cursor-help">
-                                <Info className="h-4 w-4 text-muted-foreground shrink-0" />
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" align="start" className="max-w-sm">
-                              <p className="text-xs">
-                                Shows how your dataset is split (e.g. train/val/test or a single upload folder). The label number counts YOLO <span className="font-medium">.txt files on disk</span>. If you labeled in the app but have not exported or converted to label files yet, you can see 0 here while the project still shows Manually Labelled.
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </p>
-                      <div className="space-y-1.5 pl-2">
-                        {Object.entries(metadata.folders).map(([folderName, stats]) => (
-                          <p key={folderName} className="text-xs">
-                            <span className="font-medium">{folderName}: </span>
-                            {stats.images} image{stats.images !== 1 ? 's' : ''},{' '}
-                            {stats.labels} label file{stats.labels !== 1 ? 's' : ''} on disk
-                          </p>
-                        ))}
+                  <div className="pt-3 border-t">
+                    <p className="font-medium mb-2 flex items-center gap-2">
+                      Dataset type:
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-flex cursor-help">
+                              <Info className="h-4 w-4 text-muted-foreground shrink-0" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" align="start" className="max-w-sm">
+                            <p className="text-xs">
+                              Detected by scanning YOLO <span className="font-medium">.txt label files on disk</span>: bounding boxes mean Detection, polygons mean Segmentation, a mix of both means Mixed, and no readable labels means Unlabeled.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </p>
+                    {summaryDatasetTypeLoading ? (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground pl-2">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Scanning label files…
                       </div>
-                      {datasetSummaryDisplay.showAnnotationStorageHint ? (
-                        <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
-                          {/* ✅ Explains why Manually Labelled can coexist with 0 .txt counts */}
-                          This row counts YOLO .txt files in storage. Boxes you saved only in the annotation editor live in the database until you export or convert them—so 0 label files here does not mean your work is missing.
-                        </p>
-                      ) : null}
-                    </div>
-                  )}
+                    ) : summaryDatasetType ? (
+                      <div className="pl-2 space-y-1.5">
+                        <Badge
+                          variant={
+                            summaryDatasetType.type === "segmentation"
+                              ? "default"
+                              : summaryDatasetType.type === "mixed"
+                                ? "destructive"
+                                : "secondary"
+                          }
+                        >
+                          {summaryDatasetType.type === "detection"
+                            ? "Detection"
+                            : summaryDatasetType.type === "segmentation"
+                              ? "Segmentation"
+                              : summaryDatasetType.type === "mixed"
+                                ? "Mixed"
+                                : "Unlabeled"}
+                        </Badge>
+                        <p className="text-xs text-muted-foreground">{summaryDatasetType.summary}</p>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground pl-2">Could not determine dataset type.</p>
+                    )}
+                  </div>
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">No dataset details available.</p>
@@ -3441,6 +3506,12 @@ const DatasetManager = () => {
                       folderName={group.folder}
                       files={group.files}
                       datasetId={selectedVersionDatasetId || currentDatasetId || ""}
+                      viewMode={viewMode}
+                      hasPermission={hasPermission}
+                      onImageClick={handleImageClick}
+                      onLabelClick={handleLabelClick}
+                      onDeleteClick={setFileToDelete}
+                      fetchThumbnailAsObjectUrl={fetchThumbnailAsObjectUrl}
                     />
                   ))
                 )}
@@ -3697,75 +3768,6 @@ const DatasetManager = () => {
             <span className="mx-2">•</span>
             <span>ESC Close</span>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={showTypeCheckDialog}
-        onOpenChange={(open) => {
-          setShowTypeCheckDialog(open);
-          if (!open) setTypeCheckResult(null);
-        }}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Dataset type check</DialogTitle>
-            <DialogDescription>
-              {typeCheckResult?.version
-                ? `Scanned YOLO .txt labels for ${typeCheckResult.version}`
-                : "Scanning YOLO .txt labels on disk…"}
-            </DialogDescription>
-          </DialogHeader>
-          {checkingDatasetId && !typeCheckResult ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Reading label files…
-            </div>
-          ) : typeCheckResult ? (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge
-                  variant={
-                    typeCheckResult.type === "segmentation"
-                      ? "default"
-                      : typeCheckResult.type === "mixed"
-                        ? "destructive"
-                        : "secondary"
-                  }
-                >
-                  {typeCheckResult.type === "detection"
-                    ? "Detection"
-                    : typeCheckResult.type === "segmentation"
-                      ? "Segmentation"
-                      : typeCheckResult.type === "mixed"
-                        ? "Mixed"
-                        : "Unlabeled"}
-                </Badge>
-              </div>
-              <p className="text-sm text-foreground">{typeCheckResult.summary}</p>
-              <p className="text-sm text-muted-foreground">{typeCheckResult.recommendation}</p>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="rounded-md border p-2">Images: {typeCheckResult.counts.imageFiles}</div>
-                <div className="rounded-md border p-2">Label files: {typeCheckResult.counts.labelFiles}</div>
-                <div className="rounded-md border p-2">With objects: {typeCheckResult.counts.labeledFiles}</div>
-                <div className="rounded-md border p-2">Empty labels: {typeCheckResult.counts.emptyLabelFiles}</div>
-                <div className="rounded-md border p-2">Box lines: {typeCheckResult.counts.detectionLines}</div>
-                <div className="rounded-md border p-2">Polygon lines: {typeCheckResult.counts.segmentationLines}</div>
-                <div className="rounded-md border p-2">Invalid lines: {typeCheckResult.counts.invalidLines}</div>
-                <div className="rounded-md border p-2">Classes: {typeCheckResult.counts.uniqueClasses}</div>
-              </div>
-              {typeCheckResult.classIds.length > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Class IDs: {typeCheckResult.classIds.join(", ")}
-                </p>
-              )}
-            </div>
-          ) : null}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowTypeCheckDialog(false)}>
-              Close
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 

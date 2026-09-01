@@ -2090,7 +2090,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
         initial="hidden"
         animate="visible"
       >
-        <h3 className="text-2xl font-semibold mb-2">Simulation (Training)</h3>
+        <h3 className="text-2xl font-semibold mb-2">Model Training</h3>
         <p className="text-sm text-muted-foreground mb-6">
           Follow the training workflow: select dataset → choose model & hyperparameters → start training.
         </p>

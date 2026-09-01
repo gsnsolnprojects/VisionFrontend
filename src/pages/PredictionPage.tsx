@@ -3464,7 +3464,7 @@ const PredictionPage = () => {
     >
       <motion.div variants={fadeInUpVariants}>
         <PageHeader
-          title="Prediction (Testing)"
+          title="Testing & Inference"
           description="Test and evaluate your trained models with new data"
         />
       </motion.div>

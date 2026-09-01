@@ -98,7 +98,7 @@ const Dashboard = () => {
       setBreadcrumbs([
         { label: "Dashboard", href: "/dashboard" },
         { label: "Projects", href: "/dashboard/projects" },
-        { label: "Simulation" },
+        { label: "Model Training" },
       ]);
     } else if (activeView === "projects") {
       setBreadcrumbs([
@@ -1185,10 +1185,10 @@ const Dashboard = () => {
         />
       )}
 
-      {/* Manage Projects view (still available via sidebar "Manage Projects") */}
+      {/* Manage Projects view (still available via sidebar "Projects & Datasets") */}
       {activeView === "projects" && (
         <div>
-          <h3 className="text-2xl font-semibold mb-2">Manage Projects</h3>
+          <h3 className="text-2xl font-semibold mb-2">Projects & Datasets</h3>
           <p className="text-xs text-muted-foreground mb-4">
             Select a project to manage its dataset.
           </p>
