@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { List, X, FileText, Search, ZoomIn, ZoomOut, RotateCcw, Maximize2, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, Folder, ChevronRight as ChevronRightIcon, ChevronDown, Trash2, Loader2, Upload, ArrowRight, Info, Pencil, Download, MoreVertical, Tags, Plus, CheckCircle2, Copy } from "lucide-react";
+import { List, X, FileText, Search, ZoomIn, ZoomOut, RotateCcw, Maximize2, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, Folder, ChevronRight as ChevronRightIcon, ChevronDown, Trash2, Loader2, Upload, ArrowRight, Info, Pencil, Download, MoreVertical, Tags, Plus, CheckCircle2, Copy, Layers } from "lucide-react";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { cn } from "@/lib/utils";
 import {
@@ -808,6 +808,7 @@ const DatasetManager = () => {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [filterType, setFilterType] = useState<"all" | "image" | "label">("all");
   const [filterFolder, setFilterFolder] = useState<string>("all");
+  const [filterLabelStatus, setFilterLabelStatus] = useState<"all" | "labeled" | "unlabeled">("all");
 
   // Keyboard navigation state
   const [currentFileIndex, setCurrentFileIndex] = useState<number>(-1);
@@ -839,6 +840,10 @@ const DatasetManager = () => {
   const [addPhotosFolder, setAddPhotosFolder] = useState("unlabeled");
   const [addPhotosFiles, setAddPhotosFiles] = useState<File[]>([]);
   const [addingPhotos, setAddingPhotos] = useState(false);
+  // After adding photos, offer to jump straight into labeling any of them that still need it.
+  const [labelPromptImage, setLabelPromptImage] = useState<string | null>(null);
+  const [labelPromptCount, setLabelPromptCount] = useState(0);
+  const [labelPromptBatchId, setLabelPromptBatchId] = useState<string | null>(null);
   const [deletingVersion, setDeletingVersion] = useState<boolean>(false);
   const [versionDependencies, setVersionDependencies] = useState<{
     hasDependencies: boolean;
@@ -1217,6 +1222,23 @@ const DatasetManager = () => {
     }
   };
 
+  // Group versions by rootDatasetId so a dataset, its augmentations, and its
+  // duplicates (at any depth) render together in the Versions panel.
+  const versionGroups = useMemo(() => {
+    const byRoot = new Map<string, VersionEntry[]>();
+    for (const v of versions) {
+      const key = v.rootDatasetId || v.datasetId; // fallback for pre-backfill data
+      if (!byRoot.has(key)) byRoot.set(key, []);
+      byRoot.get(key)!.push(v);
+    }
+    const groups = Array.from(byRoot.values()).map((members) => {
+      members.sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime());
+      return { members, latest: members[0]?.createdAt };
+    });
+    groups.sort((a, b) => new Date(b.latest ?? 0).getTime() - new Date(a.latest ?? 0).getTime());
+    return groups;
+  }, [versions]);
+
   useEffect(() => {
     if (companyName && displayProjectName) {
       void fetchVersions();
@@ -1504,31 +1526,54 @@ const DatasetManager = () => {
     return Array.from(fileMap.values());
   }, []);
 
+  // Folder::baseName keys for every label file in the dataset (unfiltered) —
+  // separate from the `labeledBaseNames` memo below, which is derived from
+  // `navigableFiles` (already-filtered) and would create a circular
+  // dependency if used here inside the filter itself.
+  const allLabeledBaseNames = useMemo(() => {
+    const set = new Set<string>();
+    metadata?.labeledBaseNames?.forEach((key) => set.add(key));
+    fileManifest.forEach((file) => {
+      if (file.type === "label") set.add(getFileBaseKey(file));
+    });
+    return set;
+  }, [fileManifest, metadata?.labeledBaseNames]);
+
   const getFilteredFiles = useCallback(() => {
     let filtered = fileManifest;
-    
+
     // Apply type filter
     if (filterType !== "all") {
       filtered = filtered.filter(f => f.type === filterType);
     }
-    
+
     // Apply folder filter
     if (filterFolder !== "all") {
       filtered = filtered.filter(f => f.folder === filterFolder);
     }
-    
+
+    // Apply label status filter — only meaningful for images, since a label
+    // (.txt) file has no "labeled" status of its own.
+    if (filterLabelStatus !== "all") {
+      filtered = filtered.filter((f) => {
+        if (f.type !== "image") return false;
+        const labeled = allLabeledBaseNames.has(getFileBaseKey(f));
+        return filterLabelStatus === "labeled" ? labeled : !labeled;
+      });
+    }
+
     // Apply search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(f => 
+      filtered = filtered.filter(f =>
         f.originalName?.toLowerCase().includes(query) ||
         f.name?.toLowerCase().includes(query) ||
         f.folder?.toLowerCase().includes(query)
       );
     }
-    
+
     return filtered;
-  }, [fileManifest, filterType, filterFolder, searchQuery]);
+  }, [fileManifest, filterType, filterFolder, filterLabelStatus, allLabeledBaseNames, searchQuery]);
 
   // Update navigable files when filters change - apply same deduplication
   useEffect(() => {
@@ -2436,6 +2481,21 @@ const DatasetManager = () => {
         }));
       }
       await refreshOpenDatasetFiles(datasetId);
+
+      // Offer to label any newly added images that didn't come with a matching .txt label.
+      const addedEntries = result.details?.added || [];
+      const stem = (name: string) => name.replace(/\.[^./\\]+$/, "");
+      const addedLabelStems = new Set(
+        addedEntries.filter((e) => e.type === "label").map((e) => stem(e.originalName))
+      );
+      const unlabeledAdded = addedEntries.filter(
+        (e) => e.type === "image" && !addedLabelStems.has(stem(e.originalName))
+      );
+      if (unlabeledAdded.length > 0) {
+        setLabelPromptCount(unlabeledAdded.length);
+        setLabelPromptImage(unlabeledAdded[0].storedName || unlabeledAdded[0].originalName);
+        setLabelPromptBatchId(result.batchId || null);
+      }
     } catch (err: unknown) {
       toast({
         title: "Could not add photos",
@@ -3121,8 +3181,31 @@ const DatasetManager = () => {
                       <p className="text-sm text-muted-foreground">Upload a dataset to create your first version</p>
                     </div>
                   ) : (
-                    <div className="space-y-1">
-                      {versions.map((v) => (
+                    <div className="space-y-3">
+                      {versionGroups.map((group) => {
+                        const isGrouped = group.members.length > 1;
+                        // members are sorted newest-first, so the last one is the group's origin
+                        const rootLabel =
+                          group.members[group.members.length - 1]?.version || "Group";
+                        return (
+                        <div
+                          key={group.members[0].datasetId}
+                          className={
+                            isGrouped
+                              ? "rounded-lg border-l-2 border-l-primary/50 bg-primary/[0.05] py-2 pl-3 pr-2 space-y-1"
+                              : ""
+                          }
+                        >
+                          {isGrouped && (
+                            <div className="flex items-center gap-1.5 pb-1 text-xs font-medium text-primary/90">
+                              <Layers className="h-3.5 w-3.5" />
+                              <span>{rootLabel}</span>
+                              <span className="font-normal text-muted-foreground">
+                                &middot; {group.members.length} versions
+                              </span>
+                            </div>
+                          )}
+                      {group.members.map((v) => (
                         <div key={v.datasetId} className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             <button className="text-left" onClick={() => onSelectVersion(v.datasetId)}>
@@ -3273,6 +3356,9 @@ const DatasetManager = () => {
                           </div>
                         </div>
                       ))}
+                        </div>
+                        );
+                      })}
                     </div>
                   )}
               <ProtectedComponent requiredPermission="deleteProjects">
@@ -3555,6 +3641,18 @@ const DatasetManager = () => {
                   </SelectContent>
                 </Select>
 
+                {/* Label Status Filter */}
+                <Select value={filterLabelStatus} onValueChange={(value: "all" | "labeled" | "unlabeled") => setFilterLabelStatus(value)}>
+                  <SelectTrigger className="w-full sm:w-[150px]">
+                    <SelectValue placeholder="Label status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Labels</SelectItem>
+                    <SelectItem value="unlabeled">Unlabeled</SelectItem>
+                    <SelectItem value="labeled">Labeled</SelectItem>
+                  </SelectContent>
+                </Select>
+
                 {/* Sort Order */}
                 <Select
                   value={`${fileSort}-${fileSortOrder}`}
@@ -3577,7 +3675,7 @@ const DatasetManager = () => {
               </div>
               
               {/* Results count */}
-              {searchQuery || filterType !== "all" || filterFolder !== "all" ? (
+              {searchQuery || filterType !== "all" || filterFolder !== "all" || filterLabelStatus !== "all" ? (
                 <div className="text-xs text-muted-foreground">
                   Showing {getFilteredFiles().length} of {fileManifest.length} files
                   {" "}({navigableImageFiles.length} images
@@ -4201,6 +4299,42 @@ const DatasetManager = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Offer to label newly added photos that don't have a matching label yet */}
+      <AlertDialog
+        open={!!labelPromptImage}
+        onOpenChange={(open) => { if (!open) setLabelPromptImage(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Label new photos?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {labelPromptCount === 1
+                ? "1 newly added photo doesn't have a label yet. Would you like to label it now?"
+                : `${labelPromptCount} newly added photos don't have labels yet. Would you like to label them now?`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setLabelPromptImage(null)}>Not now</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const datasetId = selectedVersionDatasetId;
+                if (datasetId && labelPromptImage) {
+                  const batchParam = labelPromptBatchId
+                    ? `&batch=${encodeURIComponent(labelPromptBatchId)}`
+                    : "";
+                  navigate(
+                    `/annotation/${encodeURIComponent(datasetId)}?image=${encodeURIComponent(labelPromptImage)}${batchParam}`
+                  );
+                }
+                setLabelPromptImage(null);
+              }}
+            >
+              Label now
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete one photo */}
       <AlertDialog open={!!fileToDelete} onOpenChange={(open) => { if (!open && !deletingFile) setFileToDelete(null); }}>

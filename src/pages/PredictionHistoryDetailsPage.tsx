@@ -151,7 +151,9 @@ const PredictionHistoryDetailsPage = () => {
   const [corrosionBatch, setCorrosionBatch] = useState<{
     imageCount?: number;
     meanCorrosionPercent?: number;
-    byClass?: Array<{ class: string; meanPercent: number; count: number }>;
+    // Older jobs' stored metadata used `percent` instead of `meanPercent` —
+    // both can show up depending on when the job ran.
+    byClass?: Array<{ class: string; meanPercent?: number; percent?: number; count: number }>;
   } | null>(null);
   const [imageFilter, setImageFilter] = useState<'all' | 'good' | 'defect'>('all');
   const [hasTags, setHasTags] = useState(false);
@@ -442,11 +444,11 @@ const PredictionHistoryDetailsPage = () => {
       <Button
         variant="ghost"
         size="sm"
-        onClick={() => navigate("/project/prediction?tab=history")}
+        onClick={() => navigate(-1)}
         className="px-0"
       >
         <ArrowLeft className="mr-2 h-4 w-4" />
-        Prediction History
+        Back
       </Button>
 
       {loading ? (
@@ -496,9 +498,6 @@ const PredictionHistoryDetailsPage = () => {
               {corrosionBatch && typeof corrosionBatch.meanCorrosionPercent === "number" && (
                 <div className="mt-4 pt-4 border-t space-y-2">
                   <div className="text-sm font-medium">Photo pixel coverage</div>
-                  <p className="text-xs text-muted-foreground">
-                    % of this photo’s pixels tagged as rust, not % of the real steel surface.
-                  </p>
                   <div className="text-xl font-bold">
                     {corrosionBatch.meanCorrosionPercent.toFixed(2)}%
                     <span className="ml-2 text-xs font-normal text-muted-foreground">
@@ -509,7 +508,7 @@ const PredictionHistoryDetailsPage = () => {
                     <ul className="text-sm text-muted-foreground space-y-1">
                       {corrosionBatch.byClass.map((row) => (
                         <li key={row.class}>
-                          {row.class}: {row.meanPercent.toFixed(2)}% ({row.count} instances)
+                          {row.class}: {(row.meanPercent ?? row.percent ?? 0).toFixed(2)}% ({row.count} instances)
                         </li>
                       ))}
                     </ul>

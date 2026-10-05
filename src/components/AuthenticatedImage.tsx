@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/api/config";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
@@ -7,6 +7,11 @@ import { Loader2 } from "lucide-react";
 // re-renders across the app (mirrors the per-page cache pattern already
 // used in PredictionHistoryDetailsPage.tsx, shared here across pages).
 const objectUrlCache = new Map<string, string>();
+
+// A transient failure (a dropped connection, a dev-server restart mid-fetch)
+// shouldn't leave the image stuck on "Failed to load" forever — retry a
+// couple of times with backoff before actually giving up.
+const MAX_AUTO_RETRIES = 2;
 
 /**
  * Renders an image served from an authenticated backend endpoint (e.g.
@@ -24,20 +29,31 @@ export const AuthenticatedImage: React.FC<{
   const [objectUrl, setObjectUrl] = useState<string | null>(objectUrlCache.get(src) || null);
   const [loading, setLoading] = useState(!objectUrlCache.has(src));
   const [error, setError] = useState(false);
-  const mountedRef = useRef(true);
+  // Bumped only by the user's manual "Retry" click once auto-retries are
+  // exhausted — re-enters the effect below without needing `src` to change.
+  const [manualRetryToken, setManualRetryToken] = useState(0);
 
   useEffect(() => {
-    mountedRef.current = true;
+    // Scoped to THIS effect run (i.e. this specific `src`) — unlike a shared
+    // ref, an older in-flight fetch's own `cancelled` stays false forever once
+    // `src` changes again, even though a newer effect run has since set a
+    // ref-based flag back to true. Without this, rapidly switching `src`
+    // (e.g. many cards updating at once when the selected survey changes)
+    // let a stale fetch's late resolution overwrite the current image's
+    // state with a stale result or a spurious "Failed to load".
+    let cancelled = false;
+
     if (objectUrlCache.has(src)) {
       setObjectUrl(objectUrlCache.get(src) || null);
       setLoading(false);
+      setError(false);
       return;
     }
 
     setLoading(true);
     setError(false);
 
-    (async () => {
+    const attemptFetch = async (attempt: number): Promise<void> => {
       try {
         const headers = await getAuthHeaders();
         const res = await fetch(src, { headers });
@@ -45,28 +61,40 @@ export const AuthenticatedImage: React.FC<{
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         objectUrlCache.set(src, url);
-        if (mountedRef.current) {
+        if (!cancelled) {
           setObjectUrl(url);
           setLoading(false);
         }
       } catch (err) {
-        console.warn(`Failed to load authenticated image: ${src}`, err);
-        if (mountedRef.current) {
+        if (cancelled) return;
+        if (attempt < MAX_AUTO_RETRIES) {
+          await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+          if (!cancelled) await attemptFetch(attempt + 1);
+        } else {
+          console.warn(`Failed to load authenticated image after ${attempt + 1} attempt(s): ${src}`, err);
           setError(true);
           setLoading(false);
         }
       }
-    })();
+    };
+
+    attemptFetch(0);
 
     return () => {
-      mountedRef.current = false;
+      cancelled = true;
     };
-  }, [src]);
+  }, [src, manualRetryToken]);
 
   if (error) {
     return (
-      <div className={cn(className, "bg-muted flex items-center justify-center")} style={style}>
+      <div
+        className={cn(className, "bg-muted flex flex-col items-center justify-center gap-1 cursor-pointer")}
+        style={style}
+        onClick={() => setManualRetryToken((t) => t + 1)}
+        title="Click to retry"
+      >
         <span className="text-xs text-muted-foreground">Failed to load</span>
+        <span className="text-xs font-medium text-primary underline">Retry</span>
       </div>
     );
   }

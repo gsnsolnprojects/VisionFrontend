@@ -28,9 +28,6 @@ import {
   type InferenceModelOption,
 } from "@/lib/api/mobileInspect";
 
-const PIXEL_DISCLAIMER =
-  "% of this photo’s pixels tagged as rust, not % of the real steel surface. Phone photos at different distances are not comparable without a framing guide.";
-
 export const SettingsMobileInspectPage: React.FC = () => {
   const { sessionReady, user, profile, company, hasPermission, loading: profileLoading } = useProfile();
   const { toast } = useToast();
@@ -211,7 +208,6 @@ export const SettingsMobileInspectPage: React.FC = () => {
           <AlertTitle>The Android app uses this model</AlertTitle>
           <AlertDescription>
             Phone users never pick a model. They log in with the same VisionM account, name a region, and upload photos.
-            Coverage numbers are {PIXEL_DISCLAIMER}
           </AlertDescription>
         </Alert>
 

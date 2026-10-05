@@ -95,6 +95,8 @@ export const augmentDataset = async (
     augmentationMultiplier?: number;
     targetTrainTotal?: number;
     valTestMultiplier?: number;
+    /** Scope augmentation to just these Image ids (e.g. a newly added-and-labeled batch) instead of the whole dataset. */
+    imageIds?: string[];
   }
 ): Promise<{ datasetId: string; augmentedDatasetId?: string; message?: string }> => {
   const path = `/dataset/${encodeURIComponent(datasetId)}/augment`;
@@ -287,6 +289,12 @@ export const addDatasetFiles = async (
   valCount?: number;
   testCount?: number;
   message?: string;
+  /** Groups the Image docs created by this call, so a follow-up label/augment flow can target just this batch. */
+  batchId?: string | null;
+  details?: {
+    added?: { originalName: string; storedName: string; type: "image" | "label"; folder: string }[];
+    skipped?: unknown[];
+  };
 }> => {
   const formData = new FormData();
   formData.append("folder", folder);

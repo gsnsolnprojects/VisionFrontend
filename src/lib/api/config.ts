@@ -230,15 +230,12 @@ export const fetchWithRetry = async (
       return response;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error("Network error");
-      
-      // Don't retry on connection refused errors - backend is likely not running
-      if (error instanceof TypeError && 
-          (error.message.includes("Failed to fetch") || 
-           error.message.includes("ERR_CONNECTION_REFUSED"))) {
-        throw lastError; // Fail immediately for connection errors
-      }
 
-      // Retry on other network errors
+      // "Failed to fetch" / connection-refused also happens for a backend that's
+      // only briefly unreachable — e.g. mid auto-restart during local development,
+      // or a momentary network drop — not just a backend that's genuinely down.
+      // Retry like any other network error instead of giving up on the first try;
+      // a truly-down backend still fails after maxRetries, same as before.
       if (attempt < maxRetries - 1) {
         await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
         continue;

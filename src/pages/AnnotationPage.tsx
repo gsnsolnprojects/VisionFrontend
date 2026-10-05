@@ -10,6 +10,7 @@ export const AnnotationPage: React.FC = () => {
   const { datasetId } = useParams<{ datasetId: string }>();
   const [searchParams] = useSearchParams();
   const initialImageFilename = searchParams.get("image") || undefined;
+  const batchId = searchParams.get("batch") || undefined;
   const navigate = useNavigate();
   const { hasPermission, loading: profileLoading, userRole, error } = useProfile();
   const { toast } = useToast();
@@ -82,6 +83,7 @@ export const AnnotationPage: React.FC = () => {
         datasetId={datasetId}
         onClose={handleClose}
         initialImageFilename={initialImageFilename}
+        batchId={batchId}
       />
     </div>
   );

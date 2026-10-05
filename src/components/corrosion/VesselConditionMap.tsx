@@ -1,10 +1,50 @@
 import React from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ArrowUp, ArrowDown, Minus } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { SurveyPart } from "@/lib/api/mobileInspect";
+import { partLabel, type SurveyPart } from "@/lib/api/mobileInspect";
 
 function formatPct(n: number | null | undefined): string {
   return typeof n === "number" && Number.isFinite(n) ? `${n.toFixed(2)}%` : "—";
+}
+
+/** Small colored badge showing a change in corrosion % vs the previous survey (overall or per-part). */
+export function SurveyChangeBadge({
+  delta,
+  previousSurveyName,
+}: {
+  delta: number;
+  previousSurveyName?: string;
+}) {
+  const rounded = Math.round(delta * 100) / 100;
+  const Icon = rounded > 0 ? ArrowUp : rounded < 0 ? ArrowDown : Minus;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-0.5 text-sm font-medium",
+        rounded > 0
+          ? "text-red-600 dark:text-red-400"
+          : rounded < 0
+            ? "text-green-600 dark:text-green-400"
+            : "text-muted-foreground"
+      )}
+      title={previousSurveyName ? `vs ${previousSurveyName}` : "vs previous survey"}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {Math.abs(rounded).toFixed(2)}% vs last survey
+    </span>
+  );
+}
+
+function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 }
 
 // viewBox coordinate space the ship art is drawn in — pin positions below
@@ -102,9 +142,28 @@ function SummaryBox({ label, sub, count, colorClass }: { label: string; sub: str
 export function VesselConditionMap({
   parts,
   onSelectArea,
+  vesselName,
+  surveyName,
+  createdAt,
+  updatedAt,
+  partCount,
+  changeFromPreviousSurvey,
+  previousSurveyName,
 }: {
   parts: SurveyPart[];
   onSelectArea?: (regionName: string) => void;
+  /** Display name of the vessel this survey belongs to — shown as the card title. */
+  vesselName?: string;
+  /** Name of this survey — shown alongside the title. */
+  surveyName?: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  /** Number of parts surveyed. Defaults to parts.length when omitted. */
+  partCount?: number;
+  /** Overall mean corrosion % change vs the previous survey for this vessel (positive = worse). */
+  changeFromPreviousSurvey?: number | null;
+  /** Name of the previous survey being compared against, for a tooltip. */
+  previousSurveyName?: string;
 }) {
   const good = parts.filter((p) => p.severityBand === "low");
   const fair = parts.filter((p) => p.severityBand === "medium");
@@ -120,8 +179,20 @@ export function VesselConditionMap({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Vessel condition map</CardTitle>
-        <CardDescription>Areas grouped by condition band. Schematic layout — not a precise deck plan.</CardDescription>
+        <CardTitle className="flex flex-wrap items-baseline gap-x-2">
+          <span>{vesselName || "Vessel condition map"}</span>
+          {surveyName ? (
+            <span className="text-sm font-normal text-muted-foreground">{surveyName}</span>
+          ) : null}
+          {typeof changeFromPreviousSurvey === "number" ? (
+            <SurveyChangeBadge delta={changeFromPreviousSurvey} previousSurveyName={previousSurveyName} />
+          ) : null}
+        </CardTitle>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-xs text-muted-foreground">
+          <span>{partCount ?? parts.length} part{(partCount ?? parts.length) === 1 ? "" : "s"} surveyed</span>
+          <span>Created {formatDateTime(createdAt)}</span>
+          <span>Last edited {formatDateTime(updatedAt)}</span>
+        </div>
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="grid grid-cols-3 gap-3">
@@ -134,37 +205,45 @@ export function VesselConditionMap({
           <div className="rounded-lg bg-muted/40 p-4">
             <div className="relative w-full max-w-2xl mx-auto" style={{ aspectRatio: `${VB_W} / ${VB_H}` }}>
               <ShipSilhouette className="absolute inset-0 w-full h-full" />
-              {parts.map((part, i) => (
-                <button
-                  key={part.regionName}
-                  type="button"
-                  onClick={() => onSelectArea?.(part.regionName)}
-                  className="absolute -translate-x-1/2 -translate-y-1/2 flex items-center justify-center"
-                  style={{ left: `${pinLeftPct(i)}%`, top: `${deckTopPct}%` }}
-                  aria-label={`${part.regionName}, ${formatPct(part.meanCorrosionPercent)} corrosion`}
-                >
-                  <span
-                    className={cn(
-                      "block w-3.5 h-3.5 rounded-full ring-2 ring-card shadow-sm transition-transform hover:scale-125",
-                      part.severityBand ? SEVERITY_DOT[part.severityBand] : "bg-muted-foreground"
-                    )}
-                  />
-                </button>
-              ))}
+              <TooltipProvider delayDuration={100}>
+                {parts.map((part, i) => (
+                  <Tooltip key={part.partKey}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => onSelectArea?.(part.partKey)}
+                        className="absolute -translate-x-1/2 -translate-y-1/2 flex items-center justify-center"
+                        style={{ left: `${pinLeftPct(i)}%`, top: `${deckTopPct}%` }}
+                        aria-label={`${partLabel(part)}, ${formatPct(part.meanCorrosionPercent)} corrosion`}
+                      >
+                        <span
+                          className={cn(
+                            "block w-3.5 h-3.5 rounded-full ring-2 ring-card shadow-sm transition-transform hover:scale-125",
+                            part.severityBand ? SEVERITY_DOT[part.severityBand] : "bg-muted-foreground"
+                          )}
+                        />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      {partLabel(part)} · {formatPct(part.meanCorrosionPercent)}
+                    </TooltipContent>
+                  </Tooltip>
+                ))}
+              </TooltipProvider>
             </div>
 
             <div className="mt-4 flex flex-wrap justify-center gap-2">
               {parts.map((part) => (
                 <button
-                  key={part.regionName}
+                  key={part.partKey}
                   type="button"
-                  onClick={() => onSelectArea?.(part.regionName)}
+                  onClick={() => onSelectArea?.(part.partKey)}
                   className={cn(
                     "px-3 py-1.5 rounded-md text-xs font-medium text-white transition-colors",
                     part.severityBand ? SEVERITY_CHIP_BG[part.severityBand] : "bg-muted-foreground/60"
                   )}
                 >
-                  {part.regionName} · {formatPct(part.meanCorrosionPercent)}
+                  {partLabel(part)} · {formatPct(part.meanCorrosionPercent)}
                 </button>
               ))}
             </div>

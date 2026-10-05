@@ -75,6 +75,10 @@ interface AnnotationWorkspaceProps {
   // not the original upload name) instead of the first image or the restored session image.
   // Used when opening the workspace from a specific unlabeled thumbnail in the file browser.
   initialImageFilename?: string;
+  // When set (from the "Label new photos?" flow after Add Photos), scopes the post-save
+  // "augment this?" prompt to just the images from this add-photos batch instead of the
+  // whole dataset — see batchImages below.
+  batchId?: string;
 }
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -100,6 +104,7 @@ function normalizeDatasetImage(raw: Record<string, unknown>): Image {
       raw.has_annotation === true,
     hasLabels: raw.hasLabels === true || raw.has_labels === true,
     annotationStatus: raw.annotationStatus as Image["annotationStatus"] | undefined,
+    batchId: raw.batchId != null ? String(raw.batchId) : null,
   };
 }
 
@@ -107,6 +112,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   datasetId,
   onClose,
   initialImageFilename,
+  batchId,
 }) => {
   const [annotationShapeMode, setAnnotationShapeMode] = useState<AnnotationShapeMode>("BBOX");
   const [shapeModeLocked, setShapeModeLocked] = useState(false);
@@ -160,6 +166,12 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   
   // Phase 3: Check if categories exist (defined early to avoid initialization errors)
   const hasCategories = categories.length > 0;
+  // Images from the add-photos batch that brought the user here, if any — scopes the
+  // post-save augment prompt to just this batch instead of the whole dataset.
+  const batchImages = useMemo(
+    () => (batchId ? images.filter((img) => img.batchId === batchId) : []),
+    [images, batchId]
+  );
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const [imageMetrics, setImageMetrics] = useState<{
     naturalWidth: number;
@@ -864,10 +876,11 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
 
       const convertModelType = annotationShapeMode === "POLYGON" ? "YOLO_SEG" : "YOLO";
 
-      // Convert to YOLO with category names and unannotated image IDs
+      // Convert to YOLO with category names and unannotated image IDs. Scope to just the
+      // add-photos batch when we came from that flow, instead of converting everything.
       const convertResult = await modelsApi.convertAnnotationsToLabels(datasetId, {
         modelType: convertModelType,
-        imageIds: undefined, // Convert all images
+        imageIds: batchImages.length > 0 ? batchImages.map((img) => img.id) : undefined,
         categories: categoriesForYOLO,
         unannotatedImageIds: unannotatedImageIds, // For empty label files
       });
@@ -901,7 +914,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       });
       setTimeout(() => setSaveStatus("idle"), 3000);
     }
-  }, [annotations, datasetId, categories, hasCategories, markSaved, toast, annotationShapeMode]);
+  }, [annotations, datasetId, categories, hasCategories, markSaved, toast, annotationShapeMode, batchImages]);
 
   // Handle image selection with unsaved changes confirmation.
   // Waits for any in-flight save (e.g. a click-to-mask save still saving in the background)
@@ -2685,15 +2698,27 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         onOpenChange={setShowAugmentDialog}
         currentVersion={augmentDatasetVersion}
         isLoading={augmenting}
-        title="Augment this dataset?"
-        description="Your annotations have been saved and converted. Enter a name for the new augmented version and how many images you want after augmentation."
+        title={batchImages.length > 0 ? "Augment your new photos?" : "Augment this dataset?"}
+        description={
+          batchImages.length > 0
+            ? `${batchImages.length} newly added photo${batchImages.length === 1 ? "" : "s"} ${batchImages.length === 1 ? "was" : "were"} just labeled. Enter a name for the new version and how many total images you want from ${batchImages.length === 1 ? "it" : "them"} — the rest of your dataset carries over unchanged.`
+            : "Your annotations have been saved and converted. Enter a name for the new augmented version and how many images you want after augmentation."
+        }
         cancelLabel="No, skip for now"
-        confirmLabel="Yes, augment dataset"
-        defaultTargetImageCount={Math.max(images.length * 2, images.length || 1)}
+        confirmLabel={batchImages.length > 0 ? "Yes, augment these photos" : "Yes, augment dataset"}
+        defaultTargetImageCount={
+          batchImages.length > 0
+            ? Math.max(batchImages.length * 3, batchImages.length + 1)
+            : Math.max(images.length * 2, images.length || 1)
+        }
         onConfirm={async (versionName, options) => {
           setAugmenting(true);
           try {
-            await datasetsApi.augmentDataset(datasetId, versionName, options);
+            const scopedOptions =
+              batchImages.length > 0
+                ? { ...options, imageIds: batchImages.map((img) => img.id) }
+                : options;
+            await datasetsApi.augmentDataset(datasetId, versionName, scopedOptions);
             setAugmentingDatasetId(datasetId);
             toast({
               title: "Augmentation started",

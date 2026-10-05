@@ -8,6 +8,7 @@ import ResetPassword from "@/pages/ResetPassword";
 import SetPasswordPage from "@/pages/SetPasswordPage";
 import VerifyEmail from "@/pages/VerifyEmail";
 import NotFound from "@/pages/NotFound";
+import ShowcasePage from "@/pages/ShowcasePage";
 import MainLayout from "@/layouts/MainLayout";
 import { ProfileProvider } from "@/contexts/ProfileContext";
 import { useProfile } from "@/hooks/useProfile";
@@ -142,6 +143,8 @@ function App() {
           <Route path="/auth" element={<Auth />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/showcase" element={<ShowcasePage />} />
+          <Route path="/showcase/:projectId" element={<ShowcasePage />} />
 
           {/* Protected app pages - all routes under /dashboard, /account, /dataset, etc. */}
           <Route path="/*" element={<ProtectedRoutes />} />

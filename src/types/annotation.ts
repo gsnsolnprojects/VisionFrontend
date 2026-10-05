@@ -22,6 +22,8 @@ export interface Image {
   /** True when YOLO label file exists on disk (may not yet have DB annotation rows). */
   hasLabels?: boolean;
   annotationStatus?: "unannotated" | "annotated" | "in_review" | "approved";
+  /** Groups images added together via "Add Photos", so we can offer to augment just that batch. */
+  batchId?: string | null;
 }
 
 export interface Category {
