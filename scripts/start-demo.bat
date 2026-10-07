@@ -1,10 +1,11 @@
 @echo off
 setlocal
 rem ===========================================================================
-rem  GSN Showcase - kiosk launcher (Windows)
-rem  Serves the built showcase and opens it fullscreen in Chrome (or Edge).
-rem  Run install-autostart.bat once to start this automatically at login.
-rem  Exit kiosk mode with Alt+F4.
+rem  GSN Showcase - launcher (Windows)
+rem  Serves the built showcase and opens it in a maximised app window in Chrome (or Edge):
+rem  no tabs or address bar, but normal minimise / maximise / close buttons.
+rem  Run create-desktop-shortcut.bat once to get a "GSN Showcase" icon on the Desktop.
+rem  Use the fullscreen button on the page for true fullscreen.
 rem ===========================================================================
 
 if not defined DEMO_PORT set DEMO_PORT=8080
@@ -42,13 +43,13 @@ if not exist "%CHROME%" set "CHROME=%LocalAppData%\Google\Chrome\Application\chr
 set "EDGE=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
 if not exist "%EDGE%" set "EDGE=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
 
-rem A separate browser profile, so kiosk mode works even if the browser is already open.
+rem A separate browser profile, so the app window opens even if the browser is already running.
 set "PROFILE=%LocalAppData%\GSNShowcaseKiosk"
 
 if exist "%CHROME%" (
-  start "" "%CHROME%" --kiosk "%URL%" --user-data-dir="%PROFILE%" --no-first-run --disable-session-crashed-bubble --disable-infobars
+  start "" "%CHROME%" --app="%URL%" --start-maximized --user-data-dir="%PROFILE%" --no-first-run --disable-session-crashed-bubble
 ) else if exist "%EDGE%" (
-  start "" "%EDGE%" --kiosk "%URL%" --edge-kiosk-type=fullscreen --user-data-dir="%PROFILE%" --no-first-run
+  start "" "%EDGE%" --app="%URL%" --start-maximized --user-data-dir="%PROFILE%" --no-first-run
 ) else (
   start "" "%URL%"
 )
