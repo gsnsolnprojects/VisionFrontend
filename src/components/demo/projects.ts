@@ -3,6 +3,7 @@ import { Eye, RadioTower, type LucideIcon } from "lucide-react";
 import { SolutionDemo } from "@/components/demo/vision-m/SolutionDemo";
 import { StudioDemo } from "@/components/demo/vision-m/StudioDemo";
 import { GsnEdgeDemo } from "@/components/demo/gsn-edge/GsnEdgeDemo";
+import { IotArt, VisionArt } from "@/components/demo/CategoryArt";
 
 export type ProjectStatus = "Live" | "Pilot" | "In development";
 
@@ -31,6 +32,8 @@ export interface ShowcaseCategory {
   tagline: string;
   description: string;
   Icon: LucideIcon;
+  /** Designed cover shown on the folder card. */
+  Art: ComponentType;
   /** Tailwind gradient for the folder's glow and accents. */
   accent: string;
   projects: ShowcaseProject[];
@@ -44,6 +47,7 @@ export const SHOWCASE_CATEGORIES: ShowcaseCategory[] = [
     description:
       "Cameras that spot defects on the production line, and the platform to train them. Delivered as a complete station, or as a web app to build your own models.",
     Icon: Eye,
+    Art: VisionArt,
     accent: "from-cyan-400 via-sky-500 to-blue-600",
     projects: [
       {
@@ -77,6 +81,7 @@ export const SHOWCASE_CATEGORIES: ShowcaseCategory[] = [
     tagline: "Connected machines and live plant data",
     description: "Sensors, gateways and dashboards that bring live data from machines, energy meters and assets into one place.",
     Icon: RadioTower,
+    Art: IotArt,
     accent: "from-emerald-400 via-teal-500 to-cyan-600",
     projects: [
       {

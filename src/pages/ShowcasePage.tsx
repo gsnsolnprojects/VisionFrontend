@@ -112,17 +112,9 @@ function PlaceholderCard({ index }: { index: number }) {
   );
 }
 
-/** Fan positions for up to three project covers stacked inside a folder card. */
-const FAN = [
-  { rest: { rotate: -7, x: -70, y: 10 }, hover: { rotate: -12, x: -120, y: 0 } },
-  { rest: { rotate: 6, x: 70, y: 18 }, hover: { rotate: 11, x: 120, y: 6 } },
-  { rest: { rotate: 0, x: 0, y: 0 }, hover: { rotate: 0, x: 0, y: -14 } },
-];
-
 function CategoryCard({ category, index, onOpen }: { category: ShowcaseCategory; index: number; onOpen: () => void }) {
   const { Icon, projects } = category;
   const empty = projects.length === 0;
-  const covers = projects.slice(0, FAN.length);
 
   return (
     <motion.div
@@ -135,47 +127,13 @@ function CategoryCard({ category, index, onOpen }: { category: ShowcaseCategory;
       <div className="absolute left-8 top-0 h-8 w-36 rounded-t-2xl border border-b-0 border-white/10 bg-[#0c1530]" />
       <motion.button
         onClick={onOpen}
-        initial="rest"
-        animate="rest"
-        whileHover="hover"
         className="group relative flex h-full min-h-[460px] w-full flex-col overflow-hidden rounded-3xl rounded-tl-xl border border-white/10 bg-[#0c1530] text-left outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
       >
         <div className={`pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-gradient-to-br ${category.accent} opacity-20 blur-3xl transition-opacity duration-500 group-hover:opacity-35`} />
 
-        {/* Preview: fanned project covers, or an icon while the folder is empty */}
-        <div className="relative flex h-[260px] items-center justify-center overflow-hidden">
-          {empty ? (
-            <div className="relative flex h-28 w-28 items-center justify-center">
-              {[0, 1, 2].map((i) => (
-                <span
-                  key={i}
-                  className="absolute inset-0 animate-ping rounded-full border border-emerald-300/30"
-                  style={{ animationDuration: "3s", animationDelay: `${i}s` }}
-                />
-              ))}
-              <span className={`relative flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br ${category.accent} shadow-2xl shadow-emerald-500/30`}>
-                <Icon className="h-9 w-9 text-white" />
-              </span>
-            </div>
-          ) : (
-            // Rendered back-to-front so the first project sits on top.
-            [...covers].reverse().map((p, i) => {
-              const slot = covers.length === 1 ? 2 : covers.length - 1 - i;
-              return (
-                <motion.div
-                  key={p.id}
-                  variants={FAN[slot]}
-                  transition={{ type: "spring", stiffness: 220, damping: 20 }}
-                  className="absolute h-[170px] w-[290px] overflow-hidden rounded-2xl border border-white/15 shadow-2xl shadow-black/60"
-                >
-                  <img src={p.poster} alt="" className="h-full w-full object-cover" style={{ objectPosition: p.posterPosition }} />
-                  <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-6 text-xs font-semibold text-white">
-                    {p.name}
-                  </span>
-                </motion.div>
-              );
-            })
-          )}
+        {/* Designed cover for the folder */}
+        <div className="relative h-[260px] overflow-hidden">
+          <category.Art />
         </div>
 
         <div className="relative mt-auto p-6 sm:p-8">
