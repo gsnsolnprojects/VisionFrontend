@@ -16,7 +16,7 @@ import {
   Timer,
   TrendingDown,
   Users,
-  WifiOff,
+  FileCheck,
   Zap,
 } from "lucide-react";
 import { DesktopAppPreview } from "./DesktopAppPreview";
@@ -36,7 +36,7 @@ import { scrollToId } from "./media";
 const BENEFITS: Benefit[] = [
   { Icon: CheckCheck, title: "Every part checked", text: "Not random samples. 100% of the line." },
   { Icon: Zap, title: "Instant OK / NOT OK", text: "Bad parts flagged the moment they pass." },
-  { Icon: WifiOff, title: "Works offline on your line", text: "No internet needed at the machine." },
+  { Icon: FileCheck, title: "Every result on record", text: "Photo and verdict saved for every part, ready for audits." },
   { Icon: Handshake, title: "Installed & supported", text: "We set it up, train it and look after it." },
 ];
 
@@ -189,7 +189,6 @@ function LiveFootage() {
     {
       src: "/demo/vision-m/carseat-live.mp4",
       poster: "/demo/vision-m/carseat-live-poster.jpg",
-      ratio: "aspect-[1110/788]",
       startAt: 0,
       title: "Automotive · car seats",
       text: "Tears and stains on upholstery, with an OK / NOT OK call for each seat.",
@@ -197,7 +196,6 @@ function LiveFootage() {
     {
       src: "/demo/vision-m/blister-live.mp4",
       poster: "/demo/vision-m/blister-live-poster.jpg",
-      ratio: "aspect-[992/846]",
       startAt: 2.6,
       title: "Pharma · blister packs",
       text: "Crushed or empty pockets, across green, red, brown, blue and capsule packs.",
@@ -210,11 +208,11 @@ function LiveFootage() {
       title="Now see the real thing"
       subtitle="Unedited recordings of live inspection on real parts: car seats and blister packs, each called OK or NOT OK as it passes the camera."
     >
-      <div className="grid items-start gap-6 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2">
         {clips.map((c) => (
-          <figure key={c.title} className="overflow-hidden rounded-2xl border border-white/10 bg-slate-900">
-            <AutoVideo src={c.src} poster={c.poster} startAt={c.startAt} className={`block w-full object-cover ${c.ratio}`} />
-            <figcaption className="p-5">
+          <figure key={c.title} className="flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-slate-900">
+            <AutoVideo src={c.src} poster={c.poster} startAt={c.startAt} className="block aspect-[4/3] w-full object-cover object-top" />
+            <figcaption className="flex-1 p-5">
               <div className="flex items-center justify-between gap-3">
                 <p className="font-semibold text-white">{c.title}</p>
                 <LiveBadge />
@@ -265,7 +263,7 @@ function Rollout() {
 
 export function SolutionDemo({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
-  const openStudio = () => navigate("/showcase/vision-m-studio");
+  const openStudio = () => navigate("/showcase/vision/vision-m-studio");
 
   return (
     <div className="text-slate-100">

@@ -211,7 +211,7 @@ export function StudioDemo({ onClose }: { onClose: () => void }) {
               Open Studio <ArrowRight className="h-4 w-4" />
             </Link>
             <button
-              onClick={() => navigate("/showcase/vision-m")}
+              onClick={() => navigate("/showcase/vision/vision-m")}
               className="inline-flex items-center gap-2 rounded-xl border border-white/20 px-6 py-3 font-semibold text-white transition hover:bg-white/10"
             >
               See Vision-M for factories

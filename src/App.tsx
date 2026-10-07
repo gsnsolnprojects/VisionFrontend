@@ -144,7 +144,8 @@ function App() {
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/showcase" element={<ShowcasePage />} />
-          <Route path="/showcase/:projectId" element={<ShowcasePage />} />
+          <Route path="/showcase/:categoryId" element={<ShowcasePage />} />
+          <Route path="/showcase/:categoryId/:projectId" element={<ShowcasePage />} />
 
           {/* Protected app pages - all routes under /dashboard, /account, /dataset, etc. */}
           <Route path="/*" element={<ProtectedRoutes />} />
