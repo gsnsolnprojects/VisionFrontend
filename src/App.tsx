@@ -1,6 +1,9 @@
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { useEffect } from "react";
-import Landing from "@/pages/Landing";
+// Previous dark landing page — hidden for now (file kept). To bring it back,
+// restore this import and use <Landing /> on the "/" route below.
+// import Landing from "@/pages/Landing";
+import LandingV2 from "@/pages/LandingV2";
 import Auth from "@/pages/Auth";
 import Dashboard from "@/pages/Dashboard";
 import DatasetManager from "@/pages/DatasetManager";
@@ -139,7 +142,7 @@ function App() {
       <ProfileProvider>
         <Routes>
           {/* Public pages */}
-          <Route path="/" element={<Landing />} />
+          <Route path="/" element={<LandingV2 />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
