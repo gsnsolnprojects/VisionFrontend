@@ -14,6 +14,7 @@ import NotFound from "@/pages/NotFound";
 import ShowcasePage from "@/pages/ShowcasePage";
 import MainLayout from "@/layouts/MainLayout";
 import { ProfileProvider } from "@/contexts/ProfileContext";
+import { ColorThemeProvider } from "@/contexts/ColorThemeContext";
 import { useProfile } from "@/hooks/useProfile";
 import { LoadingState } from "@/components/pages/LoadingState";
 
@@ -140,6 +141,7 @@ function App() {
   return (
     <BrowserRouter>
       <ProfileProvider>
+        <ColorThemeProvider>
         <Routes>
           {/* Public pages */}
           <Route path="/" element={<LandingV2 />} />
@@ -153,6 +155,7 @@ function App() {
           {/* Protected app pages - all routes under /dashboard, /account, /dataset, etc. */}
           <Route path="/*" element={<ProtectedRoutes />} />
         </Routes>
+        </ColorThemeProvider>
       </ProfileProvider>
     </BrowserRouter>
   );

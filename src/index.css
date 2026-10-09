@@ -42,7 +42,85 @@ All colors MUST be HSL.
 }
 
 @layer base {
+  /*
+   * Colour themes. "Vision" (cream / ink / lime) is the default; "Classic" is the
+   * original blue palette, enabled with <html data-theme="classic">. Each theme has
+   * a light set and a dark set (the .dark class), so the light/dark toggle works
+   * with both. See src/lib/colorTheme.ts.
+   */
+
+  /* Vision — light (default) */
   :root {
+    --background: 60 26% 95%;
+    --foreground: 168 10% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 168 10% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 168 10% 10%;
+
+    --primary: 168 10% 10%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 76 29% 90%;
+    --secondary-foreground: 168 10% 10%;
+
+    --muted: 76 29% 90%;
+    --muted-foreground: 129 4% 37%;
+
+    --accent: 69 100% 70%;
+    --accent-foreground: 168 10% 10%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 87 14% 85%;
+    --input: 88 15% 78%;
+    --ring: 78 61% 38%;
+
+    --radius: 0.5rem;
+
+    --success: 142 71% 45%;
+    --warning: 38 92% 50%;
+  }
+
+  /* Vision — dark */
+  .dark {
+    --background: 150 15% 11%;
+    --foreground: 60 26% 95%;
+
+    --card: 131 15% 15%;
+    --card-foreground: 60 26% 95%;
+
+    --popover: 131 15% 15%;
+    --popover-foreground: 60 26% 95%;
+
+    --primary: 69 100% 70%;
+    --primary-foreground: 150 15% 11%;
+
+    --secondary: 133 14% 19%;
+    --secondary-foreground: 60 26% 95%;
+
+    --muted: 135 14% 17%;
+    --muted-foreground: 120 7% 67%;
+
+    --accent: 69 100% 70%;
+    --accent-foreground: 150 15% 11%;
+
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 144 13% 23%;
+    --input: 144 13% 23%;
+    --ring: 69 100% 70%;
+
+    --success: 142 71% 45%;
+    --warning: 38 92% 50%;
+  }
+
+  /* Classic — light (original palette) */
+  html[data-theme="classic"] {
     --background: 0 0% 100%;
     --foreground: 222 47% 11%;
 
@@ -71,13 +149,12 @@ All colors MUST be HSL.
     --input: 214 32% 91%;
     --ring: 201 96% 32%;
 
-    --radius: 0.5rem;
-
     --success: 142 71% 45%;
     --warning: 38 92% 50%;
   }
 
-  .dark {
+  /* Classic — dark (original palette) */
+  html[data-theme="classic"].dark {
     --background: 222 47% 11%;
     --foreground: 0 0% 98%;
 
@@ -119,4 +196,10 @@ All colors MUST be HSL.
   body {
     @apply bg-background text-foreground transition-colors duration-300 ease-in-out;
   }
+}
+
+/* Vision theme: lime text selection, matching the brand highlight */
+html:not([data-theme="classic"]) ::selection {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
 }

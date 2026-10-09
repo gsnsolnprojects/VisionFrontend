@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin";
 
 export default {
   darkMode: ["class"],
@@ -89,5 +90,14 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [
+    require("tailwindcss-animate"),
+    // Theme-only styling (see src/lib/colorTheme.ts):
+    //   vision:      — Vision palette (light or dark), i.e. not the Classic theme
+    //   vision-dark: — Vision palette in dark mode only
+    plugin(({ addVariant }) => {
+      addVariant("vision", 'html:not([data-theme="classic"]) &');
+      addVariant("vision-dark", 'html.dark:not([data-theme="classic"]) &');
+    }),
+  ],
 } satisfies Config;

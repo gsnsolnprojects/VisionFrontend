@@ -80,7 +80,9 @@ export const MetricCard: React.FC<MetricCardProps> = ({
       "dark:hover:translate-y-0",
       accentColor === "blue" && "border-l-4 border-l-blue-500 dark:border-l-blue-400",
       accentColor === "green" && "border-l-4 border-l-green-500 dark:border-l-green-400",
-      accentColor === "primary" && "border-l-4 border-l-primary"
+      accentColor === "primary" && "border-l-4 border-l-primary",
+      // Vision: every metric gets the lime accent bar
+      "vision:border-l-accent"
     )} role="region" aria-label={`${title} metric`}>
       <CardContent className="p-6">
         <div className="flex items-center justify-between gap-4">

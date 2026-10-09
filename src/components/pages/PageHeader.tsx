@@ -22,7 +22,16 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
       <div className="flex items-start justify-between">
         <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-4xl font-bold tracking-tight border-b-2 border-primary/30 pb-2 inline-block">{title}</h1>
+            <h1
+              className={cn(
+                "text-4xl font-bold tracking-tight border-b-2 border-primary/30 pb-2 inline-block",
+                // Vision: lime marker highlight (as on the landing page); a lime underline in dark mode
+                "vision:border-transparent vision:bg-[linear-gradient(transparent_58%,hsl(var(--accent))_58%)]",
+                "vision-dark:bg-none vision-dark:border-accent"
+              )}
+            >
+              {title}
+            </h1>
             {titleBadge}
           </div>
           {description && (

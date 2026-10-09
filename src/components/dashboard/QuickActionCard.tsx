@@ -60,14 +60,15 @@ export const QuickActionCard: React.FC<QuickActionCardProps> = ({
             className={cn(
               "p-3 rounded-lg bg-primary/10 dark:bg-primary/20 transition-colors",
               "group-hover:bg-primary/20 dark:group-hover:bg-primary/30",
-              disabled && "bg-muted dark:bg-muted/50"
+              "vision:bg-accent vision:group-hover:bg-accent",
+              disabled && "bg-muted dark:bg-muted/50 vision:bg-muted vision:group-hover:bg-muted"
             )}
             aria-hidden="true"
           >
-            <Icon 
+            <Icon
               className={cn(
-                "h-6 w-6 text-primary dark:text-primary",
-                disabled && "text-muted-foreground"
+                "h-6 w-6 text-primary dark:text-primary vision:text-accent-foreground",
+                disabled && "text-muted-foreground vision:text-muted-foreground"
               )}
               strokeWidth={1.5}
             />

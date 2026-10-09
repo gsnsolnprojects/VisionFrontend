@@ -318,7 +318,11 @@ export const AppHeader: React.FC = () => {
               onClick={() => navigate("/dashboard")}
             >
               <Building2 className="h-6 w-6 text-primary" />
-              <span className="text-xl font-bold text-primary">VisionM</span>
+              <span className="text-xl font-bold text-primary">
+                VisionM
+                {/* Vision: square brand mark, as on the landing page */}
+                <span aria-hidden="true" className="hidden vision:inline-block ml-1 h-2 w-2 bg-[#88a530]" />
+              </span>
               {profile?.companies?.name && (
                 <div className="hidden md:inline-flex items-center gap-2">
                   <TooltipProvider>

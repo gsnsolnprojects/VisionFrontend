@@ -174,7 +174,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
         "border-r min-h-[calc(100vh-4rem)] h-full",
         "transition-all duration-300 ease-in-out",
         "bg-background dark:bg-background",
-        "bg-slate-50/50",
+        "bg-muted/25",
         isOpen ? "w-64" : "w-16"
       )}>
         <nav className={cn("h-full flex flex-col", isOpen ? "p-4 space-y-1" : "p-3 space-y-2")}>
@@ -242,7 +242,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
                       item.active && isOpen && cn(
                         "bg-primary/10 dark:bg-primary/20",
                         "bg-primary/15",
-                        "border-l-2 border-l-primary"
+                        "border-l-2 border-l-primary",
+                        "vision:bg-accent vision:text-accent-foreground vision:border-l-accent-foreground vision:hover:bg-accent/90"
                       )
                     )}
                     onClick={() => {
@@ -293,13 +294,14 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
                         item.active && cn(
                           "bg-primary/20 dark:bg-primary/30",
                           "border-primary/40",
-                          "shadow-[0_0_12px_hsl(var(--primary)/0.4)]"
+                          "shadow-[0_0_12px_hsl(var(--primary)/0.4)]",
+                          "vision:bg-accent vision:border-accent vision:shadow-none"
                         )
                       )}>
                         <Icon className={cn(
                           "h-5 w-5 text-primary transition-all duration-200",
                           "drop-shadow-[0_0_8px_hsl(var(--primary)/0.5)]",
-                          item.active && "drop-shadow-[0_0_12px_hsl(var(--primary)/0.7)]"
+                          item.active && "drop-shadow-[0_0_12px_hsl(var(--primary)/0.7)] vision:text-accent-foreground vision:drop-shadow-none"
                         )} />
                       </div>
                     )}
@@ -334,7 +336,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
                             child.active && cn(
                               "bg-primary/10 dark:bg-primary/20",
                               "bg-primary/15",
-                              "border-l-2 border-l-primary"
+                              "border-l-2 border-l-primary",
+                              "vision:bg-accent vision:text-accent-foreground vision:border-l-accent-foreground vision:hover:bg-accent/90"
                             )
                           )}
                           onClick={() => {
@@ -427,7 +430,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
                                     location.pathname === `/dataset/${p.id}` && cn(
                                       "bg-primary/10 dark:bg-primary/20",
                                       "bg-primary/15",
-                                      "border-l-2 border-l-primary"
+                                      "border-l-2 border-l-primary",
+                                      "vision:bg-accent vision:text-accent-foreground vision:border-l-accent-foreground vision:hover:bg-accent/90"
                                     )
                                   )}
                                   onClick={() => {
@@ -471,7 +475,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
                           location.pathname === "/project/prediction" && cn(
                             "bg-primary/10 dark:bg-primary/20",
                             "bg-primary/15",
-                            "border-l-2 border-l-primary"
+                            "border-l-2 border-l-primary",
+                            "vision:bg-accent vision:text-accent-foreground vision:border-l-accent-foreground vision:hover:bg-accent/90"
                           )
                         )}
                         onClick={handlePrediction}
@@ -489,7 +494,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
                             location.pathname === "/project/corrosion-dashboard" && cn(
                               "bg-primary/10 dark:bg-primary/20",
                               "bg-primary/15",
-                              "border-l-2 border-l-primary"
+                              "border-l-2 border-l-primary",
+                              "vision:bg-accent vision:text-accent-foreground vision:border-l-accent-foreground vision:hover:bg-accent/90"
                             )
                           )}
                           onClick={handleCorrosionDashboard}
@@ -507,7 +513,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
                           location.pathname === "/demo/extinguisher-ocr" && cn(
                             "bg-primary/10 dark:bg-primary/20",
                             "bg-primary/15",
-                            "border-l-2 border-l-primary"
+                            "border-l-2 border-l-primary",
+                            "vision:bg-accent vision:text-accent-foreground vision:border-l-accent-foreground vision:hover:bg-accent/90"
                           )
                         )}
                         onClick={handleDemoExtinguisherOcr}
