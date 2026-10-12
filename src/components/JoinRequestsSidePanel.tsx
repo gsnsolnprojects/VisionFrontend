@@ -7,9 +7,51 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { RequestItem } from "@/components/RequestItem";
 import { useToast } from "@/hooks/use-toast";
+import { getRoleDisplayName } from "@/lib/utils/roleUtils";
 import { Loader2 } from "lucide-react";
+
+// Roles an admin can give a new member when approving (platform_admin is never offered)
+const APPROVAL_ROLES = [
+  { value: "viewer", description: "Can only view projects, datasets, models and results." },
+  { value: "operator", description: "Can run and monitor inference, and view results." },
+  { value: "ml_engineer", description: "Can upload datasets and train models." },
+  { value: "workspace_admin", description: "Full control of the company, including members and roles." },
+] as const;
+
+type ApprovalRole = (typeof APPROVAL_ROLES)[number]["value"];
+
+// supabase.functions.invoke hides the function's JSON error behind a generic message
+const getFunctionErrorMessage = async (
+  error: { message?: string; context?: { json?: () => Promise<{ error?: string }> } },
+  fallback: string
+): Promise<string> => {
+  try {
+    const body = await error?.context?.json?.();
+    if (body?.error) return body.error;
+  } catch {
+    // ignore - use the generic message
+  }
+  return error?.message || fallback;
+};
 
 interface JoinRequestsSidePanelProps {
   open: boolean;
@@ -43,6 +85,9 @@ export const JoinRequestsSidePanel: React.FC<JoinRequestsSidePanelProps> = ({
   const [requests, setRequests] = useState<JoinRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  // Request waiting for the admin to pick a role before it is approved
+  const [approvalRequest, setApprovalRequest] = useState<JoinRequest | null>(null);
+  const [approvalRole, setApprovalRole] = useState<ApprovalRole>("viewer");
 
   const fetchPendingRequests = async () => {
     if (!adminEmail) return;
@@ -109,29 +154,40 @@ export const JoinRequestsSidePanel: React.FC<JoinRequestsSidePanelProps> = ({
     }
   }, [open, adminEmail]);
 
-  const handleApproveRequest = async (requestId: string) => {
+  // Accept opens the role picker; the request is approved once a role is confirmed
+  const handleOpenApproval = (requestId: string) => {
     const request = requests.find((r) => r.id === requestId);
     if (!request) return;
+    setApprovalRole("viewer");
+    setApprovalRequest(request);
+  };
 
-    setActionLoading(requestId);
+  const handleApproveRequest = async () => {
+    const request = approvalRequest;
+    if (!request) return;
+
+    setActionLoading(request.id);
     try {
       // Use Edge Function to approve request (bypasses RLS)
       // The Edge Function uses service role key and can update any profile
       const { data, error } = await supabase.functions.invoke("approve-workspace-request", {
-        body: { token: request.token },
+        body: { token: request.token, role: approvalRole },
       });
 
       if (error) {
         console.error("[JoinRequestsSidePanel] Approval error:", error);
-        throw error;
+        throw new Error(await getFunctionErrorMessage(error, "Failed to approve request."));
       }
 
-      console.log("[JoinRequestsSidePanel] Request approved successfully:", data);
-
+      const name = request.profiles?.name?.trim() || request.profiles?.email || "The user";
       toast({
         title: "Request approved",
-        description: "The user has been added to the company.",
+        // Only state the role the server confirms it actually saved
+        description: data?.role
+          ? `${name} has been added to the company as ${getRoleDisplayName(data.role)}.`
+          : `${name} has been added to the company.`,
       });
+      setApprovalRequest(null);
 
       // Refresh requests list
       fetchPendingRequests();
@@ -221,7 +277,7 @@ export const JoinRequestsSidePanel: React.FC<JoinRequestsSidePanelProps> = ({
                 <RequestItem
                   key={request.id}
                   request={request}
-                  onApprove={handleApproveRequest}
+                  onApprove={handleOpenApproval}
                   onReject={handleRejectRequest}
                   loading={actionLoading === request.id}
                 />
@@ -230,6 +286,59 @@ export const JoinRequestsSidePanel: React.FC<JoinRequestsSidePanelProps> = ({
           )}
         </div>
       </SheetContent>
+
+      <Dialog
+        open={!!approvalRequest}
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !actionLoading) setApprovalRequest(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Approve join request</DialogTitle>
+            <DialogDescription>
+              Choose what{" "}
+              <span className="font-medium text-foreground">
+                {approvalRequest?.profiles?.name?.trim() || approvalRequest?.profiles?.email || "this user"}
+              </span>{" "}
+              can do in <span className="font-medium text-foreground">{approvalRequest?.company_name}</span>.
+              You can change this later in Team → Members.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <Label htmlFor="approval-role">Role</Label>
+            <Select value={approvalRole} onValueChange={(value) => setApprovalRole(value as ApprovalRole)}>
+              <SelectTrigger id="approval-role">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {APPROVAL_ROLES.map((r) => (
+                  <SelectItem key={r.value} value={r.value}>
+                    {getRoleDisplayName(r.value)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {APPROVAL_ROLES.find((r) => r.value === approvalRole)?.description}
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setApprovalRequest(null)}
+              disabled={!!actionLoading}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleApproveRequest} disabled={!!actionLoading}>
+              {actionLoading ? "Approving..." : `Approve as ${getRoleDisplayName(approvalRole)}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Sheet>
   );
 };

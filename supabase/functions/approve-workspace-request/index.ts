@@ -9,6 +9,11 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
+// Roles an approver may assign to someone joining an existing company.
+// platform_admin is deliberately not assignable here.
+const ASSIGNABLE_ROLES = ["viewer", "operator", "ml_engineer", "workspace_admin"];
+const ADMIN_ROLES = ["workspace_admin", "admin"];
+
 const handler = async (req: Request): Promise<Response> => {
   // Handle CORS preflight FIRST - before any initialization
   if (req.method === "OPTIONS") {
@@ -38,11 +43,13 @@ const handler = async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
     // Support token from query params (for email links) or body (for invoke)
     let token = url.searchParams.get("token");
-    
-    if (!token) {
+    let requestedRole: unknown = url.searchParams.get("role");
+
+    if (!token || !requestedRole) {
       try {
         const body = await req.json().catch(() => ({}));
-        token = body?.token;
+        token = token || body?.token;
+        requestedRole = requestedRole || body?.role;
       } catch {
         // If JSON parsing fails, token stays null
       }
@@ -57,6 +64,32 @@ const handler = async (req: Request): Promise<Response> => {
         }
       );
     }
+
+    // Role for the new member; defaults to viewer when none is given
+    const role = requestedRole ? String(requestedRole) : "viewer";
+    if (!ASSIGNABLE_ROLES.includes(role)) {
+      return new Response(
+        JSON.stringify({ success: false, error: `Invalid role: ${role}` }),
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    // 0) Identify the person approving (must be signed in)
+    const authHeader = req.headers.get("Authorization") || "";
+    const jwt = authHeader.replace(/^Bearer\s+/i, "");
+    const { data: authData } = jwt ? await supabase.auth.getUser(jwt) : { data: { user: null } };
+    const approverUser = authData?.user;
+    if (!approverUser) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Please sign in to approve join requests" }),
+        { status: 401, headers: corsHeaders }
+      );
+    }
+    const { data: approver } = await supabase
+      .from("profiles")
+      .select("email, role, company_id")
+      .eq("id", approverUser.id)
+      .maybeSingle();
 
     // 1) Get join request
     const { data: request, error: fetchError } = await supabase
@@ -75,15 +108,7 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // 2) Update request status to approved
-    const { error: updateError } = await supabase
-      .from("workspace_join_requests")
-      .update({ status: "approved" })
-      .eq("token", token);
-
-    if (updateError) throw updateError;
-
-    // 3) Find or create company
+    // 2) Find the company being joined
     const { data: existingCompany } = await supabase
       .from("companies")
       .select("id")
@@ -93,6 +118,27 @@ const handler = async (req: Request): Promise<Response> => {
 
     let companyId = existingCompany?.id as string | undefined;
     let isNewCompany = false;
+
+    // 3) Only the request's admin, an admin of that company, or a platform admin may approve
+    const approverEmail = (approver?.email || approverUser.email || "").toLowerCase();
+    const canApprove =
+      approver?.role === "platform_admin" ||
+      approverEmail === String(request.admin_email || "").toLowerCase() ||
+      (!!companyId && approver?.company_id === companyId && ADMIN_ROLES.includes(approver?.role ?? ""));
+    if (!canApprove) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Only an admin of this company can approve join requests" }),
+        { status: 403, headers: corsHeaders }
+      );
+    }
+
+    // 4) Update request status to approved
+    const { error: updateError } = await supabase
+      .from("workspace_join_requests")
+      .update({ status: "approved" })
+      .eq("token", token);
+
+    if (updateError) throw updateError;
 
     if (!companyId) {
       // Get requester's email from their profile to set as admin (consistent with Side Panel logic)
@@ -121,20 +167,20 @@ const handler = async (req: Request): Promise<Response> => {
       isNewCompany = true; // Mark that we created a new company
     }
 
-    // 4) Update user profile with company_id and set role
+    // 5) Update user profile with company_id and set role
     // If company was just created, requester is workspace_admin (role='workspace_admin')
-    // Otherwise, user is joining existing company (role='viewer')
+    // Otherwise, user joins the existing company with the role the approver picked
     const { error: profileError } = await supabase
       .from("profiles")
-      .update({ 
+      .update({
         company_id: companyId,
-        role: isNewCompany ? 'workspace_admin' : 'viewer'
+        role: isNewCompany ? 'workspace_admin' : role
       })
       .eq("id", request.user_id);
 
     if (profileError) throw profileError;
 
-    // 5) Fetch user email + name for notification
+    // 6) Fetch user email + name for notification
     const { data: profile, error: profileFetchError } = await supabase
       .from("profiles")
       .select("name, email")
@@ -147,7 +193,7 @@ const handler = async (req: Request): Promise<Response> => {
       const authLink = `${frontendUrl}/auth`;
       const workspaceLink = `${frontendUrl}/dashboard`;
 
-      // 6) Send approval email to user (if Resend is configured)
+      // 7) Send approval email to user (if Resend is configured)
       try {
       await resend.emails.send({
         from: "VisionM <no-reply@visionm.com>",
@@ -178,17 +224,18 @@ const handler = async (req: Request): Promise<Response> => {
       console.warn("Resend API key not configured - skipping approval email");
     }
 
-    // 7) Return JSON response (for Dashboard handler) or HTML (for direct browser access)
+    // 8) Return JSON response (for Dashboard handler) or HTML (for direct browser access)
     const acceptHeader = req.headers.get("accept") || "";
     const isJsonRequest = acceptHeader.includes("application/json") || req.headers.get("content-type")?.includes("application/json");
 
     if (isJsonRequest) {
       // Return JSON for Dashboard handler
       return new Response(
-        JSON.stringify({ 
-          success: true, 
+        JSON.stringify({
+          success: true,
           message: "Request approved",
-          companyId: companyId 
+          companyId: companyId,
+          role: isNewCompany ? "workspace_admin" : role,
         }),
         {
           status: 200,
