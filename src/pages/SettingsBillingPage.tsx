@@ -1,16 +1,193 @@
-import React from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useProfile } from "@/hooks/useProfile";
 import { PageHeader } from "@/components/pages/PageHeader";
 import { LoadingState } from "@/components/pages/LoadingState";
+import { ErrorState } from "@/components/pages/ErrorState";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CreditCard, Check } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Check, Infinity as InfinityIcon, Lock } from "lucide-react";
 import { fadeInUpVariants } from "@/utils/animations";
+import { cn } from "@/lib/utils";
+import { getSubscription, type Plan, type SubscriptionResponse } from "@/lib/api/subscription";
+
+const formatInr = (amount: number) => `₹${amount.toLocaleString("en-IN")}`;
+
+const formatDate = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : null;
+
+const STATUS_LABELS: Record<string, { label: string; className: string }> = {
+  unlimited: { label: "Unlimited (internal)", className: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30" },
+  active: { label: "Active", className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30" },
+  past_due: { label: "Payment due", className: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30" },
+  expired: { label: "Expired", className: "bg-destructive/15 text-destructive border-destructive/30" },
+  cancelled: { label: "Cancelled", className: "bg-destructive/15 text-destructive border-destructive/30" },
+  no_plan: { label: "No plan", className: "bg-muted text-muted-foreground border-border" },
+  none: { label: "No plan", className: "bg-muted text-muted-foreground border-border" },
+};
+
+const UsageRow: React.FC<{ label: string; used: number; limit: number | null }> = ({ label, used, limit }) => {
+  const unlimited = limit === null;
+  const percentage = unlimited || !limit ? 0 : Math.min(100, (used / limit) * 100);
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-sm">
+        <span>{label}</span>
+        <span className="text-muted-foreground">
+          {used} / {unlimited ? "Unlimited" : limit}
+        </span>
+      </div>
+      <Progress value={unlimited ? 0 : percentage} className="h-2" />
+    </div>
+  );
+};
+
+const PlanCard: React.FC<{ plan: Plan; isCurrent: boolean }> = ({ plan, isCurrent }) => (
+  <Card className={cn("flex flex-col", isCurrent && "border-primary")}>
+    <CardHeader>
+      <div className="flex items-center justify-between gap-2">
+        <CardTitle>{plan.name}</CardTitle>
+        {isCurrent && <Badge>Current</Badge>}
+      </div>
+      <CardDescription>{plan.tagline}</CardDescription>
+      <div className="pt-2">
+        <span className="text-3xl font-bold">{formatInr(plan.priceMonthlyInr)}</span>
+        <span className="text-sm text-muted-foreground"> / month</span>
+      </div>
+      <p className="text-xs text-muted-foreground">Best for: {plan.bestFor}</p>
+    </CardHeader>
+    <CardContent className="flex flex-1 flex-col">
+      <ul className="mb-6 flex-1 space-y-2">
+        {plan.highlights.map((item) => (
+          <li key={item} className="flex items-start gap-2 text-sm">
+            <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            {item}
+          </li>
+        ))}
+      </ul>
+      {/* Online payment is connected in Phase 2 (Razorpay) */}
+      <Button className="w-full" variant={isCurrent ? "outline" : "default"} disabled>
+        {isCurrent ? "Current plan" : "Online payment coming soon"}
+      </Button>
+    </CardContent>
+  </Card>
+);
+
+const BillingContent: React.FC<{ data: SubscriptionResponse }> = ({ data }) => {
+  const { plans, subscription, access, usage } = data;
+  const currentPlan = plans.find((p) => p.id === (subscription?.plan ?? access.plan)) ?? null;
+  const status = STATUS_LABELS[access.reason] ?? STATUS_LABELS.no_plan;
+  const paidUntil = formatDate(subscription?.currentPeriodEnd ?? null);
+  const viewOnly = access.mode === "view_only";
+
+  return (
+    <motion.div className="space-y-6" variants={fadeInUpVariants} initial="hidden" animate="visible">
+      {viewOnly && (
+        <Alert>
+          <Lock className="h-4 w-4" />
+          <AlertTitle>Your workspace is view-only</AlertTitle>
+          <AlertDescription>
+            {access.reason === "no_plan"
+              ? "Choose a plan to create projects, train models, run inspections and add team members. Your existing data stays visible."
+              : "Your subscription is not active. Renew it to continue working. Your existing data stays visible."}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Current Plan</CardTitle>
+            <CardDescription>Your company's subscription</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-2xl font-bold">
+                {access.reason === "unlimited" && !currentPlan ? "Unlimited access" : currentPlan?.name ?? "No plan"}
+              </h3>
+              <Badge variant="outline" className={status.className}>
+                {access.reason === "unlimited" && <InfinityIcon className="mr-1 h-3 w-3" />}
+                {status.label}
+              </Badge>
+            </div>
+            {currentPlan && (
+              <p className="text-sm text-muted-foreground">{formatInr(currentPlan.priceMonthlyInr)} / month</p>
+            )}
+            {paidUntil && access.reason !== "unlimited" && (
+              <p className="text-sm text-muted-foreground">
+                {access.reason === "active" ? "Renews on" : "Ended on"} {paidUntil}
+              </p>
+            )}
+            {access.reason === "unlimited" && (
+              <p className="text-sm text-muted-foreground">
+                Internal workspace with full access and no limits, set by GSN for testing.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Usage</CardTitle>
+            <CardDescription>What your company is using against its plan limits</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {usage ? (
+              <>
+                <UsageRow label="Users" used={usage.users} limit={access.limits.users} />
+                <UsageRow label="Projects" used={usage.projects} limit={access.limits.projects} />
+                <UsageRow
+                  label="Live camera streams (running now)"
+                  used={usage.liveCameraStreams}
+                  limit={access.limits.liveCameraStreams}
+                />
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">Join or create a company to see usage.</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div>
+        <h3 className="mb-1 text-lg font-semibold">Plans</h3>
+        <p className="mb-4 text-sm text-muted-foreground">
+          Billed monthly per company. Everyone in your company shares the plan.
+        </p>
+        <div className="grid gap-4 md:grid-cols-3">
+          {plans.map((plan) => (
+            <PlanCard key={plan.id} plan={plan} isCurrent={currentPlan?.id === plan.id && access.mode === "full"} />
+          ))}
+        </div>
+      </div>
+    </motion.div>
+  );
+};
 
 export const SettingsBillingPage: React.FC = () => {
-  const { sessionReady, user, profile, loading } = useProfile();
+  const { sessionReady, user, loading } = useProfile();
+  const [data, setData] = useState<SubscriptionResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadSubscription = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      setData(await getSubscription());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (sessionReady && user) loadSubscription();
+  }, [sessionReady, user, loadSubscription]);
 
   if (!sessionReady || loading) {
     return <LoadingState message="Loading billing information..." />;
@@ -20,127 +197,20 @@ export const SettingsBillingPage: React.FC = () => {
     return null; // Will be redirected by ProtectedRoutes
   }
 
-  // Placeholder data - replace with actual billing data when backend is ready
-  const currentPlan = {
-    name: "Free",
-    price: "$0",
-    period: "month",
-    features: [
-      "Up to 5 projects",
-      "10GB storage",
-      "Basic support",
-    ],
-  };
-
-  const plans = [
-    {
-      name: "Pro",
-      price: "$29",
-      period: "month",
-      features: [
-        "Unlimited projects",
-        "100GB storage",
-        "Priority support",
-        "Advanced analytics",
-      ],
-    },
-    {
-      name: "Enterprise",
-      price: "Custom",
-      period: "",
-      features: [
-        "Unlimited everything",
-        "Custom storage",
-        "Dedicated support",
-        "Custom integrations",
-      ],
-    },
-  ];
-
   return (
     <div>
-      <PageHeader
-        title="Billing & Subscription"
-        description="Manage your subscription and billing information"
-      />
-
-      <motion.div className="space-y-6" variants={fadeInUpVariants} initial="hidden" animate="visible">
-        {/* Current Plan */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Current Plan</CardTitle>
-            <CardDescription>Your current subscription plan</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-2xl font-bold">{currentPlan.name}</h3>
-                  <Badge variant="secondary">Active</Badge>
-                </div>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {currentPlan.price}/{currentPlan.period}
-                </p>
-              </div>
-              <Button variant="outline">Upgrade Plan</Button>
-            </div>
-            <ul className="mt-4 space-y-2">
-              {currentPlan.features.map((feature, index) => (
-                <li key={index} className="flex items-center gap-2 text-sm">
-                  <Check className="h-4 w-4 text-primary" />
-                  {feature}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-
-        {/* Available Plans */}
-        <div>
-          <h3 className="text-lg font-semibold mb-4">Available Plans</h3>
-          <div className="grid gap-4 md:grid-cols-2">
-            {plans.map((plan) => (
-              <Card key={plan.name}>
-                <CardHeader>
-                  <CardTitle>{plan.name}</CardTitle>
-                  <CardDescription>
-                    {plan.price} {plan.period}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2 mb-4">
-                    {plan.features.map((feature, index) => (
-                      <li key={index} className="flex items-center gap-2 text-sm">
-                        <Check className="h-4 w-4 text-primary" />
-                        {feature}
-                      </li>
-                    ))}
-                  </ul>
-                  <Button className="w-full" variant="outline">
-                    {plan.price === "Custom" ? "Contact Sales" : "Upgrade"}
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-
-        {/* Billing Information - Placeholder */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Billing Information</CardTitle>
-            <CardDescription>Manage your payment methods and invoices</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <CreditCard className="h-4 w-4" />
-              <span>Billing management coming soon</span>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+      <PageHeader title="Billing & Subscription" description="Your company's plan, limits and usage" />
+      {isLoading ? (
+        <LoadingState message="Loading billing information..." />
+      ) : error || !data ? (
+        <ErrorState
+          title="Couldn't load billing information"
+          message={error ?? "Please try again."}
+          onRetry={loadSubscription}
+        />
+      ) : (
+        <BillingContent data={data} />
+      )}
     </div>
   );
 };
-
-
