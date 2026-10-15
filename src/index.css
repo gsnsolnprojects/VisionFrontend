@@ -203,3 +203,8 @@ html:not([data-theme="classic"]) ::selection {
   background: hsl(var(--accent));
   color: hsl(var(--accent-foreground));
 }
+
+/* Vision theme: Arial, matching the landing page (Classic keeps the system font) */
+html:not([data-theme="classic"]) {
+  font-family: Arial, Helvetica, sans-serif;
+}

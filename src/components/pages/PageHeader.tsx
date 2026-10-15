@@ -26,8 +26,10 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
               className={cn(
                 "text-4xl font-bold tracking-tight border-b-2 border-primary/30 pb-2 inline-block",
                 // Vision: lime marker highlight (as on the landing page); a lime underline in dark mode
-                "vision:border-transparent vision:bg-[linear-gradient(transparent_58%,hsl(var(--accent))_58%)]",
-                "vision-dark:bg-none vision-dark:border-accent"
+                "vision:border-transparent vision:pb-1 vision:pr-1.5 vision:bg-[linear-gradient(transparent_48%,hsl(var(--accent))_48%)]",
+                "vision-dark:bg-none vision-dark:border-accent",
+                // Vision: landing-page heading style (regular weight, tight letter spacing)
+                "vision:font-normal vision:tracking-[-0.04em]"
               )}
             >
               {title}
