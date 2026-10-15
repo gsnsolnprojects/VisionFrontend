@@ -3,6 +3,10 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 const ROUTE_STORAGE_KEY = "visionm_last_route";
 
+/** Signed-in app pages that are remembered and restored on refresh */
+const APP_ROUTE_PREFIXES = ["/dashboard", "/account", "/dataset", "/project", "/annotation", "/admin"];
+const isAppRoute = (path: string) => APP_ROUTE_PREFIXES.some((prefix) => path.startsWith(prefix));
+
 /**
  * Hook to persist and restore the current route on page refresh
  * Saves route to localStorage and restores it after session hydration
@@ -29,13 +33,7 @@ export const useRoutePersistence = (isSessionReady: boolean, user: any) => {
   useEffect(() => {
     // Only save if we've already restored (session is ready and restore has happened) and user is authenticated
     if (isSessionReady && user && hasRestored.current) {
-      const isAppRoute = location.pathname.startsWith("/dashboard") || 
-                        location.pathname.startsWith("/account") ||
-                        location.pathname.startsWith("/dataset") ||
-                        location.pathname.startsWith("/project") ||
-                        location.pathname.startsWith("/annotation");
-      
-      if (isAppRoute && location.pathname !== "/auth") {
+      if (isAppRoute(location.pathname)) {
         try {
           localStorage.setItem(ROUTE_STORAGE_KEY, location.pathname + location.search);
         } catch (error) {
@@ -55,12 +53,7 @@ export const useRoutePersistence = (isSessionReady: boolean, user: any) => {
       
       // If no saved route exists, save the current route (user's first visit or cleared storage)
       if (!savedRoute) {
-        const isAppRoute = location.pathname.startsWith("/dashboard") || 
-                          location.pathname.startsWith("/account") ||
-                          location.pathname.startsWith("/dataset") ||
-                          location.pathname.startsWith("/annotation");
-        
-        if (isAppRoute && location.pathname !== "/auth") {
+        if (isAppRoute(location.pathname)) {
           try {
             localStorage.setItem(ROUTE_STORAGE_KEY, currentRoute);
             hasRestored.current = true;
@@ -83,12 +76,7 @@ export const useRoutePersistence = (isSessionReady: boolean, user: any) => {
       // This handles the case where user refreshes on a sub-route
       if (savedRoute !== currentRoute) {
         // Validate that saved route is a valid app route
-        const isSavedRouteValid = 
-          savedRoute.startsWith("/dashboard") || 
-          savedRoute.startsWith("/account") || 
-          savedRoute.startsWith("/dataset") ||
-          savedRoute.startsWith("/project") ||
-          savedRoute.startsWith("/annotation");
+        const isSavedRouteValid = isAppRoute(savedRoute);
         
         // Check if current route is a default/landing route that should be replaced
         const isDefaultRoute = 
@@ -97,12 +85,7 @@ export const useRoutePersistence = (isSessionReady: boolean, user: any) => {
           location.pathname === "/auth";
         
         // Check if current route is a valid app route
-        const isCurrentRouteValid = 
-          location.pathname.startsWith("/dashboard") || 
-          location.pathname.startsWith("/account") || 
-          location.pathname.startsWith("/dataset") ||
-          location.pathname.startsWith("/project") ||
-          location.pathname.startsWith("/annotation");
+        const isCurrentRouteValid = isAppRoute(location.pathname);
         
         // Restore if saved route is valid and different from current
         // This handles all cases:
