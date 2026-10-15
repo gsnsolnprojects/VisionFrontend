@@ -501,12 +501,7 @@ export const CompanyMembers: React.FC<CompanyMembersProps> = ({
                               </SelectValue>
                             </SelectTrigger>
                             <SelectContent>
-                              {/* Only platform_admin can assign platform_admin role */}
-                              {userRole === "platform_admin" && (
-                                <SelectItem value="platform_admin">
-                                  Platform Admin
-                                </SelectItem>
-                              )}
+                              {/* platform_admin is never offered: there is exactly one superadmin (GSN), set in the database */}
                               <SelectItem value="workspace_admin">
                                 Workspace Admin
                               </SelectItem>

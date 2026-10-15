@@ -19,8 +19,10 @@ import {
   Menu,
   FlaskConical,
   ShieldAlert,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isSuperadmin } from "@/lib/utils/superadmin";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -162,6 +164,16 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
                 active: isActive("/dashboard/team/members"),
               },
             ],
+          },
+        ]
+      : []),
+    ...(isSuperadmin(userRole, company?.name)
+      ? [
+          {
+            label: "Superadmin",
+            icon: ShieldCheck,
+            href: "/admin",
+            active: isActive("/admin"),
           },
         ]
       : []),

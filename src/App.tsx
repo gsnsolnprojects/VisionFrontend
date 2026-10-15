@@ -36,6 +36,7 @@ import PredictionHistoryDetailsPage from "@/pages/PredictionHistoryDetailsPage";
 import CorrosionDashboardPage from "@/pages/CorrosionDashboardPage";
 import { AnnotationPage } from "@/pages/AnnotationPage";
 import DemoExtinguisherOCRPage from "@/pages/DemoExtinguisherOCRPage";
+import { AdminPage } from "@/pages/AdminPage";
 // Route persistence is handled by useRoutePersistence hook in AppShell
 
 // Protected routes component - gates routes behind authentication
@@ -125,7 +126,10 @@ const ProtectedRoutes = () => {
         <Route path="/account/profile" element={<AccountProfilePage />} />
         <Route path="/account/security" element={<AccountSecurityPage />} />
         <Route path="/account/preferences" element={<AccountPreferencesPage />} />
-        
+
+        {/* Superadmin panel (GSN platform admin only) */}
+        <Route path="/admin" element={<AdminPage />} />
+
         {/* Dataset Manager - keep existing routes for backward compatibility */}
         <Route path="/datasets" element={<DatasetManager />} />
         <Route path="/dataset/:id" element={<DatasetManager />} />
