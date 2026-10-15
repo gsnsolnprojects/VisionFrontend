@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useProfile } from "@/hooks/useProfile";
+import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/pages/PageHeader";
 import { LoadingState } from "@/components/pages/LoadingState";
 import { ErrorState } from "@/components/pages/ErrorState";
@@ -9,14 +10,33 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Check, Infinity as InfinityIcon, Lock } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Check, Infinity as InfinityIcon, Loader2, Lock } from "lucide-react";
 import { fadeInUpVariants } from "@/utils/animations";
 import { cn } from "@/lib/utils";
-import { getSubscription, type Plan, type SubscriptionResponse } from "@/lib/api/subscription";
+import {
+  cancelSubscription,
+  getSubscription,
+  startCheckout,
+  verifyCheckout,
+  type Plan,
+  type PlanId,
+  type SubscriptionResponse,
+} from "@/lib/api/subscription";
+import { openRazorpayCheckout } from "@/lib/razorpayCheckout";
 
 const formatInr = (amount: number) => `₹${amount.toLocaleString("en-IN")}`;
 
-const formatDate = (iso: string | null) =>
+const formatDate = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : null;
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
@@ -45,7 +65,14 @@ const UsageRow: React.FC<{ label: string; used: number; limit: number | null }> 
   );
 };
 
-const PlanCard: React.FC<{ plan: Plan; isCurrent: boolean }> = ({ plan, isCurrent }) => (
+interface PlanAction {
+  label: string;
+  disabled: boolean;
+  onClick?: () => void;
+  loading?: boolean;
+}
+
+const PlanCard: React.FC<{ plan: Plan; isCurrent: boolean; action: PlanAction }> = ({ plan, isCurrent, action }) => (
   <Card className={cn("flex flex-col", isCurrent && "border-primary")}>
     <CardHeader>
       <div className="flex items-center justify-between gap-2">
@@ -68,20 +95,48 @@ const PlanCard: React.FC<{ plan: Plan; isCurrent: boolean }> = ({ plan, isCurren
           </li>
         ))}
       </ul>
-      {/* Online payment is connected in Phase 2 (Razorpay) */}
-      <Button className="w-full" variant={isCurrent ? "outline" : "default"} disabled>
-        {isCurrent ? "Current plan" : "Online payment coming soon"}
+      <Button
+        className="w-full"
+        variant={isCurrent ? "outline" : "default"}
+        disabled={action.disabled || action.loading}
+        onClick={action.onClick}
+      >
+        {action.loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        {action.label}
       </Button>
     </CardContent>
   </Card>
 );
 
-const BillingContent: React.FC<{ data: SubscriptionResponse }> = ({ data }) => {
-  const { plans, subscription, access, usage } = data;
+interface BillingContentProps {
+  data: SubscriptionResponse;
+  busyPlan: PlanId | null;
+  cancelling: boolean;
+  onChoosePlan: (plan: Plan) => void;
+  onCancelClick: () => void;
+}
+
+const BillingContent: React.FC<BillingContentProps> = ({ data, busyPlan, cancelling, onChoosePlan, onCancelClick }) => {
+  const { plans, subscription, access, usage, billing } = data;
   const currentPlan = plans.find((p) => p.id === (subscription?.plan ?? access.plan)) ?? null;
   const status = STATUS_LABELS[access.reason] ?? STATUS_LABELS.no_plan;
-  const paidUntil = formatDate(subscription?.currentPeriodEnd ?? null);
+  const paidUntil = formatDate(subscription?.currentPeriodEnd);
   const viewOnly = access.mode === "view_only";
+  const hasActivePaidPlan = !!subscription?.hasPaidSubscription && subscription.status === "active";
+
+  const actionFor = (plan: Plan): PlanAction => {
+    const isCurrent = currentPlan?.id === plan.id && hasActivePaidPlan;
+    if (isCurrent) return { label: "Current plan", disabled: true };
+    if (!billing.paymentsEnabled) return { label: "Online payment coming soon", disabled: true };
+    if (!billing.canManage) return { label: "Only your workspace admin can choose", disabled: true };
+    if (hasActivePaidPlan) return { label: "Cancel current plan to switch", disabled: true };
+    return {
+      label: `Choose ${plan.name.replace(" Edition", "")}`,
+      disabled: busyPlan !== null,
+      loading: busyPlan === plan.id,
+      onClick: () => onChoosePlan(plan),
+    };
+  };
 
   return (
     <motion.div className="space-y-6" variants={fadeInUpVariants} initial="hidden" animate="visible">
@@ -116,15 +171,26 @@ const BillingContent: React.FC<{ data: SubscriptionResponse }> = ({ data }) => {
             {currentPlan && (
               <p className="text-sm text-muted-foreground">{formatInr(currentPlan.priceMonthlyInr)} / month</p>
             )}
-            {paidUntil && access.reason !== "unlimited" && (
+            {paidUntil && hasActivePaidPlan && (
               <p className="text-sm text-muted-foreground">
-                {access.reason === "active" ? "Renews on" : "Ended on"} {paidUntil}
+                {subscription?.cancelAtPeriodEnd
+                  ? `Cancelled. You keep access until ${paidUntil}.`
+                  : `Renews on ${paidUntil}`}
               </p>
+            )}
+            {paidUntil && !hasActivePaidPlan && access.reason !== "unlimited" && (
+              <p className="text-sm text-muted-foreground">Ended on {paidUntil}</p>
             )}
             {access.reason === "unlimited" && (
               <p className="text-sm text-muted-foreground">
                 Internal workspace with full access and no limits, set by GSN for testing.
               </p>
+            )}
+            {hasActivePaidPlan && billing.canManage && !subscription?.cancelAtPeriodEnd && (
+              <Button variant="outline" size="sm" onClick={onCancelClick} disabled={cancelling}>
+                {cancelling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Cancel subscription
+              </Button>
             )}
           </CardContent>
         </Card>
@@ -155,11 +221,16 @@ const BillingContent: React.FC<{ data: SubscriptionResponse }> = ({ data }) => {
       <div>
         <h3 className="mb-1 text-lg font-semibold">Plans</h3>
         <p className="mb-4 text-sm text-muted-foreground">
-          Billed monthly per company. Everyone in your company shares the plan.
+          Billed monthly per company through Razorpay (UPI, cards, netbanking). Everyone in your company shares the plan.
         </p>
         <div className="grid gap-4 md:grid-cols-3">
           {plans.map((plan) => (
-            <PlanCard key={plan.id} plan={plan} isCurrent={currentPlan?.id === plan.id && access.mode === "full"} />
+            <PlanCard
+              key={plan.id}
+              plan={plan}
+              isCurrent={currentPlan?.id === plan.id && hasActivePaidPlan}
+              action={actionFor(plan)}
+            />
           ))}
         </div>
       </div>
@@ -168,13 +239,17 @@ const BillingContent: React.FC<{ data: SubscriptionResponse }> = ({ data }) => {
 };
 
 export const SettingsBillingPage: React.FC = () => {
-  const { sessionReady, user, loading } = useProfile();
+  const { sessionReady, user, profile, loading } = useProfile();
+  const { toast } = useToast();
   const [data, setData] = useState<SubscriptionResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [busyPlan, setBusyPlan] = useState<PlanId | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
-  const loadSubscription = useCallback(async () => {
-    setIsLoading(true);
+  const loadSubscription = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setIsLoading(true);
     setError(null);
     try {
       setData(await getSubscription());
@@ -188,6 +263,53 @@ export const SettingsBillingPage: React.FC = () => {
   useEffect(() => {
     if (sessionReady && user) loadSubscription();
   }, [sessionReady, user, loadSubscription]);
+
+  const handleChoosePlan = async (plan: Plan) => {
+    setBusyPlan(plan.id);
+    try {
+      const session = await startCheckout(plan.id);
+      const outcome = await openRazorpayCheckout(
+        session,
+        { name: profile?.name, email: profile?.email ?? user?.email, contact: profile?.phone },
+        (message) => toast({ title: "Payment failed", description: message, variant: "destructive" })
+      );
+      if (outcome.status === "dismissed") return;
+
+      await verifyCheckout(outcome.result);
+      toast({ title: "Payment successful", description: `Your company is now on the ${plan.name}.` });
+      await loadSubscription(false);
+    } catch (err) {
+      toast({
+        title: "Payment could not be completed",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setBusyPlan(null);
+    }
+  };
+
+  const handleCancel = async () => {
+    setConfirmCancel(false);
+    setCancelling(true);
+    try {
+      const { cancelsOn } = await cancelSubscription();
+      const date = formatDate(cancelsOn);
+      toast({
+        title: "Subscription cancelled",
+        description: date ? `You keep full access until ${date}.` : "You keep full access until the end of the paid month.",
+      });
+      await loadSubscription(false);
+    } catch (err) {
+      toast({
+        title: "Could not cancel",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   if (!sessionReady || loading) {
     return <LoadingState message="Loading billing information..." />;
@@ -206,11 +328,34 @@ export const SettingsBillingPage: React.FC = () => {
         <ErrorState
           title="Couldn't load billing information"
           message={error ?? "Please try again."}
-          onRetry={loadSubscription}
+          onRetry={() => loadSubscription()}
         />
       ) : (
-        <BillingContent data={data} />
+        <BillingContent
+          data={data}
+          busyPlan={busyPlan}
+          cancelling={cancelling}
+          onChoosePlan={handleChoosePlan}
+          onCancelClick={() => setConfirmCancel(true)}
+        />
       )}
+
+      <AlertDialog open={confirmCancel} onOpenChange={setConfirmCancel}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel your subscription?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You won't be charged again. Your company keeps full access until{" "}
+              {formatDate(data?.subscription?.currentPeriodEnd) ?? "the end of the paid month"}, then the workspace
+              becomes view-only. Your data is kept.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep subscription</AlertDialogCancel>
+            <AlertDialogAction onClick={handleCancel}>Cancel subscription</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

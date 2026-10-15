@@ -36,6 +36,8 @@ export interface SubscriptionResponse {
     status: SubscriptionStatus;
     currentPeriodEnd: string | null;
     isUnlimited: boolean;
+    cancelAtPeriodEnd: boolean;
+    hasPaidSubscription: boolean;
   } | null;
   access: CompanyAccess;
   usage: {
@@ -43,6 +45,23 @@ export interface SubscriptionResponse {
     projects: number;
     liveCameraStreams: number;
   } | null;
+  billing: {
+    canManage: boolean; // workspace / platform admin of the company
+    paymentsEnabled: boolean; // Razorpay keys configured on the backend
+  };
+}
+
+export interface CheckoutSession {
+  keyId: string;
+  subscriptionId: string;
+  plan: { id: PlanId; name: string; priceMonthlyInr: number };
+  company: string | null;
+}
+
+export interface RazorpayPaymentResult {
+  razorpay_payment_id: string;
+  razorpay_subscription_id: string;
+  razorpay_signature: string;
 }
 
 /**
@@ -51,4 +70,26 @@ export interface SubscriptionResponse {
  */
 export async function getSubscription(): Promise<SubscriptionResponse> {
   return apiRequest<SubscriptionResponse>("/subscription");
+}
+
+/** Start paying for a plan: returns the Razorpay subscription to open in Checkout */
+export async function startCheckout(plan: PlanId): Promise<CheckoutSession> {
+  return apiRequest<CheckoutSession>("/subscription/checkout", {
+    method: "POST",
+    body: JSON.stringify({ plan }),
+    maxRetries: 1, // never create two subscriptions because of a retry
+  });
+}
+
+/** Confirm a completed Razorpay Checkout payment; the backend re-checks it with Razorpay */
+export async function verifyCheckout(result: RazorpayPaymentResult): Promise<{ success: boolean; plan: PlanId }> {
+  return apiRequest("/subscription/verify", {
+    method: "POST",
+    body: JSON.stringify(result),
+  });
+}
+
+/** Cancel the company's plan at the end of the month already paid for */
+export async function cancelSubscription(): Promise<{ success: boolean; cancelsOn: string | null }> {
+  return apiRequest("/subscription/cancel", { method: "POST", maxRetries: 1 });
 }
