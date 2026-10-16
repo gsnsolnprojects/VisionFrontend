@@ -1,3 +1,4 @@
+import { liveProjectFilter } from "@/lib/liveProjects";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -333,6 +334,7 @@ export default function CorrosionDashboardPage() {
         .select("id, name")
         .eq("company_id", profile.company_id)
         .eq("project_type", "corrosion")
+        .match(liveProjectFilter)
         .order("name", { ascending: true });
       if (error) throw error;
       const list = (data || []).map((p) => ({ id: String(p.id), name: String(p.name) }));

@@ -1,3 +1,4 @@
+import { liveProjectFilter } from "@/lib/liveProjects";
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -91,6 +92,7 @@ export const ProjectsPage: React.FC = () => {
         .from("projects")
         .select("*")
         .eq("company_id", profile.company_id)
+        .match(liveProjectFilter)
         .order("created_at", { ascending: false });
 
       if (error) throw error;

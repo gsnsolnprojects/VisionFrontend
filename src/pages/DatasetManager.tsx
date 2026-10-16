@@ -1,4 +1,5 @@
 // src/pages/DatasetManager.tsx
+import { liveProjectFilter } from "@/lib/liveProjects";
 import type { RolePermissions } from "@/types/roles";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -981,6 +982,7 @@ const DatasetManager = () => {
         .from("projects")
         .select("id, name, description, company_id")
         .eq("id", projectId)
+        .match(liveProjectFilter)
         .single();
 
       if (projectError || !projectData) {
@@ -4177,6 +4179,7 @@ const DatasetManager = () => {
               .from("projects")
               .select("id, name, description, company_id")
               .eq("id", projectId)
+              .match(liveProjectFilter)
               .single()
               .then(({ data }) => {
                 if (data) setProject(data);

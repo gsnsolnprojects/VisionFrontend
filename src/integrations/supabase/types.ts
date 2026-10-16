@@ -269,6 +269,7 @@ export type Database = {
           id: string
           name: string
           project_type: string
+          publish_to_live: boolean
         }
         Insert: {
           company_id?: string | null
@@ -278,6 +279,7 @@ export type Database = {
           id?: string
           name: string
           project_type?: string
+          publish_to_live?: boolean
         }
         Update: {
           company_id?: string | null
@@ -287,6 +289,7 @@ export type Database = {
           id?: string
           name?: string
           project_type?: string
+          publish_to_live?: boolean
         }
         Relationships: [
           {

@@ -1,4 +1,5 @@
 // src/pages/PredictionPage.tsx
+import { liveProjectFilter } from "@/lib/liveProjects";
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -951,6 +952,7 @@ const PredictionPage = () => {
           .from("projects")
           .select("id, name, description")
           .eq("company_id", profile.company_id)
+          .match(liveProjectFilter)
           .order("created_at", { ascending: false });
 
         if (error) {

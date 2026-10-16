@@ -1,3 +1,4 @@
+import { liveProjectFilter } from "@/lib/liveProjects";
 import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -83,6 +84,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
             .from("projects")
             .select("id, name, description, project_type")
             .eq("company_id", companyId)
+            .match(liveProjectFilter)
             .order("created_at", { ascending: false });
 
           if (error) {

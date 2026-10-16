@@ -1,3 +1,4 @@
+import { liveProjectFilter } from "@/lib/liveProjects";
 import React, { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
@@ -60,6 +61,7 @@ export const SettingsMobileInspectPage: React.FC = () => {
         .from("projects")
         .select("id, name")
         .eq("company_id", profile.company_id)
+        .match(liveProjectFilter)
         .order("name", { ascending: true });
       if (error) throw error;
       setProjects((data || []).map((p) => ({ id: String(p.id), name: String(p.name) })));

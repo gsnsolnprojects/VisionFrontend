@@ -263,8 +263,12 @@ export interface PublishVersion {
 }
 
 export interface PublishProject {
-  company: string;
+  /** Supabase project id; null when datasets exist without a project row */
+  projectId: string | null;
+  company: string | null;
   project: string;
+  /** shown on the live site */
+  publish: boolean;
   versions: PublishVersion[];
 }
 
@@ -274,5 +278,12 @@ export const savePublishSelection = (datasetIds: string[]) =>
   apiRequest<{ success: boolean; selected: number; added: number; removed: number }>("/admin/publish/selection", {
     method: "PUT",
     body: JSON.stringify({ datasetIds }),
+    maxRetries: 1,
+  });
+
+export const setPublishProject = (projectId: string, publish: boolean) =>
+  apiRequest<{ success: boolean; projectId: string; publish: boolean; unticked: number }>("/admin/publish/project", {
+    method: "PUT",
+    body: JSON.stringify({ projectId, publish }),
     maxRetries: 1,
   });

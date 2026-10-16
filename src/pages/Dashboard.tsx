@@ -1,4 +1,5 @@
 // src/pages/Dashboard.tsx
+import { liveProjectFilter } from "@/lib/liveProjects";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -463,6 +464,7 @@ const Dashboard = () => {
         .from("projects")
         .select("*")
         .eq("company_id", companyId)
+        .match(liveProjectFilter)
         .order("created_at", { ascending: false });
 
       if (error) {

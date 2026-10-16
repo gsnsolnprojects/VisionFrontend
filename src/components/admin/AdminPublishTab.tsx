@@ -10,7 +10,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { LoadingState } from "@/components/pages/LoadingState";
 import { ErrorState } from "@/components/pages/ErrorState";
 import { useToast } from "@/hooks/use-toast";
-import { getPublishDatasets, savePublishSelection, type PublishProject, type PublishVersion } from "@/lib/api/admin";
+import {
+  getPublishDatasets,
+  savePublishSelection,
+  setPublishProject,
+  type PublishProject,
+  type PublishVersion,
+} from "@/lib/api/admin";
 import { errorMessage, formatDate } from "./adminFormat";
 
 const formatBytes = (bytes: number): string => {
@@ -36,6 +42,7 @@ export const AdminPublishTab: React.FC = () => {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [onlySelected, setOnlySelected] = useState(false);
+  const [projectBusy, setProjectBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,7 +64,7 @@ export const AdminPublishTab: React.FC = () => {
     load();
   }, [load]);
 
-  const allVersions = useMemo(() => (projects ?? []).flatMap((p) => p.versions), [projects]);
+  const allVersions = useMemo(() => (projects ?? []).filter((p) => p.publish).flatMap((p) => p.versions), [projects]);
 
   // What the current ticks add up to; a model folder shared by two models is counted once
   const summary = useMemo(() => {
@@ -84,6 +91,32 @@ export const AdminPublishTab: React.FC = () => {
       else next.delete(version.id);
       return next;
     });
+  };
+
+  const switchProject = async (project: PublishProject, publish: boolean) => {
+    if (!project.projectId) return;
+    setProjectBusy(project.projectId);
+    try {
+      const result = await setPublishProject(project.projectId, publish);
+      setProjects((prev) => (prev ?? []).map((p) => (p.projectId === project.projectId ? { ...p, publish } : p)));
+      if (!publish) {
+        // The backend also unticked this project's datasets
+        const ids = new Set(project.versions.map((v) => v.id));
+        const drop = (set: Set<string>) => new Set([...set].filter((id) => !ids.has(id)));
+        setSelected(drop);
+        setSaved(drop);
+      }
+      toast({
+        title: publish ? "Project published" : "Project hidden on the live site",
+        description: publish
+          ? `${project.project} shows on the live site.`
+          : `${project.project} won't show on the live site${result.unticked ? `; ${result.unticked} ticked dataset${result.unticked === 1 ? " was" : "s were"} unticked` : ""}.`,
+      });
+    } catch (err) {
+      toast({ title: "Couldn't change the project", description: errorMessage(err), variant: "destructive" });
+    } finally {
+      setProjectBusy(null);
+    }
   };
 
   const toggleProject = (project: PublishProject, on: boolean) => {
@@ -123,7 +156,7 @@ export const AdminPublishTab: React.FC = () => {
 
   const visibleProjects = projects
     .map((p) => ({ ...p, versions: onlySelected ? p.versions.filter((v) => selected.has(v.id)) : p.versions }))
-    .filter((p) => p.versions.length > 0);
+    .filter((p) => !onlySelected || p.versions.length > 0);
 
   return (
     <div className="space-y-6">
@@ -134,8 +167,8 @@ export const AdminPublishTab: React.FC = () => {
             Publish to live
           </CardTitle>
           <CardDescription>
-            Tick the dataset versions to copy to the live AWS site. Models trained on them come along. Saving only
-            records your choice: nothing is copied, moved, or deleted here.
+            Choose which projects show on the live AWS site, and tick the dataset versions to copy there. Models
+            trained on them come along. Nothing is copied, moved, or deleted here.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap items-end justify-between gap-4">
@@ -183,23 +216,38 @@ export const AdminPublishTab: React.FC = () => {
       )}
 
       {visibleProjects.map((project) => {
-        const usable = project.versions.filter((v) => v.onThisServer);
+        const usable = project.publish ? project.versions.filter((v) => v.onThisServer) : [];
         const tickedHere = usable.filter((v) => selected.has(v.id)).length;
         const allTicked = usable.length > 0 && tickedHere === usable.length;
+        const switchId = `publish-${project.projectId ?? project.project}`;
         return (
-          <Card key={`${project.company}/${project.project}`}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <Card key={`${project.company}/${project.project}`} className={project.publish ? undefined : "opacity-70"}>
+            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
               <div>
                 <CardTitle className="text-base">{project.project}</CardTitle>
                 <CardDescription>
-                  {project.company} · {tickedHere} of {usable.length} ticked
+                  {project.company ?? "Unknown company"} ·{" "}
+                  {project.publish ? `${tickedHere} of ${project.versions.filter((v) => v.onThisServer).length} ticked` : "Hidden on the live site"}
                 </CardDescription>
               </div>
-              {usable.length > 0 && (
-                <Button variant="outline" size="sm" onClick={() => toggleProject(project, !allTicked)}>
-                  {allTicked ? "Untick all" : "Tick all"}
-                </Button>
-              )}
+              <div className="flex items-center gap-3">
+                {project.projectId && (
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id={switchId}
+                      checked={project.publish}
+                      disabled={projectBusy === project.projectId}
+                      onCheckedChange={(on) => void switchProject(project, on)}
+                    />
+                    <Label htmlFor={switchId}>Publish project</Label>
+                  </div>
+                )}
+                {usable.length > 0 && (
+                  <Button variant="outline" size="sm" onClick={() => toggleProject(project, !allTicked)}>
+                    {allTicked ? "Untick all" : "Tick all"}
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="overflow-x-auto">
               <Table>
@@ -220,7 +268,7 @@ export const AdminPublishTab: React.FC = () => {
                         <Checkbox
                           checked={selected.has(v.id)}
                           onCheckedChange={(on) => toggle(v, on === true)}
-                          disabled={!v.onThisServer}
+                          disabled={!v.onThisServer || !project.publish}
                           aria-label={`Publish ${project.project} ${v.version}`}
                         />
                       </TableCell>
