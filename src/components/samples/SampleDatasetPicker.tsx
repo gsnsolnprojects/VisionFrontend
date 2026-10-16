@@ -15,7 +15,7 @@ import {
 } from "@/lib/api/samples";
 
 interface SampleDatasetPickerProps {
-  /** Project the chosen dataset is copied into */
+  /** Project the chosen dataset is added to */
   projectName: string;
   /** Called with the new dataset id once it is in the project */
   onAdded: (datasetId: string) => void;
@@ -76,7 +76,7 @@ const DatasetCard: React.FC<{
 /**
  * Playground projects: pick a ready-made GSN dataset instead of uploading one.
  * First the industry folders (each with a cover picture), then the datasets inside the
- * chosen folder, each with a preview picture. One click copies a dataset into the project.
+ * chosen folder, each with a preview picture. One click adds a dataset to the project.
  */
 export const SampleDatasetPicker: React.FC<SampleDatasetPickerProps> = ({ projectName, onAdded }) => {
   const { toast } = useToast();

@@ -1,5 +1,6 @@
 // SimulationView.tsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { getModelQuota, type ModelQuota } from "@/lib/api/models";
 import { motion, AnimatePresence } from "framer-motion";
 import { fadeInUpVariants, staggerContainerVariants } from "@/utils/animations";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -222,6 +223,8 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
   // model selection states
   const [modelType, setModelType] = useState<TrainModelType>("YOLO");
   const [baseModels, setBaseModels] = useState<BaseModelRow[]>([]);
+  // Customers outside GSN: nano/small sizes only and a limited number of trained models
+  const [quota, setQuota] = useState<ModelQuota | null>(null);
   // NOTE: this now stores the selected model key (for both base and trained models)
   const [selectedModelSize, setSelectedModelSize] = useState<string>(""); // key for selected model
 
@@ -1523,6 +1526,29 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
   }, [logs, autoScrollLogs]);
 
   // --- start training: POST /api/train ---
+  const refreshQuota = useCallback(async () => {
+    try {
+      setQuota(await getModelQuota());
+    } catch {
+      setQuota(null); // the backend still enforces the limits
+    }
+  }, []);
+
+  // Load the model allowance, and again whenever a training starts or ends
+  useEffect(() => {
+    void refreshQuota();
+  }, [refreshQuota, jobId]);
+
+  const quotaFull = !!quota?.limited && (quota.used ?? 0) >= (quota.limit ?? 0);
+  const allowedSizes = quota?.limited ? quota.sizes ?? ["n", "s"] : null;
+  const visibleBaseModels = allowedSizes
+    ? baseModels.filter((m) => {
+        if (m.type === "trained") return true;
+        const letter = String(m.key ?? m.size ?? "").match(/([nsmlx])(?:-seg)?$/i)?.[1]?.toLowerCase();
+        return !!letter && allowedSizes.includes(letter);
+      })
+    : baseModels;
+
   const startTraining = async () => {
     if (startTrainingLockRef.current) {
       return;
@@ -3212,7 +3238,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                     <SelectTrigger>
                       <SelectValue
                         placeholder={
-                          baseModels.length
+                          visibleBaseModels.length
                             ? modelType === "RF_DETR"
                               ? "Select RF-DETR model"
                               : "Select YOLO model"
@@ -3221,12 +3247,12 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                       />
                     </SelectTrigger>
                     <SelectContent>
-                      {baseModels.length === 0 ? (
+                      {visibleBaseModels.length === 0 ? (
                         <SelectItem value="fallback" disabled>
                           No models available
                         </SelectItem>
                       ) : (
-                        baseModels.map((m, i) => {
+                        visibleBaseModels.map((m, i) => {
                           const val = m.key ?? `model-${i}`;
                           const label = m.name ?? m.label ?? String(m.filename ?? val);
                           return (
@@ -3801,8 +3827,15 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                   initial="hidden"
                   animate="visible"
                   exit="hidden"
-                  className="flex justify-end"
+                  className="flex flex-wrap items-center justify-end gap-3"
                 >
+                  {quota?.limited && (
+                    <p className={cn("text-sm", quotaFull ? "text-destructive" : "text-muted-foreground")}>
+                      {quotaFull
+                        ? `Your workspace has ${quota.used} of ${quota.limit} trained models. Delete one to train a new one.`
+                        : `${quota.used} of ${quota.limit} trained models used · nano and small sizes`}
+                    </p>
+                  )}
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -3812,6 +3845,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                             size="lg"
                             className="gap-2"
                             disabled={
+                              quotaFull ||
                               (datasetDetails?.trainCount ?? 0) <= 0 ||
                               !(datasetDetails?.status === "ready" || datasetDetails?.status === "ready_to_train")
                             }
@@ -3822,7 +3856,9 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                         </span>
                       </TooltipTrigger>
                       <TooltipContent>
-                        {(datasetDetails?.trainCount ?? 0) <= 0
+                        {quotaFull
+                          ? "Delete a model to free a slot"
+                          : (datasetDetails?.trainCount ?? 0) <= 0
                           ? "Dataset has no training images"
                           : !(datasetDetails?.status === "ready" || datasetDetails?.status === "ready_to_train")
                             ? `Dataset not ready (status: ${datasetDetails?.status ?? "unknown"})`

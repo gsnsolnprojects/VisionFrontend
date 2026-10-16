@@ -1,4 +1,5 @@
 // src/pages/DatasetManager.tsx
+import type { RolePermissions } from "@/types/roles";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -632,12 +633,15 @@ const DatasetManager = () => {
     Record<string, { shown: boolean; inLibrary: boolean; eligible: boolean; reason: string | null }>
   >({});
   const [playgroundBusyId, setPlaygroundBusyId] = useState<string | null>(null);
-  // Playground (plans without their own datasets) picks GSN sample datasets instead of uploading.
-  // Until the plan is known, show neither so the upload form never flashes for Playground users.
+  // Companies outside GSN (and plans without their own datasets) add GSN sample datasets instead
+  // of uploading; the backend enforces the same. Until plan and company are known, show neither
+  // so the upload form never flashes for them.
+  const isGsnWorkspace = (profileCompany?.name ?? "").trim().toLowerCase() === "gsn";
+  const companyKnown = !!profileCompany || !profile?.company_id;
   const planKnown = !!planAccess.data || !profile?.company_id;
-  const samplesOnly = planAccess.data?.access?.features?.trainOnOwnDatasets === false;
-  const showUpload = planKnown && !samplesOnly;
-  const showSamplePicker = planKnown && samplesOnly;
+  const samplesOnly = !isGsnWorkspace || planAccess.data?.access?.features?.trainOnOwnDatasets === false;
+  const showUpload = planKnown && companyKnown && !samplesOnly;
+  const showSamplePicker = planKnown && companyKnown && samplesOnly;
   const [project, setProject] = useState<any>(null);
   const [companyName, setCompanyName] = useState<string>("");
   const [version, setVersion] = useState<string>("");
@@ -1245,6 +1249,14 @@ const DatasetManager = () => {
       });
     }
   };
+
+  // Files of a shared GSN sample (and everything for customers) can't be labelled, added or deleted
+  const viewedVersion = versions.find((v) => v.datasetId === (selectedVersionDatasetId || currentDatasetId));
+  const viewedReadOnly = !isGsnWorkspace || !!viewedVersion?.isLinkedSample;
+  const fileHasPermission = (perm: string) =>
+    viewedReadOnly && (perm === "uploadDatasets" || perm === "annotateDatasets")
+      ? false
+      : hasPermission(perm as keyof RolePermissions);
 
   // ------- Versions: GET /api/datasets?company&project -------
   const fetchVersions = async () => {
@@ -3278,6 +3290,11 @@ const DatasetManager = () => {
                             <button className="text-left" onClick={() => onSelectVersion(v.datasetId)}>
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-medium">{v.version || v.datasetId}</span>
+                                {v.isLinkedSample && (
+                                  <Badge variant="secondary" title="Shared GSN sample dataset (read-only)">
+                                    Sample
+                                  </Badge>
+                                )}
                               </div>
                               <div className="text-xs text-muted-foreground">
                                 {v.createdAt ? new Date(v.createdAt).toLocaleString() : ""}
@@ -3334,6 +3351,7 @@ const DatasetManager = () => {
                             >
                               View
                             </Button>
+                            {isGsnWorkspace && !v.isLinkedSample && (
                             <ProtectedComponent requiredPermission="uploadDatasets">
                               <Button
                                 variant="outline"
@@ -3353,6 +3371,7 @@ const DatasetManager = () => {
                                 <span className="ml-1 hidden sm:inline">Edit classes</span>
                               </Button>
                             </ProtectedComponent>
+                            )}
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button
@@ -3371,6 +3390,8 @@ const DatasetManager = () => {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                                {(isGsnWorkspace || !v.isLinkedSample) && (
+                                <>
                                 <DropdownMenuSub>
                                   <DropdownMenuSubTrigger disabled={downloadingDatasetId === v.datasetId}>
                                     <Download className="mr-2 h-4 w-4" />
@@ -3392,6 +3413,10 @@ const DatasetManager = () => {
                                   </DropdownMenuSubContent>
                                 </DropdownMenuSub>
                                 <DropdownMenuSeparator />
+                                </>
+                                )}
+                                {isGsnWorkspace && !v.isLinkedSample && (
+                                <>
                                 <ProtectedComponent requiredPermission="annotateDatasets">
                                   {v.augmentation_status === "running" ? (
                                     <DropdownMenuItem
@@ -3437,9 +3462,11 @@ const DatasetManager = () => {
                                     </DropdownMenuItem>
                                   )}
                                 </ProtectedComponent>
+                                <DropdownMenuSeparator />
+                                </>
+                                )}
                                 <ProtectedComponent requiredPermission="deleteDatasets">
                                   <>
-                                    <DropdownMenuSeparator />
                                     <DropdownMenuItem
                                       className="text-destructive focus:text-destructive"
                                       disabled={
@@ -3449,7 +3476,7 @@ const DatasetManager = () => {
                                       onClick={() => handleDeleteVersionClick(v.datasetId)}
                                     >
                                       <Trash2 className="mr-2 h-4 w-4" />
-                                      Delete
+                                      {v.isLinkedSample ? "Remove from project" : "Delete"}
                                     </DropdownMenuItem>
                                   </>
                                 </ProtectedComponent>
@@ -3660,10 +3687,12 @@ const DatasetManager = () => {
                     </Tooltip>
                   </TooltipProvider>
                 </CardTitle>
-                <CardDescription>Browse, add, or delete photos in this version</CardDescription>
+                <CardDescription>
+                  {viewedReadOnly ? "Browse the photos in this version" : "Browse, add, or delete photos in this version"}
+                </CardDescription>
               </div>
               <div className="flex items-center gap-2">
-                {hasPermission("uploadDatasets") && (
+                {fileHasPermission("uploadDatasets") && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -3869,7 +3898,7 @@ const DatasetManager = () => {
                       files={group.files}
                       datasetId={selectedVersionDatasetId || currentDatasetId || ""}
                       viewMode={viewMode}
-                      hasPermission={hasPermission}
+                      hasPermission={fileHasPermission}
                       onImageClick={handleImageClick}
                       onLabelClick={handleLabelClick}
                       onDeleteClick={setFileToDelete}

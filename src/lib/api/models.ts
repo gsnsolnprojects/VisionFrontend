@@ -169,3 +169,15 @@ export const deployModelToDevice = async (
     }),
   });
 };
+export interface ModelQuota {
+  /** false for GSN (no limits) */
+  limited: boolean;
+  limit?: number;
+  /** trained models plus trainings still running */
+  used?: number;
+  /** allowed size letters, e.g. ["n", "s"] */
+  sizes?: string[];
+}
+
+/** How many more models the user's company may train (customers outside GSN are limited) */
+export const getModelQuota = () => apiRequest<ModelQuota>("/models/quota", { maxRetries: 1 });

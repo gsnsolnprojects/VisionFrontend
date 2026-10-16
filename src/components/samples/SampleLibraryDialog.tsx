@@ -25,17 +25,17 @@ interface SampleLibraryDialogProps {
   kind: Kind;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Name of the project the copy goes into */
+  /** Name of the project the sample is added to */
   projectName: string;
-  /** Called with the new dataset id / model id once the copy exists */
+  /** Called with the new dataset id / model id once the sample is added */
   onAdded: (id: string) => void;
 }
 
 const MODEL_TYPE_LABEL: Record<string, string> = { YOLO: "YOLO", YOLO_SEG: "YOLO Segmentation", RF_DETR: "RF-DETR" };
 
 /**
- * Pick a GSN sample dataset or model and copy it into the current project.
- * The copy is independent: the user can train on it, run inference with it or delete it.
+ * Pick a GSN sample dataset or model and add it to the current project as a read-only
+ * link to GSN's shared copy: the user can train on it, run inference with it or remove it.
  */
 export const SampleLibraryDialog: React.FC<SampleLibraryDialogProps> = ({
   kind,
@@ -128,8 +128,9 @@ export const SampleLibraryDialog: React.FC<SampleLibraryDialogProps> = ({
         <DialogHeader>
           <DialogTitle>Add a sample {noun}</DialogTitle>
           <DialogDescription>
-            Ready-made {noun}s from GSN. Adding one copies it into <span className="font-medium">{projectName}</span>,
-            so you can {kind === "datasets" ? "train a model on it" : "run inference with it"} straight away.
+            Ready-made {noun}s from GSN. Adding one puts it in <span className="font-medium">{projectName}</span>, so
+            you can {kind === "datasets" ? "train a model on it" : "run inference with it"} straight away. Samples are
+            shared and read-only.
           </DialogDescription>
         </DialogHeader>
 
