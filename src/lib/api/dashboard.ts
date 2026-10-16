@@ -1,4 +1,4 @@
-import { getAuthHeaders, apiUrl } from "@/lib/api/config";
+import { getAuthHeaders, apiUrl, apiRequest } from "@/lib/api/config";
 
 export interface ProjectSummaryResponse {
   company: string;
@@ -65,3 +65,18 @@ export async function deleteProject(
   }
   return data as DeleteProjectResponse;
 }
+
+export interface LearningProgress {
+  /** datasets in the company (incl. sample links) */
+  datasets: number;
+  /** GSN sample datasets added as links */
+  sampleDatasets: number;
+  /** models the company trained itself */
+  models: number;
+  /** finished predictions */
+  predictions: number;
+}
+
+/** GET /api/dashboard/learning-progress - counts behind the Playground learning path */
+export const getLearningProgress = () =>
+  apiRequest<LearningProgress>("/dashboard/learning-progress", { maxRetries: 1 });

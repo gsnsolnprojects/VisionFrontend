@@ -45,6 +45,7 @@ import ProfileCompletionDialog from "@/components/ProfileCompletionDialog";
 import { SimulationView } from "@/components/SimulationView";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
+import { PlaygroundOverview } from "@/components/dashboard/PlaygroundOverview";
 import { RoleBadge } from "@/components/RoleBadge";
 import { usePlanAccess, PLAN_REQUIRED_MESSAGE, BILLING_ROUTE } from "@/contexts/plan-access-context";
 
@@ -56,6 +57,9 @@ const Dashboard = () => {
   const { toast } = useToast();
   const { sessionReady, profile, user, isAdmin: contextIsAdmin, company, reloadProfile, loading: profileLoading, userRole } = useProfile();
   const planAccess = usePlanAccess();
+  // Playground workspaces (never GSN itself) get the learning-path overview
+  const isPlaygroundWorkspace =
+    planAccess.data?.access?.plan === "playground" && (company?.name ?? "").trim().toLowerCase() !== "gsn";
 
   const [projects, setProjects] = useState<any[]>([]);
   const [showCompanyDialog, setShowCompanyDialog] = useState(false);
@@ -1218,11 +1222,15 @@ const Dashboard = () => {
 
       {/* Dashboard Overview - shown when user has a company */}
       {activeView === "overview" && profile?.company_id && (
-        <DashboardOverview 
-          projects={projects}
-          profile={profile}
-          onCreateProject={openCreateProject}
-        />
+        isPlaygroundWorkspace ? (
+          <PlaygroundOverview projects={projects} onCreateProject={openCreateProject} />
+        ) : (
+          <DashboardOverview
+            projects={projects}
+            profile={profile}
+            onCreateProject={openCreateProject}
+          />
+        )
       )}
 
       {/* Manage Projects view (still available via sidebar "Projects & Datasets") */}

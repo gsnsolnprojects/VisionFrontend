@@ -1,4 +1,5 @@
 // src/pages/DatasetManager.tsx
+import { markLearningStep } from "@/lib/learningProgress";
 import { liveProjectFilter } from "@/lib/liveProjects";
 import type { RolePermissions } from "@/types/roles";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
@@ -2291,6 +2292,7 @@ const DatasetManager = () => {
   // ------- Select a version and load everything to resume work -------
   const onSelectVersion = async (datasetId: string) => {
     console.log('🔍 [DEBUG] onSelectVersion called for datasetId:', datasetId);
+    markLearningStep(user?.id, "explored-dataset"); // Playground learning path: "Explore the images and labels"
 
     // Abort any in-flight fetches from a previous selection
     if (datasetViewAbortControllerRef.current) {
