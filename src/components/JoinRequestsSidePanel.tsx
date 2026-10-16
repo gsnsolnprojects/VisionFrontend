@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { RequestItem } from "@/components/RequestItem";
 import { useToast } from "@/hooks/use-toast";
+import { usePlanAccess, memberLimitMessage } from "@/contexts/plan-access-context";
 import { getRoleDisplayName } from "@/lib/utils/roleUtils";
 import { Loader2 } from "lucide-react";
 
@@ -82,6 +83,7 @@ export const JoinRequestsSidePanel: React.FC<JoinRequestsSidePanelProps> = ({
   onRequestProcessed,
 }) => {
   const { toast } = useToast();
+  const planAccess = usePlanAccess();
   const [requests, setRequests] = useState<JoinRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -165,6 +167,12 @@ export const JoinRequestsSidePanel: React.FC<JoinRequestsSidePanelProps> = ({
   const handleApproveRequest = async () => {
     const request = approvalRequest;
     if (!request) return;
+
+    const limitMessage = memberLimitMessage(planAccess.data);
+    if (limitMessage) {
+      toast({ title: "Can't add another member", description: limitMessage, variant: "destructive" });
+      return;
+    }
 
     setActionLoading(request.id);
     try {

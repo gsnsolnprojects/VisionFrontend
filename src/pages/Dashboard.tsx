@@ -45,6 +45,7 @@ import { SimulationView } from "@/components/SimulationView";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
 import { RoleBadge } from "@/components/RoleBadge";
+import { usePlanAccess, PLAN_REQUIRED_MESSAGE, BILLING_ROUTE } from "@/contexts/plan-access-context";
 
 type ViewMode = "overview" | "projects" | "simulation" | "members";
 
@@ -53,6 +54,7 @@ const Dashboard = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const { sessionReady, profile, user, isAdmin: contextIsAdmin, company, reloadProfile, loading: profileLoading, userRole } = useProfile();
+  const planAccess = usePlanAccess();
 
   const [projects, setProjects] = useState<any[]>([]);
   const [showCompanyDialog, setShowCompanyDialog] = useState(false);
@@ -1048,7 +1050,28 @@ const Dashboard = () => {
       setShowCompanyDialog(true);
       return;
     }
+    if (!planAllowsNewProject()) return;
     setShowProjectDialog(true);
+  };
+
+  /** Plan check for creating a project (no plan -> billing; plan's project limit). The database enforces the same rule. */
+  const planAllowsNewProject = (): boolean => {
+    if (planAccess.isViewOnly) {
+      toast({ title: "Plan required", description: PLAN_REQUIRED_MESSAGE, variant: "destructive" });
+      if (planAccess.data?.billing?.canManage) navigate(BILLING_ROUTE);
+      return false;
+    }
+    const projectLimit = planAccess.data?.access?.limits?.projects;
+    const projectCount = Math.max(projects.length, planAccess.data?.usage?.projects ?? 0);
+    if (typeof projectLimit === "number" && projectCount >= projectLimit) {
+      toast({
+        title: "Project limit reached",
+        description: `Your plan includes ${projectLimit} project${projectLimit === 1 ? "" : "s"}. Upgrade in Settings → Billing for more.`,
+        variant: "destructive",
+      });
+      return false;
+    }
+    return true;
   };
 
   const handleCreateProject = async () => {
@@ -1067,6 +1090,11 @@ const Dashboard = () => {
         description: "No authenticated user or company found.",
         variant: "destructive",
       });
+      return;
+    }
+
+    if (!planAllowsNewProject()) {
+      setShowProjectDialog(false);
       return;
     }
 

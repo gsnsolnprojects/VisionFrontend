@@ -1,5 +1,8 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+
+/** Playground buttons start sign-up; after creating a company the app asks them to pay for the plan */
+const PLAYGROUND_SIGNUP = "/auth?mode=signup&plan=playground";
 
 /**
  * Vision-M landing page (light "A new way to see quality" design).
@@ -104,6 +107,7 @@ const FAQS: { q: string; a: string }[] = [
 ];
 
 const LandingV2 = () => {
+  const navigate = useNavigate();
   const [audience, setAudience] = useState<Audience>("business");
   const [showOverlay, setShowOverlay] = useState(true);
   const [industryIndex, setIndustryIndex] = useState(0);
@@ -228,7 +232,7 @@ const LandingV2 = () => {
             <div className="hero-actions">
               <button
                 className="btn"
-                onClick={() => openEnquiry(isStudent ? "Playground · ₹999/month" : "Industrial demo")}
+                onClick={() => (isStudent ? navigate(PLAYGROUND_SIGNUP) : openEnquiry("Industrial demo"))}
               >
                 {isStudent ? "Explore Playground ↗" : "Explore my use case ↗"}
               </button>
@@ -315,9 +319,9 @@ const LandingV2 = () => {
                   <span>Aspiring AI engineers</span>
                   <span>Faculty &amp; labs</span>
                 </div>
-                <a className="textlink" href="#plans">
+                <Link className="textlink" to={PLAYGROUND_SIGNUP}>
                   Explore Playground <span>↗</span>
-                </a>
+                </Link>
               </article>
               <article className="journey">
                 <span className="num">02 — EVALUATE &amp; APPLY</span>
@@ -489,9 +493,9 @@ const LandingV2 = () => {
                   <li>Consider practical project ideas</li>
                   <li>Connect learning to visual inspection</li>
                 </ul>
-                <button className="btn light" onClick={() => openEnquiry("Playground · ₹999/month")}>
+                <Link className="btn light" to={PLAYGROUND_SIGNUP}>
                   Explore Playground ↗
-                </button>
+                </Link>
               </article>
               <article className="price featured">
                 <div className="badge">For use-case evaluation</div>

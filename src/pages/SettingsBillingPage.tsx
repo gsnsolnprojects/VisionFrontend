@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useProfile } from "@/hooks/useProfile";
 import { useToast } from "@/hooks/use-toast";
+import { usePlanAccess } from "@/contexts/plan-access-context";
 import { PageHeader } from "@/components/pages/PageHeader";
 import { LoadingState } from "@/components/pages/LoadingState";
 import { ErrorState } from "@/components/pages/ErrorState";
@@ -241,6 +242,7 @@ const BillingContent: React.FC<BillingContentProps> = ({ data, busyPlan, cancell
 export const SettingsBillingPage: React.FC = () => {
   const { sessionReady, user, profile, loading } = useProfile();
   const { toast } = useToast();
+  const planAccess = usePlanAccess();
   const [data, setData] = useState<SubscriptionResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -277,7 +279,7 @@ export const SettingsBillingPage: React.FC = () => {
 
       await verifyCheckout(outcome.result);
       toast({ title: "Payment successful", description: `Your company is now on the ${plan.name}.` });
-      await loadSubscription(false);
+      await Promise.all([loadSubscription(false), planAccess.refresh()]);
     } catch (err) {
       toast({
         title: "Payment could not be completed",

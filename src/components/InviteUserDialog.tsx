@@ -8,6 +8,7 @@ import {
   type InviteUserFormData,
 } from "@/lib/validations/authSchemas";
 import { useToast } from "@/hooks/use-toast";
+import { usePlanAccess, memberLimitMessage } from "@/contexts/plan-access-context";
 import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
@@ -20,6 +21,7 @@ export const InviteUserDialog: React.FC<Props> = ({
   accessToken,
 }) => {
   const { toast } = useToast();
+  const planAccess = usePlanAccess();
   const [loading, setLoading] = useState(false);
   const [lastInviteLink, setLastInviteLink] = useState<string | null>(null);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
@@ -63,6 +65,12 @@ export const InviteUserDialog: React.FC<Props> = ({
         description: "Company id missing",
         variant: "destructive",
       });
+      return;
+    }
+
+    const limitMessage = memberLimitMessage(planAccess.data);
+    if (limitMessage) {
+      toast({ title: "Can't invite another member", description: limitMessage, variant: "destructive" });
       return;
     }
 

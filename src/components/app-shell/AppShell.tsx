@@ -5,6 +5,8 @@ import { AppHeader } from "./AppHeader";
 import { AppSidebar } from "./AppSidebar";
 import { AppBreadcrumbs } from "./Breadcrumbs";
 import { BreadcrumbProvider } from "./breadcrumb-context";
+import { PlanRequiredBanner } from "./PlanRequiredBanner";
+import { PlanAccessProvider } from "@/contexts/PlanAccessProvider";
 import { SidebarProvider, useSidebar } from "./sidebar-context";
 import { useProfile } from "@/hooks/useProfile";
 import { useRoutePersistence } from "@/hooks/useRoutePersistence";
@@ -232,6 +234,7 @@ const AppShellContent = () => {
         >
           <div className="container mx-auto px-4 py-6 max-w-7xl">
             <AppBreadcrumbs className="mb-3" />
+            <PlanRequiredBanner />
             <Outlet />
           </div>
         </main>
@@ -249,7 +252,9 @@ export const AppShell = () => {
   return (
     <BreadcrumbProvider>
       <SidebarProvider>
-        <AppShellContent />
+        <PlanAccessProvider>
+          <AppShellContent />
+        </PlanAccessProvider>
       </SidebarProvider>
     </BreadcrumbProvider>
   );
