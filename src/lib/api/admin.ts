@@ -234,3 +234,45 @@ export const deleteSampleLibraryItem = (itemId: string, confirmName: string) =>
     body: JSON.stringify({ confirmName }),
     maxRetries: 1,
   });
+
+// ---------- Publish to live (local setup only) ----------
+
+export interface PublishModel {
+  id: string;
+  modelId: string;
+  modelType: string;
+  modelVersion: string;
+  createdAt: string | null;
+  folder: string;
+  onThisServer: boolean;
+  sizeBytes: number;
+}
+
+export interface PublishVersion {
+  id: string;
+  company: string;
+  project: string;
+  version: string;
+  status: string;
+  totalImages: number;
+  createdAt: string | null;
+  selected: boolean;
+  onThisServer: boolean;
+  sizeBytes: number;
+  models: PublishModel[];
+}
+
+export interface PublishProject {
+  company: string;
+  project: string;
+  versions: PublishVersion[];
+}
+
+export const getPublishDatasets = () => apiRequest<{ projects: PublishProject[] }>("/admin/publish/datasets", { maxRetries: 1 });
+
+export const savePublishSelection = (datasetIds: string[]) =>
+  apiRequest<{ success: boolean; selected: number; added: number; removed: number }>("/admin/publish/selection", {
+    method: "PUT",
+    body: JSON.stringify({ datasetIds }),
+    maxRetries: 1,
+  });
