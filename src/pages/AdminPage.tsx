@@ -10,6 +10,7 @@ import { AdminUsersTab } from "@/components/admin/AdminUsersTab";
 import { AdminCompaniesTab } from "@/components/admin/AdminCompaniesTab";
 import { AdminRevenueTab } from "@/components/admin/AdminRevenueTab";
 import { AdminJobsTab } from "@/components/admin/AdminJobsTab";
+import { AdminSampleLibraryTab } from "@/components/admin/AdminSampleLibraryTab";
 
 const TABS = [
   { value: "overview", label: "Overview" },
@@ -17,6 +18,7 @@ const TABS = [
   { value: "companies", label: "Companies" },
   { value: "revenue", label: "Revenue" },
   { value: "jobs", label: "Jobs & activity" },
+  { value: "samples", label: "Sample library" },
 ] as const;
 
 type TabValue = (typeof TABS)[number]["value"];
@@ -66,6 +68,9 @@ export const AdminPage: React.FC = () => {
         </TabsContent>
         <TabsContent value="jobs">
           <AdminJobsTab />
+        </TabsContent>
+        <TabsContent value="samples">
+          <AdminSampleLibraryTab />
         </TabsContent>
       </Tabs>
     </div>

@@ -56,7 +56,9 @@ import {
   AlertTriangle,
   FolderOpen,
   Smartphone,
+  Plus,
 } from "lucide-react";
+import { SampleLibraryDialog } from "@/components/samples/SampleLibraryDialog";
 import { cn } from "@/lib/utils";
 import {
   AlertDialog,
@@ -494,6 +496,7 @@ const PredictionPage = () => {
   const [models, setModels] = useState<Model[]>([]);
   const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  const [sampleDialog, setSampleDialog] = useState<"datasets" | "models" | null>(null);
   const [confidenceThreshold, setConfidenceThreshold] = useState<number>(0.25);
   const [inferenceId, setInferenceId] = useState<string | null>(null);
   const [inferenceStatus, setInferenceStatus] = useState<"idle" | "queued" | "running" | "completed" | "failed" | "cancelled">("idle");
@@ -4240,7 +4243,15 @@ const PredictionPage = () => {
           <Card>
             <CardHeader>
               <CardTitle>Select Dataset</CardTitle>
-                    <CardDescription>Choose a dataset with test images for inference</CardDescription>
+                    <CardDescription className="flex flex-wrap items-center justify-between gap-2">
+                      <span>Choose a dataset with test images for inference</span>
+                      <ProtectedComponent requiredPermission="uploadDatasets">
+                        <Button size="sm" variant="outline" onClick={() => setSampleDialog("datasets")}>
+                          <Plus className="mr-1 h-4 w-4" />
+                          Add sample dataset
+                        </Button>
+                      </ProtectedComponent>
+                    </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {loadingDatasets ? (
@@ -4488,7 +4499,32 @@ const PredictionPage = () => {
                   </Tooltip>
                 </TooltipProvider>
               </CardTitle>
-              <CardDescription>Choose a trained model for inference</CardDescription>
+              <CardDescription className="flex flex-wrap items-center justify-between gap-2">
+                <span>Choose a trained model for inference</span>
+                <ProtectedComponent requiredPermission="runInference">
+                  <Button size="sm" variant="outline" onClick={() => setSampleDialog("models")}>
+                    <Plus className="mr-1 h-4 w-4" />
+                    Add sample model
+                  </Button>
+                </ProtectedComponent>
+              </CardDescription>
+              <SampleLibraryDialog
+                kind={sampleDialog ?? "models"}
+                open={sampleDialog !== null}
+                onOpenChange={(open) => !open && setSampleDialog(null)}
+                projectName={projectName}
+                onAdded={async (id) => {
+                  const kind = sampleDialog;
+                  setSampleDialog(null);
+                  if (kind === "datasets") {
+                    await fetchDatasets();
+                    handleDatasetSelect(id);
+                  } else {
+                    await fetchModels();
+                    handleModelSelect(id);
+                  }
+                }}
+              />
             </CardHeader>
             <CardContent className="space-y-4">
               {loadingModels ? (
@@ -4497,7 +4533,7 @@ const PredictionPage = () => {
                 </div>
               ) : models.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">
-                  No trained models available.
+                  No trained models available. Use "Add sample model" to start with a ready-made one.
                 </p>
               ) : (
                 <div className="space-y-2 max-h-60 overflow-auto">

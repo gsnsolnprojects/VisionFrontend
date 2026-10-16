@@ -146,3 +146,91 @@ export const getAdminJobs = (type: "training" | "inference") =>
   apiRequest<{ type: string; jobs: AdminJob[] }>(`/admin/jobs?type=${type}`);
 
 export const getAdminAudit = () => apiRequest<{ entries: AdminAuditEntry[] }>("/admin/audit");
+
+// ---- Playground sample dataset library ----
+
+export interface SampleLibraryDatasetInfo {
+  project: string;
+  version: string;
+  totalImages: number;
+  trainCount: number;
+  valCount: number;
+  testCount: number;
+  labels: string[];
+  onThisServer: boolean;
+  usable: boolean;
+}
+
+export interface SampleLibraryItem {
+  id: string;
+  datasetId: string;
+  name: string;
+  industry: string;
+  description: string;
+  isVisible: boolean;
+  createdAt: string;
+  dataset: SampleLibraryDatasetInfo | null;
+}
+
+export interface SampleLibraryCandidate extends SampleLibraryDatasetInfo {
+  datasetId: string;
+  suggestedName: string;
+  suggestedIndustry: string;
+}
+
+export interface SampleLibraryResponse {
+  industries: string[];
+  items: SampleLibraryItem[];
+  available: SampleLibraryCandidate[];
+}
+
+export const getSampleLibrary = () => apiRequest<SampleLibraryResponse>("/admin/sample-library");
+
+export const addToSampleLibrary = (body: { datasetId: string; name?: string; industry?: string; description?: string }) =>
+  apiRequest<{ success: boolean; id: string }>("/admin/sample-library", {
+    method: "POST",
+    body: JSON.stringify(body),
+    maxRetries: 1,
+  });
+
+export const addAllToSampleLibrary = () =>
+  apiRequest<{ success: boolean; added: number }>("/admin/sample-library/add-all", { method: "POST", maxRetries: 1 });
+
+export const updateSampleLibraryItem = (
+  itemId: string,
+  body: Partial<Pick<SampleLibraryItem, "name" | "industry" | "description" | "isVisible">>
+) =>
+  apiRequest<{ success: boolean }>(`/admin/sample-library/${itemId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+    maxRetries: 1,
+  });
+
+/** Per GSN project (name trimmed): how many of its ready datasets are shown in Playground */
+export const getProjectPlaygroundStatus = () =>
+  apiRequest<{ projects: Record<string, { shown: number; total: number }> }>("/admin/sample-library/projects");
+
+export const setProjectPlayground = (project: string, enabled: boolean) =>
+  apiRequest<{ success: boolean; project: string; enabled: boolean; shown: number; total: number }>(
+    "/admin/sample-library/projects/playground",
+    { method: "POST", body: JSON.stringify({ project, enabled }), maxRetries: 1 }
+  );
+
+/** Playground state of every version in a GSN project (keyed by datasetId) */
+export const getDatasetPlaygroundStatus = (project: string) =>
+  apiRequest<{
+    datasets: Record<string, { shown: boolean; inLibrary: boolean; eligible: boolean; reason: string | null }>;
+  }>(`/admin/sample-library/datasets?project=${encodeURIComponent(project)}`);
+
+export const setDatasetPlayground = (datasetId: string, enabled: boolean) =>
+  apiRequest<{ success: boolean; datasetId: string; enabled: boolean }>(
+    `/admin/sample-library/datasets/${encodeURIComponent(datasetId)}/playground`,
+    { method: "POST", body: JSON.stringify({ enabled }), maxRetries: 1 }
+  );
+
+export const deleteSampleLibraryItem = (itemId: string, confirmName: string) =>
+  apiRequest<{ success: boolean }>(`/admin/sample-library/${itemId}`, {
+    method: "DELETE",
+    body: JSON.stringify({ confirmName }),
+    maxRetries: 1,
+  });

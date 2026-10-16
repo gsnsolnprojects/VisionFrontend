@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Play, Loader2, Info } from "lucide-react";
+import { Play, Loader2, Info, Plus } from "lucide-react";
+import { SampleLibraryDialog } from "@/components/samples/SampleLibraryDialog";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { useProfile } from "@/hooks/useProfile";
@@ -213,6 +214,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
 
   // selections
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [sampleDialogOpen, setSampleDialogOpen] = useState(false);
   const [datasetList, setDatasetList] = useState<any[]>([]);
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>("");
   const [datasetDetails, setDatasetDetails] = useState<any | null>(null);
@@ -2178,7 +2180,26 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                       </Tooltip>
                     </TooltipProvider>
                   </CardTitle>
-                  <CardDescription>Choose a ready dataset for the selected project</CardDescription>
+                  <CardDescription className="flex flex-wrap items-center justify-between gap-2">
+                    <span>Choose a ready dataset for the selected project</span>
+                    <ProtectedComponent requiredPermission="uploadDatasets">
+                      <Button size="sm" variant="outline" onClick={() => setSampleDialogOpen(true)}>
+                        <Plus className="mr-1 h-4 w-4" />
+                        Add sample dataset
+                      </Button>
+                    </ProtectedComponent>
+                  </CardDescription>
+                  <SampleLibraryDialog
+                    kind="datasets"
+                    open={sampleDialogOpen}
+                    onOpenChange={setSampleDialogOpen}
+                    projectName={projects.find((p) => String(p.id) === String(selectedProjectId))?.name ?? ""}
+                    onAdded={async (datasetId) => {
+                      setSampleDialogOpen(false);
+                      await fetchDatasets(selectedProjectId);
+                      setSelectedDatasetId(datasetId);
+                    }}
+                  />
                 </CardHeader>
                 <CardContent>
                   {loadingDatasets ? (
@@ -2188,7 +2209,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                     </div>
                   ) : datasetList.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                      No ready datasets found for this project.
+                      No ready datasets found for this project. Use "Add sample dataset" to start with a ready-made one.
                     </p>
                   ) : (
                     <div className="space-y-3">

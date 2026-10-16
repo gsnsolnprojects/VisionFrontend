@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { List, X, FileText, Search, ZoomIn, ZoomOut, RotateCcw, Maximize2, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, Folder, ChevronRight as ChevronRightIcon, ChevronDown, Trash2, Loader2, Upload, ArrowRight, Info, Pencil, Download, MoreVertical, Tags, Plus, CheckCircle2, Copy, Layers } from "lucide-react";
+import { List, X, FileText, Search, ZoomIn, ZoomOut, RotateCcw, Maximize2, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, Folder, ChevronRight as ChevronRightIcon, ChevronDown, Trash2, Loader2, Upload, ArrowRight, Info, Pencil, Download, MoreVertical, Tags, Plus, CheckCircle2, Copy, Layers, GraduationCap } from "lucide-react";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { cn } from "@/lib/utils";
 import {
@@ -71,6 +71,10 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
+import { usePlanAccess } from "@/contexts/plan-access-context";
+import { SampleDatasetPicker } from "@/components/samples/SampleDatasetPicker";
+import { isSuperadmin } from "@/lib/utils/superadmin";
+import { getDatasetPlaygroundStatus, setDatasetPlayground } from "@/lib/api/admin";
 
 // ✅ Resolves display id when GET /dataset/:id returns `_id` or `datasetId` but not `id`
 function resolveDatasetRecordId(
@@ -620,7 +624,20 @@ const DatasetManager = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const { sessionReady, user, hasPermission } = useProfile();
+  const { sessionReady, user, hasPermission, profile, userRole, company: profileCompany } = useProfile();
+  const planAccess = usePlanAccess();
+  // Superadmin only: show / hide each GSN dataset version in Playground (keyed by datasetId)
+  const canManagePlayground = isSuperadmin(userRole, profileCompany?.name);
+  const [playgroundStatus, setPlaygroundStatus] = useState<
+    Record<string, { shown: boolean; inLibrary: boolean; eligible: boolean; reason: string | null }>
+  >({});
+  const [playgroundBusyId, setPlaygroundBusyId] = useState<string | null>(null);
+  // Playground (plans without their own datasets) picks GSN sample datasets instead of uploading.
+  // Until the plan is known, show neither so the upload form never flashes for Playground users.
+  const planKnown = !!planAccess.data || !profile?.company_id;
+  const samplesOnly = planAccess.data?.access?.features?.trainOnOwnDatasets === false;
+  const showUpload = planKnown && !samplesOnly;
+  const showSamplePicker = planKnown && samplesOnly;
   const [project, setProject] = useState<any>(null);
   const [companyName, setCompanyName] = useState<string>("");
   const [version, setVersion] = useState<string>("");
@@ -995,6 +1012,44 @@ const DatasetManager = () => {
 
   const displayProjectName = project?.name ?? "Unnamed Project";
   const { setItems: setBreadcrumbs } = useBreadcrumbs();
+
+  // Superadmin: load the Playground state of this project's versions (refreshed when versions change)
+  const versionIdsKey = versions.map((v) => v.datasetId).join(",");
+  useEffect(() => {
+    if (!canManagePlayground || !project?.name) return;
+    let cancelled = false;
+    getDatasetPlaygroundStatus(project.name)
+      .then((res) => !cancelled && setPlaygroundStatus(res.datasets))
+      .catch((err) => console.warn("[DatasetManager] Could not load Playground status:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, [canManagePlayground, project?.name, versionIdsKey]);
+
+  const toggleVersionPlayground = async (datasetId: string, label: string, enable: boolean) => {
+    setPlaygroundBusyId(datasetId);
+    try {
+      await setDatasetPlayground(datasetId, enable);
+      setPlaygroundStatus((prev) => ({
+        ...prev,
+        [datasetId]: { ...(prev[datasetId] ?? { eligible: true, reason: null }), shown: enable, inLibrary: true },
+      }));
+      toast({
+        title: enable ? "Shown in Playground" : "Hidden from Playground",
+        description: enable
+          ? `"${label}" is now offered to Playground customers.`
+          : `"${label}" is no longer offered to Playground customers.`,
+      });
+    } catch (err) {
+      toast({
+        title: "Couldn't change Playground setting",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setPlaygroundBusyId(null);
+    }
+  };
 
   useEffect(() => {
     const breadcrumbItems = [
@@ -2888,10 +2943,19 @@ const DatasetManager = () => {
               )}
             </div>
           </div>
-          <p className="text-sm text-muted-foreground font-medium pt-3">Upload datasets</p>
+          <p className="text-sm text-muted-foreground font-medium pt-3">
+            {samplesOnly ? "Choose a ready-made dataset" : "Upload datasets"}
+          </p>
         </div>
       </motion.div>
 
+      {showSamplePicker && (
+        <ProtectedComponent requiredPermission="uploadDatasets">
+          <SampleDatasetPicker projectName={displayProjectName} onAdded={() => void fetchVersions()} />
+        </ProtectedComponent>
+      )}
+
+      {showUpload && (
       <ProtectedComponent requiredPermission="uploadDatasets">
         <motion.div
           className="grid md:grid-cols-2 gap-6 mb-8"
@@ -3024,7 +3088,9 @@ const DatasetManager = () => {
         </Card>
         </motion.div>
       </ProtectedComponent>
+      )}
 
+      {showUpload && (
       <ProtectedComponent requiredPermission="uploadDatasets">
         <motion.div
           className="flex items-center justify-between mb-6"
@@ -3074,6 +3140,7 @@ const DatasetManager = () => {
         </div>
         </motion.div>
       </ProtectedComponent>
+      )}
 
       {/* Progress bar: reflects upload / processing progress from backend only (no fake percentages) */}
       <motion.div
@@ -3222,6 +3289,41 @@ const DatasetManager = () => {
                             )}
                           </div>
                           <div className="flex items-center gap-2">
+                            {canManagePlayground && (() => {
+                              const status = playgroundStatus[v.datasetId];
+                              const on = !!status?.shown;
+                              const blocked = !status || (!status.eligible && !on);
+                              const busy = playgroundBusyId === v.datasetId;
+                              return (
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className={cn(
+                                    "h-8 w-8 shrink-0",
+                                    on
+                                      ? "border-emerald-500/50 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+                                      : "text-muted-foreground"
+                                  )}
+                                  disabled={busy || blocked}
+                                  aria-pressed={on}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void toggleVersionPlayground(v.datasetId, v.version || v.datasetId, !on);
+                                  }}
+                                  title={
+                                    !status
+                                      ? "Loading Playground status..."
+                                      : on
+                                        ? "Shown in Playground. Click to hide."
+                                        : status.eligible
+                                          ? "Not in Playground. Click to offer this dataset to Playground customers."
+                                          : `Can't offer in Playground: ${status.reason}`
+                                  }
+                                >
+                                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <GraduationCap className="h-4 w-4" />}
+                                </Button>
+                              );
+                            })()}
                             <Button
                               variant="outline"
                               size="sm"
