@@ -8,7 +8,10 @@ import { EmptyState } from "@/components/pages/EmptyState";
 import { LoadingState } from "@/components/pages/LoadingState";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, FolderKanban, Trash2, Pencil } from "lucide-react";
+import { Plus, FolderKanban, Trash2, Pencil, GraduationCap, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { isSuperadmin } from "@/lib/utils/superadmin";
+import { getProjectPlaygroundStatus, setProjectPlayground } from "@/lib/api/admin";
 import { useToast } from "@/hooks/use-toast";
 import { fadeInUpVariants } from "@/utils/animations";
 import { ProtectedComponent } from "@/components/permissions/ProtectedComponent";
@@ -18,8 +21,44 @@ import { EditProjectModal } from "@/components/dashboard/EditProjectModal";
 export const ProjectsPage: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { sessionReady, user, profile, company, hasPermission, loading: profileLoading } = useProfile();
+  const { sessionReady, user, profile, company, hasPermission, userRole, loading: profileLoading } = useProfile();
   const [projects, setProjects] = useState<any[]>([]);
+  // Superadmin only: which GSN projects are offered to Playground (keyed by trimmed project name)
+  const canManagePlayground = isSuperadmin(userRole, company?.name);
+  const [playground, setPlayground] = useState<Record<string, { shown: number; total: number }>>({});
+  const [playgroundBusy, setPlaygroundBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!canManagePlayground) return;
+    getProjectPlaygroundStatus()
+      .then((res) => setPlayground(res.projects))
+      .catch((err) => console.warn("[ProjectsPage] Could not load Playground status:", err));
+  }, [canManagePlayground, projects]);
+
+  const togglePlayground = async (projectName: string) => {
+    const key = projectName.trim();
+    const status = playground[key];
+    const enable = !(status && status.shown > 0);
+    setPlaygroundBusy(key);
+    try {
+      const res = await setProjectPlayground(key, enable);
+      setPlayground((prev) => ({ ...prev, [key]: { shown: res.shown, total: res.total } }));
+      toast({
+        title: enable ? "Shown in Playground" : "Hidden from Playground",
+        description: enable
+          ? `${key}: ${res.shown} dataset${res.shown === 1 ? "" : "s"} now offered to Playground customers.`
+          : `${key}: its datasets are no longer offered to Playground customers.`,
+      });
+    } catch (err) {
+      toast({
+        title: "Couldn't change Playground setting",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setPlaygroundBusy(null);
+    }
+  };
   const [loading, setLoading] = useState(true);
   const [projectToDelete, setProjectToDelete] = useState<{ companyName: string; projectName: string } | null>(null);
   const [projectToEdit, setProjectToEdit] = useState<{ id: string; name: string; description?: string | null } | null>(null);
@@ -153,8 +192,39 @@ export const ProjectsPage: React.FC = () => {
                       {project.description || "No description"}
                     </CardDescription>
                   </div>
-                  {(hasPermission("manageProjects") || hasPermission("deleteProjects")) && (
+                  {(canManagePlayground || hasPermission("manageProjects") || hasPermission("deleteProjects")) && (
                     <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      {canManagePlayground && (() => {
+                        const key = String(project.name ?? "").trim();
+                        const status = playground[key];
+                        const on = !!status && status.shown > 0;
+                        const noData = !status || status.total === 0;
+                        const busy = playgroundBusy === key;
+                        return (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn(
+                              "shrink-0",
+                              on
+                                ? "text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+                                : "text-muted-foreground hover:text-foreground"
+                            )}
+                            disabled={busy || (noData && !on)}
+                            onClick={() => togglePlayground(key)}
+                            aria-pressed={on}
+                            title={
+                              noData && !on
+                                ? "No ready datasets to offer in Playground"
+                                : on
+                                  ? `In Playground (${status!.shown} of ${status!.total} datasets shown). Click to hide.`
+                                  : "Not in Playground. Click to offer this project's datasets."
+                            }
+                          >
+                            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <GraduationCap className="h-4 w-4" />}
+                          </Button>
+                        );
+                      })()}
                       {hasPermission("manageProjects") && (
                         <Button
                           variant="ghost"
