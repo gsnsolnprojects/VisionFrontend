@@ -1,5 +1,6 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { IndustryArt } from "@/components/landing/IndustryArt";
 
 /** Playground buttons start sign-up; after creating a company the app asks them to pay for the plan */
 const PLAYGROUND_SIGNUP = "/auth?mode=signup&plan=playground";
@@ -14,14 +15,13 @@ const PLAYGROUND_SIGNUP = "/auth?mode=signup&plan=playground";
 
 type Audience = "business" | "student";
 
-const INDUSTRIES: { tab: string; kicker: string; title: string[]; copy: string; checks: string[]; enquire: string }[] = [
+const INDUSTRIES: { tab: string; kicker: string; title: string[]; copy: string; checks: string[] }[] = [
   {
     tab: "Automotive",
     kicker: "AUTOMOTIVE COMPONENTS",
     title: ["A small surface flaw.", "A bigger quality question."],
     copy: "Explore whether visual inspection can distinguish acceptable components from the specific defects your team needs to catch.",
     checks: ["Surface damage and visible inconsistencies", "Missing features or assembly elements", "Evaluation against your acceptance criteria"],
-    enquire: "Automotive inspection",
   },
   {
     tab: "Electronics & PCB",
@@ -29,7 +29,6 @@ const INDUSTRIES: { tab: string; kicker: string; title: string[]; copy: string; 
     title: ["Every component has a place."],
     copy: "Discuss visible assembly checks for your boards, parts and product variations.",
     checks: ["Component presence and orientation", "Visible assembly inconsistencies", "Image detail and camera positioning"],
-    enquire: "Electronics & PCB inspection",
   },
   {
     tab: "Pharma packaging",
@@ -37,7 +36,6 @@ const INDUSTRIES: { tab: string; kicker: string; title: string[]; copy: string; 
     title: ["The packaging deserves a closer look."],
     copy: "Explore visual checks on packaging against clearly defined acceptance criteria.",
     checks: ["Label presence and positioning", "Print legibility and visible packaging flaws", "Sample variation and inspection constraints"],
-    enquire: "Pharma packaging inspection",
   },
   {
     tab: "Food & beverages",
@@ -45,7 +43,6 @@ const INDUSTRIES: { tab: string; kicker: string; title: string[]; copy: string; 
     title: ["Quality is visible on the outside, too."],
     copy: "Evaluate visible packaging and product variations using representative samples.",
     checks: ["Packaging integrity and visible damage", "Label placement and appearance", "Variation across batches and formats"],
-    enquire: "Food & beverages inspection",
   },
   {
     tab: "Plastics",
@@ -53,7 +50,6 @@ const INDUSTRIES: { tab: string; kicker: string; title: string[]; copy: string; 
     title: ["Look closer at the parts you produce."],
     copy: "Define the visible defects that distinguish an acceptable part from a reject.",
     checks: ["Surface flaws and incomplete parts", "Visible shape variation", "Material, lighting and finish considerations"],
-    enquire: "Plastics inspection",
   },
   {
     tab: "Textiles",
@@ -61,32 +57,17 @@ const INDUSTRIES: { tab: string; kicker: string; title: string[]; copy: string; 
     title: ["Find the pattern. Question the variation."],
     copy: "Discuss how visible fabric defects could be evaluated for your material and process.",
     checks: ["Visible fabric irregularities", "Pattern and surface inconsistencies", "Texture, movement and lighting conditions"],
-    enquire: "Textiles inspection",
   },
-];
-
-const INTEREST_OPTIONS = [
-  "Industrial demo",
-  "Playground · ₹999/month",
-  "Professional · ₹9,999/month",
-  "Industrial · ₹19,999/month",
-  "Automotive inspection",
-  "Electronics & PCB inspection",
-  "Pharma packaging inspection",
-  "Food & beverages inspection",
-  "Plastics inspection",
-  "Textiles inspection",
-  "Vision-M enquiry",
 ];
 
 const FAQS: { q: string; a: string }[] = [
   {
     q: "Is Playground intended for students?",
-    a: "Yes. In this proposed plan structure, Playground is the starting point for students and individuals interested in machine vision. Exact tools, prerequisites and learning resources still need to be confirmed.",
+    a: "Yes. Playground is the starting point for students and individuals interested in machine vision. You learn step by step with short lessons and ready-made sample datasets from real inspection projects.",
   },
   {
     q: "Do I need coding experience?",
-    a: "Requirements depend on the final learning workflow and available tools. Discuss your experience level before choosing a plan; this concept does not promise a no-code experience.",
+    a: "No. Vision-M Studio runs in your browser: you look at datasets, train models and test them without writing code. Knowing the basics of how AI models learn helps, and Playground's lessons cover them.",
   },
   {
     q: "Can Vision-M inspect my product?",
@@ -101,19 +82,15 @@ const FAQS: { q: string; a: string }[] = [
     a: "Accuracy must be measured on representative samples under defined conditions. A credible evaluation should examine both missed defects and acceptable items incorrectly flagged.",
   },
   {
-    q: "Can I upload samples or buy a plan here?",
-    a: "This is an interactive design mockup. It does not upload images, process payments or send enquiries. The enquiry preview lets you review the proposed visitor journey.",
+    q: "How do I get started?",
+    a: "Sign up, create your company workspace and choose a plan on the Billing page. Plans are billed monthly per company, and everyone in your company shares the plan.",
   },
 ];
 
 const LandingV2 = () => {
-  const navigate = useNavigate();
   const [audience, setAudience] = useState<Audience>("business");
   const [showOverlay, setShowOverlay] = useState(true);
   const [industryIndex, setIndustryIndex] = useState(0);
-  const [interest, setInterest] = useState(INTEREST_OPTIONS[0]);
-  const [formResult, setFormResult] = useState<string | null>(null);
-  const dialogRef = useRef<HTMLDialogElement>(null);
 
   const isStudent = audience === "student";
   const industry = INDUSTRIES[industryIndex];
@@ -139,31 +116,6 @@ const LandingV2 = () => {
     };
   }, []);
 
-  const openEnquiry = (value: string) => {
-    setInterest(value);
-    setFormResult(null);
-    dialogRef.current?.showModal();
-  };
-
-  const closeEnquiry = () => dialogRef.current?.close();
-
-  // Close when clicking the backdrop (outside the dialog box)
-  const handleDialogClick = (e: React.MouseEvent<HTMLDialogElement>) => {
-    if (e.target !== dialogRef.current) return;
-    const r = dialogRef.current.getBoundingClientRect();
-    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) {
-      closeEnquiry();
-    }
-  };
-
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const name = new FormData(e.currentTarget).get("name");
-    setFormResult(
-      `Thanks, ${name}. Your ${interest} enquiry preview is complete. This is a mockup: no enquiry has been sent and no data has been saved.`
-    );
-  };
-
   const scrollToTop = (e: React.MouseEvent) => {
     e.preventDefault();
     window.scrollTo({ top: 0 });
@@ -173,7 +125,6 @@ const LandingV2 = () => {
     <div className="vm2">
       <style>{VM2_CSS}</style>
 
-      <div className="notice">DESIGN PREVIEW · Proposed plan positioning · Demo interactions only</div>
 
       <header>
         <nav className="wrap">
@@ -184,6 +135,7 @@ const LandingV2 = () => {
           <a href="#industries">Industries</a>
           <a href="#plans">Plans</a>
           <a href="#faq">FAQs</a>
+          <Link to="/showcase">Showcase</Link>
           <span className="nav-divider" aria-hidden="true"></span>
           <Link className="nav-login" to="/auth?mode=signin">
             Log in
@@ -191,9 +143,6 @@ const LandingV2 = () => {
           <Link className="btn light nav-signup" to="/auth?mode=signup">
             Sign up
           </Link>
-          <button className="btn" onClick={() => openEnquiry("Industrial demo")}>
-            Book a demo ↗
-          </button>
         </nav>
       </header>
 
@@ -230,19 +179,18 @@ const LandingV2 = () => {
               </button>
             </div>
             <div className="hero-actions">
-              <button
-                className="btn"
-                onClick={() => (isStudent ? navigate(PLAYGROUND_SIGNUP) : openEnquiry("Industrial demo"))}
-              >
-                {isStudent ? "Explore Playground ↗" : "Explore my use case ↗"}
-              </button>
+              {isStudent && (
+                <Link className="btn" to={PLAYGROUND_SIGNUP}>
+                  Explore Playground ↗
+                </Link>
+              )}
               <a className="textlink" style={{ margin: 0 }} href="#plans">
                 View plans ↓
               </a>
             </div>
             <div className="tiny">
               {isStudent
-                ? "Playground Edition · ₹999/month · Proposed learning entry plan"
+                ? "Playground Edition · ₹999/month · Learning entry plan"
                 : "Start with your product, your defect and your inspection conditions."}
             </div>
           </div>
@@ -250,7 +198,7 @@ const LandingV2 = () => {
           <div className="inspection">
             <div className="view-top">
               <span>VISION-M / INSPECTION EXPLORER</span>
-              <span className="dot">● CONCEPT</span>
+              <span className="dot">● EXAMPLE</span>
             </div>
             <div className="viewport">
               <div className="vm-grid"></div>
@@ -375,34 +323,7 @@ const LandingV2 = () => {
             </div>
             <div className="industry-panel">
               <div className="industry-art">
-                <svg
-                  viewBox="0 0 500 260"
-                  role="img"
-                  aria-label="Illustrative inspection field with sample objects and one highlighted region"
-                >
-                  <defs>
-                    <pattern id="vm2-g" width="25" height="25" patternUnits="userSpaceOnUse">
-                      <path d="M 25 0 L 0 0 0 25" fill="none" stroke="#485840" strokeWidth=".5"></path>
-                    </pattern>
-                  </defs>
-                  <rect width="500" height="260" fill="url(#vm2-g)"></rect>
-                  <g fill="none" stroke="#88987c" strokeWidth="11">
-                    <circle cx="95" cy="125" r="49"></circle>
-                    <circle cx="250" cy="125" r="49"></circle>
-                    <circle cx="405" cy="125" r="49"></circle>
-                  </g>
-                  <g fill="#171f1b" stroke="#bec9b0" strokeWidth="2">
-                    <circle cx="95" cy="125" r="24"></circle>
-                    <circle cx="250" cy="125" r="24"></circle>
-                    <circle cx="405" cy="125" r="24"></circle>
-                  </g>
-                  <path d="M270 81l-10 16 12 9" fill="none" stroke="#e9ff65" strokeWidth="3"></path>
-                  <rect x="247" y="66" width="48" height="52" fill="none" stroke="#e9ff65"></rect>
-                  <path d="M295 66l30-30h120" fill="none" stroke="#e9ff65"></path>
-                  <text x="333" y="29" fontSize="10" fontFamily="monospace" fill="#e9ff65">
-                    REGION OF INTEREST
-                  </text>
-                </svg>
+                <IndustryArt index={industryIndex} />
                 <span className="art-label">SCHEMATIC / EXAMPLE INSPECTION REGIONS</span>
               </div>
               <div>
@@ -423,9 +344,9 @@ const LandingV2 = () => {
                     <li key={c}>{c}</li>
                   ))}
                 </ul>
-                <button className="btn lime" onClick={() => openEnquiry(industry.enquire)}>
-                  Discuss this application ↗
-                </button>
+                <Link className="textlink" to="/showcase">
+                  See real projects in the Showcase <span>↗</span>
+                </Link>
               </div>
             </div>
           </div>
@@ -503,15 +424,12 @@ const LandingV2 = () => {
                 <div className="amount">
                   ₹9,999 <span>/ month</span>
                 </div>
-                <p>A proposed path for engineers and teams investigating a defined inspection problem.</p>
+                <p>For engineers and teams investigating a defined inspection problem.</p>
                 <ul className="checks">
                   <li>Focus on a specific use case</li>
                   <li>Define sample and defect criteria</li>
                   <li>Discuss your evaluation requirements</li>
                 </ul>
-                <button className="btn lime" onClick={() => openEnquiry("Professional · ₹9,999/month")}>
-                  Discuss Professional ↗
-                </button>
               </article>
               <article className="price">
                 <div className="badge">For business teams</div>
@@ -519,21 +437,17 @@ const LandingV2 = () => {
                 <div className="amount">
                   ₹19,999 <span>/ month</span>
                 </div>
-                <p>A proposed path for businesses exploring a broader inspection workflow.</p>
+                <p>For businesses exploring a broader inspection workflow.</p>
                 <ul className="checks">
                   <li>Map operational requirements</li>
                   <li>Discuss the inspection environment</li>
                   <li>Explore a deployment roadmap</li>
                 </ul>
-                <button className="btn light" onClick={() => openEnquiry("Industrial · ₹19,999/month")}>
-                  Book an Industrial demo ↗
-                </button>
               </article>
             </div>
             <p className="pricing-note">
-              Concept pricing from the proposed plan structure. Descriptions show intended use, not confirmed feature
-              entitlements. Usage limits, support, GST treatment, hardware and integration scope are to be confirmed. No
-              payment is taken in this mockup.
+              Monthly prices per company. Cameras, lighting, installation and integration are scoped separately for
+              each project.
             </p>
           </div>
         </section>
@@ -570,9 +484,6 @@ const LandingV2 = () => {
               </h2>
               <p>Bring your curiosity. Or bring your inspection challenge.</p>
             </div>
-            <button className="btn" onClick={() => openEnquiry("Vision-M enquiry")}>
-              Let’s explore it ↗
-            </button>
           </div>
         </section>
       </main>
@@ -583,56 +494,10 @@ const LandingV2 = () => {
             Vision-M<span></span>
           </a>
           <p>Machine vision. Human possibilities.</p>
-          <p>Landing page concept · 2026</p>
+          <p>© 2026 Vision-M</p>
         </div>
       </footer>
 
-      <dialog ref={dialogRef} onClick={handleDialogClick}>
-        <button className="close" aria-label="Close enquiry" onClick={closeEnquiry}>
-          ×
-        </button>
-        <div className="eyebrow">Take the next step</div>
-        <h2>Explore Vision-M</h2>
-        <p className="tiny">Preview the enquiry experience. Nothing is sent or stored.</p>
-        <form onSubmit={handleSubmit}>
-          <label>
-            Your name
-            <input name="name" autoComplete="name" required placeholder="Full name" />
-          </label>
-          <label>
-            Email address
-            <input name="email" type="email" autoComplete="email" required placeholder="you@example.com" />
-          </label>
-          <label>
-            Company or institution
-            <input name="organisation" autoComplete="organization" placeholder="Where you work or learn" />
-          </label>
-          <label>
-            I’m interested in
-            <select name="interest" value={interest} onChange={(e) => setInterest(e.target.value)}>
-              {INTEREST_OPTIONS.map((o) => (
-                <option key={o}>{o}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            What would you like to explore?
-            <textarea
-              name="challenge"
-              rows={3}
-              placeholder="Tell us about your project, product or inspection challenge."
-            ></textarea>
-          </label>
-          <button className="btn" type="submit">
-            Preview my enquiry ↗
-          </button>
-          {formResult && (
-            <div className="success" role="status">
-              {formResult}
-            </div>
-          )}
-        </form>
-      </dialog>
     </div>
   );
 };
@@ -647,7 +512,6 @@ const VM2_CSS = `
 .vm2 button { cursor: pointer; }
 .vm2 button:focus-visible, .vm2 a:focus-visible { outline: rgb(119, 155, 38) solid 3px; outline-offset: 5px; }
 .vm2 .wrap { max-width: 1240px; margin: auto; padding: 0 40px; }
-.vm2 .notice { background: var(--yellow); text-align: center; font-size: 11px; padding: 9px 20px; letter-spacing: 0.07em; }
 .vm2 header { background: rgba(245, 245, 238, 0.96); position: sticky; top: 0; z-index: 20; border-bottom: 1px solid var(--line); }
 .vm2 nav { height: 80px; display: flex; align-items: center; gap: 32px; }
 .vm2 .brand { font-size: 27px; font-weight: 800; letter-spacing: -1.5px; margin-right: auto; }
@@ -656,7 +520,6 @@ const VM2_CSS = `
 .vm2 .nav-divider { width: 1px; height: 22px; background: var(--line); }
 .vm2 .nav-login { font-weight: 600; margin-right: -12px; }
 .vm2 .nav-login:hover { text-decoration: underline; text-underline-offset: 4px; }
-.vm2 .nav-signup { margin-right: -20px; }
 .vm2 .nav-signup:hover { background: var(--ink); color: white; }
 .vm2 .btn { display: inline-flex; justify-content: center; align-items: center; gap: 24px; padding: 17px 23px; border: 1px solid var(--ink); background: var(--ink); color: white; font-weight: 600; font-size: 13px; border-radius: 3px; transition: transform 0.2s, background 0.2s; }
 .vm2 .btn:hover { transform: translateY(-2px); background: rgb(54, 64, 53); }
@@ -755,22 +618,12 @@ const VM2_CSS = `
 .vm2 footer { padding: 32px 0; }
 .vm2 footer .wrap { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
 .vm2 footer p { font-size: 11px; }
-.vm2 dialog { padding: 35px; border: 1px solid var(--line); border-radius: 8px; width: min(530px, 92vw); max-height: 90vh; background: var(--paper); color: var(--ink); }
-.vm2 dialog::backdrop { background: rgba(15, 27, 19, 0.733); backdrop-filter: blur(5px); }
-.vm2 dialog h2 { font-size: 32px; margin: 16px 0; }
-.vm2 .close { float: right; background: none; border: 0; font-size: 25px; }
-.vm2 label { display: block; font-size: 12px; margin-top: 14px; }
-.vm2 input, .vm2 select, .vm2 textarea { width: 100%; padding: 11px; border: 1px solid rgb(199, 207, 190); background: white; border-radius: 3px; margin-top: 6px; }
-.vm2 textarea { resize: vertical; }
-.vm2 form .btn { margin-top: 20px; width: 100%; }
-.vm2 .success { padding: 15px; background: rgb(227, 236, 205); font-size: 13px; line-height: 1.6; margin-top: 15px; }
 @media (max-width: 950px) {
   .vm2 nav { gap: 20px; }
   .vm2 nav > * { white-space: nowrap; flex-shrink: 0; }
   .vm2 nav .btn { padding: 13px 14px; font-size: 12px; }
   .vm2 .nav-divider { display: none; }
   .vm2 .nav-login { margin-right: -8px; }
-  .vm2 .nav-signup { margin-right: -10px; }
   .vm2 .wrap { padding: 0 25px; }
   .vm2 h1 { letter-spacing: -2.5px; }
   .vm2 .hero { gap: 25px; }
@@ -783,12 +636,11 @@ const VM2_CSS = `
   .vm2 .faq-grid { gap: 35px; }
 }
 @media (max-width: 720px) {
-  .vm2 .notice { font-size: 9px; }
   .vm2 nav { height: 68px; }
   .vm2 nav > a:not(.brand):not(.btn) { display: none; }
   .vm2 nav .btn { padding: 12px; font-size: 11px; }
   .vm2 nav > a.nav-login:not(.brand):not(.btn) { display: inline; font-size: 12px; margin-right: -6px; }
-  .vm2 .nav-divider, .vm2 .nav-signup { display: none; }
+  .vm2 .nav-divider { display: none; }
   .vm2 .wrap { padding: 0 22px; }
   .vm2 .hero { grid-template-columns: 1fr; padding-top: 35px; gap: 30px; }
   .vm2 h1 { font-size: 53px; letter-spacing: -3px; }
