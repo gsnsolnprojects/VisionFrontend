@@ -34,6 +34,7 @@ import {
   type SubscriptionResponse,
 } from "@/lib/api/subscription";
 import { openRazorpayCheckout } from "@/lib/razorpayCheckout";
+import { clearSignupPlan, getSignupPlan } from "@/lib/signupPlan";
 
 const formatInr = (amount: number) => `₹${amount.toLocaleString("en-IN")}`;
 
@@ -73,12 +74,19 @@ interface PlanAction {
   loading?: boolean;
 }
 
-const PlanCard: React.FC<{ plan: Plan; isCurrent: boolean; action: PlanAction }> = ({ plan, isCurrent, action }) => (
-  <Card className={cn("flex flex-col", isCurrent && "border-primary")}>
+/** picked: the plan chosen on the landing page before signing up */
+const PlanCard: React.FC<{ plan: Plan; isCurrent: boolean; picked: boolean; action: PlanAction }> = ({
+  plan,
+  isCurrent,
+  picked,
+  action,
+}) => (
+  <Card className={cn("flex flex-col", (isCurrent || picked) && "border-primary", picked && "ring-1 ring-primary/30")}>
     <CardHeader>
       <div className="flex items-center justify-between gap-2">
         <CardTitle>{plan.name}</CardTitle>
         {isCurrent && <Badge>Current</Badge>}
+        {picked && !isCurrent && <Badge variant="outline">Your pick</Badge>}
       </div>
       <CardDescription>{plan.tagline}</CardDescription>
       <div className="pt-2">
@@ -124,6 +132,7 @@ const BillingContent: React.FC<BillingContentProps> = ({ data, busyPlan, cancell
   const paidUntil = formatDate(subscription?.currentPeriodEnd);
   const viewOnly = access.mode === "view_only";
   const hasActivePaidPlan = !!subscription?.hasPaidSubscription && subscription.status === "active";
+  const pickedPlan = hasActivePaidPlan ? null : getSignupPlan();
 
   const actionFor = (plan: Plan): PlanAction => {
     const isCurrent = currentPlan?.id === plan.id && hasActivePaidPlan;
@@ -230,6 +239,7 @@ const BillingContent: React.FC<BillingContentProps> = ({ data, busyPlan, cancell
               key={plan.id}
               plan={plan}
               isCurrent={currentPlan?.id === plan.id && hasActivePaidPlan}
+              picked={pickedPlan === plan.id}
               action={actionFor(plan)}
             />
           ))}
@@ -278,6 +288,7 @@ export const SettingsBillingPage: React.FC = () => {
       if (outcome.status === "dismissed") return;
 
       await verifyCheckout(outcome.result);
+      clearSignupPlan();
       toast({ title: "Payment successful", description: `Your company is now on the ${plan.name}.` });
       await Promise.all([loadSubscription(false), planAccess.refresh()]);
     } catch (err) {

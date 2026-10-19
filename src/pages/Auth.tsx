@@ -37,6 +37,7 @@ import {
   type ResetPasswordFormData,
 } from "@/lib/validations/authSchemas";
 import { fadeInUpVariants } from "@/utils/animations";
+import { rememberSignupPlan } from "@/lib/signupPlan";
 
 const Auth = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -60,6 +61,11 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState<number>(0);
   
+  // Plan picked on the landing page (?plan=playground), highlighted later on the Billing page
+  useEffect(() => {
+    rememberSignupPlan(searchParams.get("plan"));
+  }, [searchParams]);
+
   // Get invite token from URL if present
   const inviteToken = searchParams.get("invite") ?? searchParams.get("project_invite");
   
