@@ -1590,8 +1590,11 @@ const DatasetManager = () => {
             fileMap.set(dedupeKey, f);
           }
           // Otherwise keep existing
+        } else if (existing.folder !== f.folder) {
+          // Same file name in two split folders (e.g. train/ and test/) - two real files, keep both
+          fileMap.set(`${dedupeKey}::${f.folder}`, f);
         }
-        // If both are processed, keep the first one (shouldn't happen often)
+        // Both processed in the same folder: keep the first one
       }
     }
     

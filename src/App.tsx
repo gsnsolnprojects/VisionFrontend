@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useNavigate, useLocation, matchPath } from "react-router-dom";
 import { useEffect } from "react";
 // Previous dark landing page — hidden for now (file kept). To bring it back,
 // restore this import and use <Landing /> on the "/" route below.
@@ -39,6 +39,35 @@ import DemoExtinguisherOCRPage from "@/pages/DemoExtinguisherOCRPage";
 import { AdminPage } from "@/pages/AdminPage";
 // Route persistence is handled by useRoutePersistence hook in AppShell
 
+// Addresses served by ProtectedRoutes (keep in step with the <Route>s below). Anything else is a
+// 404 for everyone - signed-out visitors see "Page not found" instead of the sign-in page.
+const APP_PATHS = [
+  "/set-password",
+  "/dashboard",
+  "/dashboard/projects",
+  "/project/prediction",
+  "/project/prediction/history/:inferenceId",
+  "/project/corrosion-dashboard",
+  "/annotation/:datasetId",
+  "/demo/extinguisher-ocr",
+  "/dashboard/team",
+  "/dashboard/team/members",
+  "/dashboard/team/invitations",
+  "/dashboard/settings",
+  "/dashboard/settings/workspace",
+  "/dashboard/settings/billing",
+  "/dashboard/settings/usage",
+  "/dashboard/settings/mobile-inspect",
+  "/account",
+  "/account/profile",
+  "/account/security",
+  "/account/preferences",
+  "/admin",
+  "/datasets",
+  "/dataset/:id",
+];
+const isAppPath = (pathname: string) => APP_PATHS.some((pattern) => matchPath(pattern, pathname));
+
 // Protected routes component - gates routes behind authentication
 const ProtectedRoutes = () => {
   const navigate = useNavigate();
@@ -47,13 +76,14 @@ const ProtectedRoutes = () => {
 
   const needsPasswordSet = (user?.user_metadata as Record<string, unknown>)?.needs_password_set === true;
   const isSetPasswordPage = location.pathname === "/set-password";
+  const knownPath = isAppPath(location.pathname);
 
   // Redirect to auth if session is ready but no user
   useEffect(() => {
-    if (sessionReady && !user) {
+    if (sessionReady && !user && knownPath) {
       navigate("/auth", { replace: true });
     }
-  }, [sessionReady, user, navigate]);
+  }, [sessionReady, user, knownPath, navigate]);
 
   // If user must set password (invited, first sign-in), redirect to /set-password unless already there
   useEffect(() => {
@@ -64,6 +94,11 @@ const ProtectedRoutes = () => {
 
   // Route persistence is now handled by useRoutePersistence hook in AppShell
   // No duplicate persistence logic needed here
+
+  // Unknown address: "Page not found" straight away, signed in or not
+  if (!knownPath) {
+    return <NotFound />;
+  }
 
   // Show loading while session is being hydrated
   if (!sessionReady || loading) {
