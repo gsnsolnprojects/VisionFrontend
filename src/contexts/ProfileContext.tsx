@@ -1,6 +1,7 @@
 // src/contexts/ProfileContext.tsx
 import React, { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { isUserAdmin } from "@/lib/utils/adminUtils";
 import { ProfileContext, type ProfileContextType } from "./profile-context";
 import { clearLastRoute } from "@/utils/routePersistence";
@@ -361,7 +362,16 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      // Supabase holds its auth lock while this callback runs, so any supabase query awaited
+      // here waits for the lock and hangs (the profile fetch then hit its 8 s timeout on every
+      // load). Run the work right after the callback returns instead.
+      setTimeout(() => {
+        void handleAuthChange(event, session);
+      }, 0);
+    });
+
+    async function handleAuthChange(event: AuthChangeEvent, session: Session | null) {
       if (!mounted) return;
 
       if (isDev) {
@@ -476,8 +486,7 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
         }
         setSessionReady(true);
       }
-      
-    });
+    }
 
     return () => {
       mounted = false;

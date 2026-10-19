@@ -23,5 +23,8 @@ export const askAI = async (payload: AskAIRequest, signal?: AbortSignal): Promis
     method: "POST",
     body: JSON.stringify(payload),
     signal,
+    // One attempt: the server answers within ~45 s (or says it took too long); retrying
+    // a slow AI question only multiplies the wait
+    maxRetries: 1,
   });
 };

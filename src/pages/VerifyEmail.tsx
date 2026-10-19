@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { fadeInUpVariants } from "@/utils/animations";
 import { supabase } from "@/integrations/supabase/client";
+import { ResendVerification } from "@/components/auth/ResendVerification";
 
 type VerificationStatus = "loading" | "verified" | "already_verified" | "invalid";
 
@@ -36,9 +37,16 @@ const VerifyEmail = () => {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
         if (sessionError || !session?.user) {
-          // No session - might be invalid link or expired
+          // No session: the link was already used (opened twice / in another browser) or is too old.
+          // Supabase puts the reason in the URL, e.g. #error_code=otp_expired
+          const reason = new URLSearchParams(window.location.hash.replace(/^#/, "")).get("error_code") ||
+            new URLSearchParams(window.location.search).get("error_code");
           setStatus("invalid");
-          setMessage("This verification link is invalid or has expired. Please sign up again or request a new verification email.");
+          setMessage(
+            reason === "otp_expired"
+              ? "This verification link was already used or has expired. Each link works only once."
+              : "We couldn't verify your email with this link. It may have been used already or expired."
+          );
           return;
         }
 
@@ -223,12 +231,22 @@ const VerifyEmail = () => {
               {message}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2">
-            <Button className="w-full" onClick={goToSignUp}>
-              Go to Sign Up
-            </Button>
-            <Button className="w-full" variant="outline" onClick={goNow}>
+          <CardContent className="space-y-4">
+            <div className="rounded-md border bg-muted/40 p-3 text-sm text-left">
+              <p className="font-medium text-foreground">Already verified?</p>
+              <p className="text-muted-foreground">
+                If you clicked the link before, your email is probably verified already. Just sign in.
+              </p>
+            </div>
+            <Button className="w-full" onClick={goNow}>
               Go to Sign In
+            </Button>
+            <div className="space-y-2 border-t pt-4">
+              <p className="text-sm text-left text-muted-foreground">Need a new link? We'll email it to you.</p>
+              <ResendVerification />
+            </div>
+            <Button className="w-full" variant="ghost" onClick={goToSignUp}>
+              Go to Sign Up
             </Button>
           </CardContent>
         </Card>

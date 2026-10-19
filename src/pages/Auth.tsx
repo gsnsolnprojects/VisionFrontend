@@ -39,6 +39,7 @@ import {
 import { fadeInUpVariants } from "@/utils/animations";
 import { rememberSignupPlan } from "@/lib/signupPlan";
 import { AuthInspectionPanel } from "@/components/auth/AuthInspectionPanel";
+import { ResendVerification } from "@/components/auth/ResendVerification";
 
 const Auth = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -60,6 +61,8 @@ const Auth = () => {
   }, []);
 
   const [loading, setLoading] = useState(false);
+  // Email of a sign-in attempt refused because it isn't verified yet (shows the resend box)
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
   const [resendCooldown, setResendCooldown] = useState<number>(0);
   
   // Plan picked on the landing page (?plan=playground), highlighted later on the Billing page
@@ -687,6 +690,7 @@ useEffect(() => {
 
   const handleSignin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setUnverifiedEmail(null);
 
     // Skip form validation if invite token is present (user should use magic link)
     if (!inviteToken && !signinForm.validateForm()) {
@@ -756,6 +760,9 @@ useEffect(() => {
       navigate("/dashboard");
     } catch (error: any) {
       console.error("Sign in error:", error);
+      if (!inviteToken && /email not confirmed/i.test(error?.message || "")) {
+        setUnverifiedEmail(signinForm.values.email);
+      }
       toast({
         title: "Sign in failed",
         description:
@@ -1067,6 +1074,16 @@ useEffect(() => {
               <Button className="w-full" type="submit" disabled={loading || !!inviteToken}>
                 {loading ? "Signing in..." : inviteToken ? "Use magic link from email" : "Sign In"}
               </Button>
+
+              {unverifiedEmail && (
+                <div className="space-y-2 rounded-md border bg-muted/40 p-3">
+                  <p className="text-sm font-medium">Your email isn&apos;t verified yet</p>
+                  <p className="text-sm text-muted-foreground">
+                    Click the link we emailed you, or get a new one here.
+                  </p>
+                  <ResendVerification initialEmail={unverifiedEmail} />
+                </div>
+              )}
 
               {!inviteToken && (
                 <p className="text-sm text-center text-muted-foreground">

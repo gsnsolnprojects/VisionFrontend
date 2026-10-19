@@ -856,6 +856,8 @@ const DatasetManager = () => {
 
   // Delete version state
   const [versionToDelete, setVersionToDelete] = useState<string | null>(null);
+  // Removing a linked sample only takes it out of this project; GSN's files are untouched
+  const removingSample = !!versionToDelete && !!versions.find((v) => v.datasetId === versionToDelete)?.isLinkedSample;
   const [showDeleteVersionDialog, setShowDeleteVersionDialog] = useState<boolean>(false);
   const [fileToDelete, setFileToDelete] = useState<FileEntry | null>(null);
   const [deletingFile, setDeletingFile] = useState(false);
@@ -4509,7 +4511,7 @@ const DatasetManager = () => {
       }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Version?</AlertDialogTitle>
+            <AlertDialogTitle>{removingSample ? "Remove this sample from your project?" : "Delete Version?"}</AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
               {loadingDependencies ? (
                 <div className="flex items-center gap-2">
@@ -4518,10 +4520,17 @@ const DatasetManager = () => {
                 </div>
               ) : (
                 <>
-                  <p>
-                    Are you sure you want to delete this version? This will permanently delete 
-                    the version files and all associated data. This action cannot be undone.
-                  </p>
+                  {removingSample ? (
+                    <p>
+                      The sample dataset is taken out of this project. GSN&apos;s original stays in the sample
+                      library, so you can add it again any time.
+                    </p>
+                  ) : (
+                    <p>
+                      Are you sure you want to delete this version? This will permanently delete
+                      the version files and all associated data. This action cannot be undone.
+                    </p>
+                  )}
                   {versionDependencies && versionDependencies.hasDependencies && (
                     <div className="mt-3 pt-3 border-t">
                       <p className="font-medium text-sm mb-2">This dataset is used by:</p>
@@ -4573,12 +4582,12 @@ const DatasetManager = () => {
               {deletingVersion ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Deleting...
+                  {removingSample ? "Removing..." : "Deleting..."}
                 </>
               ) : (
                 <>
                   <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
+                  {removingSample ? "Remove" : "Delete"}
                 </>
               )}
             </AlertDialogAction>
