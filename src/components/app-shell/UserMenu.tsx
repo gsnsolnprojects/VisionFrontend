@@ -40,10 +40,10 @@ export const UserMenu: React.FC = () => {
         // Ignore storage errors; sign-out will still proceed
       }
       await supabase.auth.signOut();
-      navigate("/auth");
+      navigate("/", { replace: true });
     } catch (error) {
       console.error("Sign out error:", error);
-      navigate("/auth");
+      navigate("/", { replace: true });
     }
   };
 
