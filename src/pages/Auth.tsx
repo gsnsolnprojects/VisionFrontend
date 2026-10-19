@@ -38,6 +38,7 @@ import {
 } from "@/lib/validations/authSchemas";
 import { fadeInUpVariants } from "@/utils/animations";
 import { rememberSignupPlan } from "@/lib/signupPlan";
+import { AuthInspectionPanel } from "@/components/auth/AuthInspectionPanel";
 
 const Auth = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -859,7 +860,9 @@ useEffect(() => {
   // ---------------- RENDER ----------------
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-6">
+    <div className="min-h-screen flex flex-col lg:grid lg:grid-cols-2 bg-gradient-to-br from-background via-background to-primary/5">
+      <AuthInspectionPanel />
+      <div className="flex flex-1 items-center justify-center p-6">
       <motion.div
         variants={fadeInUpVariants}
         initial="hidden"
@@ -1114,6 +1117,7 @@ useEffect(() => {
         </CardContent>
         </Card>
       </motion.div>
+      </div>
     </div>
   );
 };
