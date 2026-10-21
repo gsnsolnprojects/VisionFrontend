@@ -118,7 +118,9 @@ const LandingV2 = () => {
 
   const scrollToTop = (e: React.MouseEvent) => {
     e.preventDefault();
-    window.scrollTo({ top: 0 });
+    // Jump straight to the top: a long smooth scroll (the page sets scroll-behavior: smooth)
+    // can be interrupted or skipped by some phone browsers, leaving the page where it was
+    window.scrollTo({ top: 0, behavior: "instant" });
   };
 
   return (

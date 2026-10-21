@@ -45,7 +45,7 @@ const Auth = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { error: profileError } = useProfile();
+  const { error: profileError, user: signedInUser, sessionReady } = useProfile();
   const isDeactivated = profileError?.toLowerCase().includes("deactivated") ?? false;
 
   // Force light theme on auth pages (no dark mode)
@@ -72,6 +72,14 @@ const Auth = () => {
 
   // Get invite token from URL if present
   const inviteToken = searchParams.get("invite") ?? searchParams.get("project_invite");
+
+  // Already signed in (e.g. reopened the sign-in link): go to the app instead of showing the form.
+  // Invite links stay here, they finish accepting the invite on this page.
+  useEffect(() => {
+    if (sessionReady && signedInUser && !inviteToken) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [sessionReady, signedInUser, inviteToken, navigate]);
   
   // Force signin mode when invite token is present
   const [mode, setMode] = useState<"signin" | "signup" | "forgot">(() => {
