@@ -40,6 +40,7 @@ import { fadeInUpVariants } from "@/utils/animations";
 import { rememberSignupPlan } from "@/lib/signupPlan";
 import { AuthInspectionPanel } from "@/components/auth/AuthInspectionPanel";
 import { ResendVerification } from "@/components/auth/ResendVerification";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 
 const Auth = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -899,6 +900,20 @@ useEffect(() => {
         </CardHeader>
 
         <CardContent className="space-y-6">
+          {/* Continue with Google - sign in / sign up (invites use their magic link instead) */}
+          {(mode === "signin" || mode === "signup") && !inviteToken && (
+            <div className="space-y-4">
+              <GoogleSignInButton
+                onError={(message) => toast({ title: "Google sign-in failed", description: message, variant: "destructive" })}
+              />
+              <div className="flex items-center gap-3 text-xs uppercase tracking-wide text-muted-foreground">
+                <span className="h-px flex-1 bg-border" />
+                or continue with email
+                <span className="h-px flex-1 bg-border" />
+              </div>
+            </div>
+          )}
+
           {/* SIGN UP - Hidden when invite token is present */}
           {mode === "signup" && !inviteToken && (
             <form onSubmit={handleSignup} className="space-y-4">
@@ -915,7 +930,7 @@ useEffect(() => {
               />
 
               <FormFieldWrapper
-                label="Business Email"
+                label="Email"
                 name="email"
                 type="email"
                 value={signupForm.values.email}
@@ -1040,7 +1055,7 @@ useEffect(() => {
               )}
 
               <FormFieldWrapper
-                label="Business Email"
+                label="Email"
                 name="email"
                 type="email"
                 value={signinForm.values.email}
@@ -1112,7 +1127,7 @@ useEffect(() => {
           {mode === "forgot" && !inviteToken && (
             <form onSubmit={handleForgotPassword} className="space-y-5">
               <FormFieldWrapper
-                label="Business Email"
+                label="Email"
                 name="email"
                 type="email"
                 value={resetPasswordForm.values.email}

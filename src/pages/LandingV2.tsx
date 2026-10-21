@@ -496,7 +496,9 @@ const LandingV2 = () => {
             Vision-M<span></span>
           </a>
           <p>Machine vision. Human possibilities.</p>
-          <p>© 2026 Vision-M</p>
+          <p>
+            © 2026 Vision-M · <Link to="/privacy">Privacy</Link> · <Link to="/terms">Terms</Link>
+          </p>
         </div>
       </footer>
 
