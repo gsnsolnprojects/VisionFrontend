@@ -52,6 +52,13 @@ const SIZES = [
   },
 ];
 
+/**
+ * Off until the GPU training server is set up on AWS: the button shows "Training opens soon"
+ * instead of queuing jobs nothing would run (they'd use up runs and model slots). Set to true
+ * once training workers are live.
+ */
+const TRAINING_AVAILABLE = false;
+
 const jobKey = (projectId: string) => `visionm_playground_training_${projectId}`;
 
 const percent = (v: number | null | undefined) => (typeof v === "number" ? `${Math.round(v * 100)}%` : "—");
@@ -193,8 +200,9 @@ export const PlaygroundTrainStep: React.FC<{
     }
   };
 
-  const blockedReason =
-    counts.labelled === 0
+  const blockedReason = !TRAINING_AVAILABLE
+    ? null
+    : counts.labelled === 0
       ? "Label some images first: the model learns only from labelled photos."
       : runsLeft === 0
         ? "You've used this month's training runs. They reset on the 1st."
@@ -324,12 +332,19 @@ export const PlaygroundTrainStep: React.FC<{
 
           {blockedReason && !busy && <p className="mt-4 text-sm text-destructive">{blockedReason}</p>}
 
-          <Button className="mt-5 w-full gap-2" size="lg" onClick={() => void start()} disabled={starting || busy || !!blockedReason}>
+          <Button
+            className="mt-5 w-full gap-2"
+            size="lg"
+            onClick={() => void start()}
+            disabled={!TRAINING_AVAILABLE || starting || busy || !!blockedReason}
+          >
             {starting || busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-            {busy ? "Training..." : "Start training"}
+            {!TRAINING_AVAILABLE ? "Training opens soon" : busy ? "Training..." : "Start training"}
           </Button>
           <p className="mt-2 text-center text-xs text-muted-foreground">
-            A run that fails because of a problem on our side doesn&apos;t use up your allowance.
+            {TRAINING_AVAILABLE
+              ? "A run that fails because of a problem on our side doesn't use up your allowance."
+              : "We're setting up the training computers. Meanwhile, read how training works and test a ready-made model in step 3."}
           </p>
         </section>
 

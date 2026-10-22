@@ -13,10 +13,12 @@ import { addDatasetFiles, deleteDatasetFile } from "@/lib/api/datasets";
 import { getLearningProgress } from "@/lib/api/dashboard";
 import { cn } from "@/lib/utils";
 import { PlaygroundTrainStep } from "@/components/playground/PlaygroundTrainStep";
+import { PlaygroundTestStep } from "@/components/playground/PlaygroundTestStep";
+import { getSamples } from "@/lib/api/samples";
 
 /**
  * Playground project screen (/dataset/:id for Playground workspaces): the Upload & label →
- * Train → Test & evaluate → Report path (?step=train opens step 2). Shows the project's dataset as an
+ * Train → Test & evaluate → Report path (?step=train / ?step=test open steps 2 and 3). Shows the project's dataset as an
  * image grid with each image's labelled boxes drawn on it. A GSN sample dataset is view-only;
  * the company's own dataset can take more images and each image opens the labelling tool.
  * Other plans keep DatasetManager.
@@ -27,6 +29,8 @@ interface DatasetVersion {
   version: string;
   isActive?: boolean;
   isLinkedSample?: boolean;
+  /** the GSN sample dataset it links to */
+  linkedFrom?: string | null;
   totalImages?: number;
   trainCount?: number;
   valCount?: number;
@@ -132,8 +136,9 @@ export const PlaygroundProjectPage: React.FC = () => {
   const { id: projectId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const step = searchParams.get("step") === "train" ? "train" : "label";
-  const goToStep = (next: "label" | "train") => {
+  const stepParam = searchParams.get("step");
+  const step = stepParam === "train" || stepParam === "test" ? stepParam : "label";
+  const goToStep = (next: "label" | "train" | "test") => {
     setSearchParams(next === "label" ? {} : { step: next });
     window.scrollTo({ top: 0 });
   };
@@ -157,11 +162,21 @@ export const PlaygroundProjectPage: React.FC = () => {
   const [hasModel, setHasModel] = useState(false);
   const [hasPrediction, setHasPrediction] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const [sampleProject, setSampleProject] = useState<string | null>(null);
 
   const companyName = company?.name ?? "";
   const dataset = versions?.find((v) => v.datasetId === selectedId) ?? null;
   const isSample = !!dataset?.isLinkedSample;
   const ownDataset = versions?.find((v) => !v.isLinkedSample) ?? null;
+
+  // Which GSN sample this dataset links to (Test offers that sample's ready-made model)
+  useEffect(() => {
+    setSampleProject(null);
+    if (!dataset?.linkedFrom) return;
+    getSamples()
+      .then(({ datasets }) => setSampleProject(datasets.find((d) => d.id === dataset.linkedFrom)?.project ?? null))
+      .catch(() => undefined);
+  }, [dataset?.linkedFrom]);
 
   // ---- Load project and its datasets ----
   const loadVersions = useCallback(async (projectName: string) => {
@@ -266,6 +281,7 @@ export const PlaygroundProjectPage: React.FC = () => {
     return { total: filtered.length, items: filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) };
   }, [files, filter, page, isLabelled]);
   const totalPages = Math.max(1, Math.ceil(visible.total / PAGE_SIZE));
+  const testFiles = useMemo(() => files.filter((f) => f.folder === "test"), [files]);
 
   // ---- Boxes for the images on this page ----
   useEffect(() => {
@@ -394,7 +410,7 @@ export const PlaygroundProjectPage: React.FC = () => {
   const steps = [
     { n: 1, label: "Upload & label", active: step === "label", onClick: () => goToStep("label") },
     { n: 2, label: "Train", active: step === "train", onClick: () => goToStep("train") },
-    { n: 3, label: "Test & evaluate", active: false, onClick: () => navigate("/project/prediction") },
+    { n: 3, label: "Test & evaluate", active: step === "test", onClick: () => goToStep("test") },
     { n: 4, label: "Report", active: false, onClick: undefined, locked: true },
   ];
   const filters: { id: Filter; label: string; count: number }[] = [
@@ -506,11 +522,29 @@ export const PlaygroundProjectPage: React.FC = () => {
                 : { training: counts.training - counts.validation, validation: counts.validation, test: counts.test, labelled: counts.labelled }
             }
             limits={limits}
-            onTestModel={() => navigate("/project/prediction")}
+            onTestModel={() => goToStep("test")}
           />
         ) : (
           <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">
             Add a dataset in step 1 first: the model needs labelled photos to learn from.
+          </p>
+        )
+      )}
+
+      {step === "test" && (
+        dataset && selectedId ? (
+          <PlaygroundTestStep
+            projectId={project.id}
+            companyName={companyName}
+            projectName={project.name}
+            datasetId={selectedId}
+            sampleProject={sampleProject}
+            testFiles={testFiles}
+            classNames={classNames}
+          />
+        ) : (
+          <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">
+            Add a dataset in step 1 first: you need photos to test a model on.
           </p>
         )
       )}
