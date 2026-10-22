@@ -26,6 +26,8 @@ import { cn } from "@/lib/utils";
 import { isSuperadmin } from "@/lib/utils/superadmin";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { usePlanAccess } from "@/contexts/plan-access-context";
+import { PlaygroundSidebar } from "./PlaygroundSidebar";
 import {
   Tooltip,
   TooltipContent,
@@ -45,6 +47,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
   const { toast } = useToast();
   const { isOpen, toggleSidebar } = useSidebar();
   const isMobile = useIsMobile();
+  const planAccess = usePlanAccess();
+  const isPlaygroundWorkspace =
+    planAccess.data?.access?.plan === "playground" && (company?.name ?? "").trim().toLowerCase() !== "gsn";
   
   // Debug admin status in development (only when profile loading is complete)
   useEffect(() => {
@@ -181,6 +186,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
       : []),
   ];
 
+
+  // Playground workspaces (never GSN) get their own step-by-step menu
+  if (isPlaygroundWorkspace) return <PlaygroundSidebar onNavigate={onNavigate} />;
 
   return (
     <>
