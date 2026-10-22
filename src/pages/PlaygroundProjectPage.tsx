@@ -22,11 +22,12 @@ import { getLearningProgress } from "@/lib/api/dashboard";
 import { cn } from "@/lib/utils";
 import { PlaygroundTrainStep } from "@/components/playground/PlaygroundTrainStep";
 import { PlaygroundTestStep } from "@/components/playground/PlaygroundTestStep";
+import { PlaygroundReportStep } from "@/components/playground/PlaygroundReportStep";
 import { getSamples } from "@/lib/api/samples";
 
 /**
  * Playground project screen (/dataset/:id for Playground workspaces): the Upload & label →
- * Train → Test & evaluate → Report path (?step=train / ?step=test open steps 2 and 3). Shows the project's dataset as an
+ * Train → Test & evaluate → Report path (?step=train / test / report open steps 2 to 4). Shows the project's dataset as an
  * image grid with each image's labelled boxes drawn on it. A GSN sample dataset is view-only;
  * the company's own dataset can take more images and each image opens the labelling tool.
  * Other plans keep DatasetManager.
@@ -145,8 +146,8 @@ export const PlaygroundProjectPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const stepParam = searchParams.get("step");
-  const step = stepParam === "train" || stepParam === "test" ? stepParam : "label";
-  const goToStep = (next: "label" | "train" | "test") => {
+  const step = stepParam === "train" || stepParam === "test" || stepParam === "report" ? stepParam : "label";
+  const goToStep = (next: "label" | "train" | "test" | "report") => {
     setSearchParams(next === "label" ? {} : { step: next });
     window.scrollTo({ top: 0 });
   };
@@ -431,7 +432,7 @@ export const PlaygroundProjectPage: React.FC = () => {
     { n: 1, label: "Upload & label", active: step === "label", onClick: () => goToStep("label") },
     { n: 2, label: "Train", active: step === "train", onClick: () => goToStep("train") },
     { n: 3, label: "Test & evaluate", active: step === "test", onClick: () => goToStep("test") },
-    { n: 4, label: "Report", active: false, onClick: undefined, locked: true },
+    { n: 4, label: "Report", active: step === "report", onClick: () => goToStep("report"), locked: false },
   ];
   const filters: { id: Filter; label: string; count: number }[] = [
     { id: "all", label: "All images", count: counts.all },
@@ -596,6 +597,8 @@ export const PlaygroundProjectPage: React.FC = () => {
         )
       )}
 
+      {step === "report" && <PlaygroundReportStep projectId={project.id} onGoToTest={() => goToStep("test")} />}
+
       {step === "test" && (
         dataset && selectedId ? (
           <PlaygroundTestStep
@@ -604,6 +607,9 @@ export const PlaygroundProjectPage: React.FC = () => {
             projectName={project.name}
             datasetId={selectedId}
             sampleProject={sampleProject}
+            missionName={missionName}
+            industryName={industryName}
+            onReportCreated={() => goToStep("report")}
             testFiles={testFiles}
             classNames={classNames}
           />

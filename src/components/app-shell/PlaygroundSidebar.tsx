@@ -23,7 +23,7 @@ interface Project {
   name: string;
 }
 
-type Step = "label" | "train" | "test";
+type Step = "label" | "train" | "test" | "report";
 
 interface Item {
   label: string;
@@ -48,7 +48,7 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void }> = ({ onNav
 
   const routeProjectId = matchPath("/dataset/:id", location.pathname)?.params.id ?? null;
   const step: Step | null = routeProjectId
-    ? ((searchParams.get("step") as Step | null) === "train" || searchParams.get("step") === "test"
+    ? (["train", "test", "report"].includes(searchParams.get("step") ?? "")
         ? (searchParams.get("step") as Step)
         : "label")
     : null;
@@ -112,7 +112,7 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void }> = ({ onNav
     { label: "Dataset & labels", Icon: Images, active: step === "label", onClick: () => openStep("label") },
     { label: "Train a model", Icon: GraduationCap, active: step === "train", onClick: () => openStep("train") },
     { label: "Test & evaluate", Icon: FlaskConical, active: step === "test", onClick: () => openStep("test") },
-    { label: "Reports", Icon: FileBarChart, active: false, soon: true },
+    { label: "Reports", Icon: FileBarChart, active: step === "report", onClick: () => openStep("report") },
   ];
   const resources: Item[] = [
     { label: "Learning centre", Icon: BookOpen, active: false, soon: true },
