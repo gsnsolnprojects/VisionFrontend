@@ -46,6 +46,8 @@ import { SimulationView } from "@/components/SimulationView";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
 import { PlaygroundOverview } from "@/components/dashboard/PlaygroundOverview";
+import type { Mission } from "@/components/dashboard/IndustryPicker";
+import { getSamples, importSampleDataset } from "@/lib/api/samples";
 import { RoleBadge } from "@/components/RoleBadge";
 import { usePlanAccess, PLAN_REQUIRED_MESSAGE, BILLING_ROUTE } from "@/contexts/plan-access-context";
 
@@ -1080,6 +1082,64 @@ const Dashboard = () => {
     return true;
   };
 
+  /**
+   * Playground mission: open its project if it exists, otherwise create it (named after the
+   * mission, "Industry · Mission" as description) and, for a guided mission, add its GSN sample.
+   */
+  const startMission = async (industryName: string, mission: Mission, useSample: boolean) => {
+    if (!user || !profile?.company_id) return;
+    const existing = projects.find((p) => String(p.name).trim().toLowerCase() === mission.title.toLowerCase());
+    if (existing) {
+      navigate(`/dataset/${existing.id}`);
+      return;
+    }
+    if (!planAllowsNewProject()) return;
+
+    setLoading(true);
+    try {
+      const { data: project, error } = await supabase
+        .from("projects")
+        .insert({
+          name: mission.title,
+          description: `${industryName} · ${mission.title}`,
+          company_id: profile.company_id,
+          created_by: user.id,
+          project_type: "generic",
+        })
+        .select()
+        .single();
+      if (error || !project) throw error || new Error("Failed to create project");
+      setProjects((prev) => [project, ...prev.filter((p) => p.id !== project.id)]);
+
+      if (useSample && mission.sample) {
+        try {
+          const { datasets } = await getSamples();
+          const wanted = mission.sample.trim().toLowerCase();
+          const sample = datasets.find((d) => d.project.trim().toLowerCase() === wanted);
+          if (!sample) throw new Error("This sample isn't in the library right now.");
+          await importSampleDataset(sample.id, project.name);
+        } catch (sampleError) {
+          toast({
+            title: "Project created, sample not added",
+            description: `${(sampleError as Error).message} You can upload your own images instead.`,
+            variant: "destructive",
+          });
+        }
+      }
+
+      planAccess.refresh().catch(() => undefined);
+      navigate(`/dataset/${project.id}`);
+    } catch (error) {
+      toast({
+        title: "Couldn't start the mission",
+        description: (error as Error).message ?? "Failed to create project.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCreateProject = async () => {
     if (!projectForm.validateForm()) {
       toast({
@@ -1223,7 +1283,7 @@ const Dashboard = () => {
       {/* Dashboard Overview - shown when user has a company */}
       {activeView === "overview" && profile?.company_id && (
         isPlaygroundWorkspace ? (
-          <PlaygroundOverview projects={projects} onCreateProject={openCreateProject} />
+          <PlaygroundOverview projects={projects} onCreateProject={openCreateProject} onStartMission={startMission} />
         ) : (
           <DashboardOverview
             projects={projects}

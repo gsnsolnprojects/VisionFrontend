@@ -13,10 +13,12 @@ import { cn } from "@/lib/utils";
  * drives the drawings (same drawings as the landing page, in the same order).
  */
 
-interface Mission {
+export interface Mission {
   title: string;
-  /** guided missions come with ready sample images; the others start from the user's own */
-  guided?: boolean;
+  /** Guided missions start with this GSN sample dataset (its project name in the sample library) */
+  sample?: string;
+  /** What the guided sample shows */
+  sampleCopy?: string;
 }
 
 interface Industry {
@@ -34,7 +36,11 @@ const INDUSTRIES: Industry[] = [
     tagline: "Find the flaw. Understand the quality check.",
     Icon: Cog,
     missions: [
-      { title: "Surface scratch detective", guided: true },
+      {
+        title: "Missing screw detective",
+        sample: "Terminals",
+        sampleCopy: "Real photos of terminal parts, already labelled: missing screws, missing bars and blackened parts.",
+      },
       { title: "Missing feature check" },
       { title: "Damaged edge explorer" },
     ],
@@ -45,7 +51,11 @@ const INDUSTRIES: Industry[] = [
     tagline: "Tiny components. Big inspection questions.",
     Icon: Cpu,
     missions: [
-      { title: "The missing component", guided: true },
+      {
+        title: "PCB defect detective",
+        sample: "PCB",
+        sampleCopy: "Real circuit board photos, already labelled with six defects: missing holes, shorts, open circuits and more.",
+      },
       { title: "Orientation explorer" },
       { title: "Visible assembly defects" },
     ],
@@ -56,7 +66,11 @@ const INDUSTRIES: Industry[] = [
     tagline: "Explore what makes packaging acceptable.",
     Icon: Pill,
     missions: [
-      { title: "Label alignment lab", guided: true },
+      {
+        title: "Blister pack inspector",
+        sample: "Blister Pack",
+        sampleCopy: "Real blister pack photos, already labelled: good packs and packs with empty or damaged pockets.",
+      },
       { title: "Missing label check" },
       { title: "Carton damage explorer" },
     ],
@@ -96,8 +110,6 @@ const INDUSTRIES: Industry[] = [
   },
 ];
 
-const GUIDED_COPY =
-  "Explore ready-made sample images that are already labelled. A quick way to learn the workflow.";
 const OWN_IMAGES_COPY =
   "Bring images of acceptable and defective examples. Practise consistent labelling and a focused inspection question.";
 
@@ -111,7 +123,9 @@ const readIndustry = (userId?: string): string | null => {
   }
 };
 
-export const IndustryPicker: React.FC<{ onStartMission: () => void }> = ({ onStartMission }) => {
+export const IndustryPicker: React.FC<{
+  onStartMission: (industryName: string, mission: Mission, useSample: boolean) => void;
+}> = ({ onStartMission }) => {
   const { user } = useProfile();
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -247,23 +261,23 @@ export const IndustryPicker: React.FC<{ onStartMission: () => void }> = ({ onSta
             {industry.missions.map((mission, i) => (
               <article key={mission.title} className="flex flex-col rounded-xl border bg-background/40 p-4">
                 <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                  Mission {String(i + 1).padStart(2, "0")} · {mission.guided ? "Guided start" : "Your images"}
+                  Mission {String(i + 1).padStart(2, "0")} · {mission.sample ? "Guided start" : "Your images"}
                 </p>
                 <div className="mt-3 overflow-hidden rounded-lg bg-[#171f1b]">
                   <IndustryArt index={artIndex} />
                 </div>
                 <h4 className="mt-4 font-semibold text-foreground">{mission.title}</h4>
                 <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                  {mission.guided ? GUIDED_COPY : OWN_IMAGES_COPY}
+                  {mission.sampleCopy ?? OWN_IMAGES_COPY}
                 </p>
                 <div className="mt-auto space-y-2 pt-5">
-                  {mission.guided && (
-                    <Button className="w-full gap-1" onClick={onStartMission}>
+                  {mission.sample && (
+                    <Button className="w-full gap-1" onClick={() => onStartMission(industry.name, mission, true)}>
                       Start guided challenge
                       <ArrowRight className="h-4 w-4" aria-hidden="true" />
                     </Button>
                   )}
-                  <Button variant="outline" className="w-full gap-1" onClick={onStartMission}>
+                  <Button variant="outline" className="w-full gap-1" onClick={() => onStartMission(industry.name, mission, false)}>
                     Upload my images
                     <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
                   </Button>
@@ -273,7 +287,7 @@ export const IndustryPicker: React.FC<{ onStartMission: () => void }> = ({ onSta
           </div>
 
           <p className="mt-5 text-xs text-muted-foreground">
-            Guided samples are available for automotive scratches, missing PCB components and pharma label alignment.
+            Guided samples are real GSN inspection datasets: terminals (automotive), circuit boards and blister packs.
             Choosing an industry sets your learning context; it does not load an industry-trained AI model.
           </p>
         </motion.section>

@@ -7,6 +7,7 @@ import LandingV2 from "@/pages/LandingV2";
 import Auth from "@/pages/Auth";
 import Dashboard from "@/pages/Dashboard";
 import DatasetManager from "@/pages/DatasetManager";
+import ProjectDatasetRoute from "@/pages/ProjectDatasetRoute";
 import ResetPassword from "@/pages/ResetPassword";
 import SetPasswordPage from "@/pages/SetPasswordPage";
 import VerifyEmail from "@/pages/VerifyEmail";
@@ -168,7 +169,7 @@ const ProtectedRoutes = () => {
 
         {/* Dataset Manager - keep existing routes for backward compatibility */}
         <Route path="/datasets" element={<DatasetManager />} />
-        <Route path="/dataset/:id" element={<DatasetManager />} />
+        <Route path="/dataset/:id" element={<ProjectDatasetRoute />} />
       </Route>
 
       {/* 404 */}

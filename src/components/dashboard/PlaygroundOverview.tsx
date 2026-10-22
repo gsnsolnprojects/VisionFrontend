@@ -4,20 +4,22 @@ import { motion } from "framer-motion";
 import { staggerContainerVariants } from "@/utils/animations";
 import { usePlanAccess } from "@/contexts/plan-access-context";
 import { getLearningProgress, type LearningProgress } from "@/lib/api/dashboard";
-import { IndustryPicker } from "./IndustryPicker";
+import { IndustryPicker, type Mission } from "./IndustryPicker";
 import { SpotTheIssueQuiz } from "./SpotTheIssueQuiz";
 import { AllowanceMeters } from "./AllowanceMeters";
 
 interface PlaygroundOverviewProps {
   projects: unknown[];
   onCreateProject?: () => void;
+  /** Creates (or opens) the mission's project, with its GSN sample when useSample is true */
+  onStartMission?: (industryName: string, mission: Mission, useSample: boolean) => void;
 }
 
 /**
  * Overview for Playground workspaces: pick an industry and a challenge, a quick spot-the-defect
  * warm-up, and the workspace's allowance. Other plans keep the regular DashboardOverview.
  */
-export const PlaygroundOverview: React.FC<PlaygroundOverviewProps> = ({ projects, onCreateProject }) => {
+export const PlaygroundOverview: React.FC<PlaygroundOverviewProps> = ({ projects, onCreateProject, onStartMission }) => {
   const navigate = useNavigate();
   const planAccess = usePlanAccess();
   const [progress, setProgress] = useState<LearningProgress | null>(null);
@@ -39,7 +41,13 @@ export const PlaygroundOverview: React.FC<PlaygroundOverviewProps> = ({ projects
   return (
     <motion.div className="space-y-8" variants={staggerContainerVariants} initial="hidden" animate="visible">
       <IndustryPicker
-        onStartMission={() => (onCreateProject ? onCreateProject() : navigate("/dashboard?action=create-project"))}
+        onStartMission={(industryName, mission, useSample) =>
+          onStartMission
+            ? onStartMission(industryName, mission, useSample)
+            : onCreateProject
+              ? onCreateProject()
+              : navigate("/dashboard?action=create-project")
+        }
       />
 
       <SpotTheIssueQuiz />
