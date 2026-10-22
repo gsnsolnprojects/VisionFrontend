@@ -11,7 +11,7 @@ import ResetPassword from "@/pages/ResetPassword";
 import SetPasswordPage from "@/pages/SetPasswordPage";
 import VerifyEmail from "@/pages/VerifyEmail";
 import NotFound from "@/pages/NotFound";
-import { PrivacyPage, TermsPage } from "@/pages/LegalPage";
+import { ContactPage, PrivacyPage, RefundsPage, TermsPage } from "@/pages/LegalPage";
 import ShowcasePage from "@/pages/ShowcasePage";
 import MainLayout from "@/layouts/MainLayout";
 import { ProfileProvider } from "@/contexts/ProfileContext";
@@ -190,6 +190,8 @@ function App() {
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/terms" element={<TermsPage />} />
+          <Route path="/refunds" element={<RefundsPage />} />
+          <Route path="/contact" element={<ContactPage />} />
           <Route path="/showcase" element={<ShowcasePage />} />
           <Route path="/showcase/:categoryId" element={<ShowcasePage />} />
           <Route path="/showcase/:categoryId/:projectId" element={<ShowcasePage />} />

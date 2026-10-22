@@ -2,12 +2,15 @@ import React, { useEffect } from "react";
 import { Link } from "react-router-dom";
 
 /**
- * Public Privacy Policy (/privacy) and Terms of Service (/terms) for Vision-M Studio.
- * Plain pages so they work for visitors who aren't signed in (Google sign-in links to them).
+ * Public Privacy Policy (/privacy), Terms of Service (/terms), Refund & Cancellation Policy (/refunds)
+ * and Contact Us (/contact) for Vision-M Studio. Plain pages so they work for visitors who aren't
+ * signed in (Google sign-in and Razorpay link to them).
  */
 
-const LAST_UPDATED = "21 October 2026";
-const CONTACT = "support@gsnsoln.com";
+const LAST_UPDATED = "22 October 2026";
+const CONTACT = "info@gsnsoln.com";
+const PHONE = "+91 77388 63939";
+const ADDRESS = "2001, Plan S Business Park, MIDC Nerul, Navi Mumbai, Maharashtra 400706, India";
 
 type Section = { heading: string; body: React.ReactNode };
 
@@ -144,7 +147,8 @@ const TERMS: Section[] = [
       <p>
         Paid plans are billed monthly per company through Razorpay. A plan renews each month until it is cancelled; after
         cancelling, you keep access until the end of the month already paid for. Plan limits (such as projects, users and
-        models) apply as shown on the Billing page.
+        models) apply as shown on the Billing page. Refunds follow our{" "}
+        <Link to="/refunds">Refund &amp; Cancellation Policy</Link>.
       </p>
     ),
   },
@@ -222,7 +226,93 @@ const TERMS: Section[] = [
   },
 ];
 
-const LegalLayout: React.FC<{ title: string; sections: Section[] }> = ({ title, sections }) => {
+const REFUNDS: Section[] = [
+  {
+    heading: "Cancelling your plan",
+    body: (
+      <ul>
+        <li>
+          Paid plans renew every month. A company admin can cancel at any time from Settings → Billing in the app, or
+          by emailing <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.
+        </li>
+        <li>
+          After you cancel, there are no further charges, and you keep access to your plan until the end of the month
+          you have already paid for.
+        </li>
+        <li>After that, your company moves to the free level and paid features stop.</li>
+      </ul>
+    ),
+  },
+  {
+    heading: "Refunds",
+    body: (
+      <>
+        <p>
+          Payments are for one month of access and are not refunded for a month that has started, including when you
+          cancel part-way through the month. We do refund:
+        </p>
+        <ul>
+          <li>a payment taken twice or charged by mistake;</li>
+          <li>a charge after you had already cancelled;</li>
+          <li>a month in which you could not use the service because of a fault on our side that we could not fix.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    heading: "How to ask for a refund",
+    body: (
+      <p>
+        Email <a href={`mailto:${CONTACT}`}>{CONTACT}</a> within 7 days of the charge with your company name, the email
+        you sign in with and the Razorpay payment ID (from your payment receipt). We reply within 2 working days.
+      </p>
+    ),
+  },
+  {
+    heading: "When you get the money back",
+    body: (
+      <p>
+        Approved refunds are sent through Razorpay to the same card, UPI or bank account used for the payment, within
+        5–7 working days. Your bank may take a few more days to show it.
+      </p>
+    ),
+  },
+];
+
+const ContactBody: React.FC = () => (
+  <div className="space-y-8">
+    <p>For help with Vision-M Studio, your account, billing or refunds, reach us here. We reply within 2 working days.</p>
+    <dl className="grid gap-6 sm:grid-cols-2">
+      <div>
+        <dt className="text-sm text-[#6b726c]">Email</dt>
+        <dd className="text-lg">
+          <a href={`mailto:${CONTACT}`}>{CONTACT}</a>
+        </dd>
+      </div>
+      <div>
+        <dt className="text-sm text-[#6b726c]">Phone</dt>
+        <dd className="text-lg">
+          <a href={`tel:${PHONE.replace(/\s/g, "")}`}>{PHONE}</a>
+          <span className="block text-sm text-[#6b726c]">Monday to Saturday, 10 am – 6 pm IST</span>
+        </dd>
+      </div>
+      <div className="sm:col-span-2">
+        <dt className="text-sm text-[#6b726c]">Address</dt>
+        <dd className="text-lg">
+          GSN Solutions
+          <br />
+          {ADDRESS}
+        </dd>
+      </div>
+    </dl>
+  </div>
+);
+
+const LegalLayout: React.FC<{ title: string; sections?: Section[]; children?: React.ReactNode }> = ({
+  title,
+  sections = [],
+  children,
+}) => {
   useEffect(() => {
     const previous = document.title;
     document.title = `${title} · Vision-M Studio`;
@@ -236,20 +326,22 @@ const LegalLayout: React.FC<{ title: string; sections: Section[] }> = ({ title, 
   return (
     <div className="min-h-screen bg-[#f5f5ee] text-[#171c1b]" style={{ fontFamily: "Arial, Helvetica, sans-serif" }}>
       <header className="border-b border-[#d9ded3]">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-5">
+        <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-6 py-5">
           <Link to="/" className="text-2xl font-extrabold tracking-tight">
             Vision-M<span className="ml-1 inline-block h-2 w-2 bg-[#88a530]" />
           </Link>
-          <nav className="flex gap-5 text-sm">
+          <nav className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
             <Link to="/privacy" className="hover:underline">Privacy</Link>
             <Link to="/terms" className="hover:underline">Terms</Link>
+            <Link to="/refunds" className="hover:underline">Refunds</Link>
+            <Link to="/contact" className="hover:underline">Contact</Link>
             <Link to="/auth?mode=signin" className="font-semibold hover:underline">Log in</Link>
           </nav>
         </div>
       </header>
       <main className="mx-auto max-w-3xl px-6 py-12">
         <h1 className="text-4xl font-normal tracking-tight">{title}</h1>
-        <p className="mt-2 text-sm text-[#6b726c]">Last updated: {LAST_UPDATED}</p>
+        {sections.length > 0 && <p className="mt-2 text-sm text-[#6b726c]">Last updated: {LAST_UPDATED}</p>}
         <div className="legal mt-10 space-y-8 text-[15px] leading-relaxed">
           {sections.map((s) => (
             <section key={s.heading}>
@@ -257,6 +349,7 @@ const LegalLayout: React.FC<{ title: string; sections: Section[] }> = ({ title, 
               {s.body}
             </section>
           ))}
+          {children}
         </div>
       </main>
       <footer className="border-t border-[#d9ded3]">
@@ -269,3 +362,9 @@ const LegalLayout: React.FC<{ title: string; sections: Section[] }> = ({ title, 
 
 export const PrivacyPage: React.FC = () => <LegalLayout title="Privacy Policy" sections={PRIVACY} />;
 export const TermsPage: React.FC = () => <LegalLayout title="Terms of Service" sections={TERMS} />;
+export const RefundsPage: React.FC = () => <LegalLayout title="Refund & Cancellation Policy" sections={REFUNDS} />;
+export const ContactPage: React.FC = () => (
+  <LegalLayout title="Contact Us">
+    <ContactBody />
+  </LegalLayout>
+);

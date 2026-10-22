@@ -34,6 +34,7 @@ import {
   type SubscriptionResponse,
 } from "@/lib/api/subscription";
 import { openRazorpayCheckout } from "@/lib/razorpayCheckout";
+import { Link } from "react-router-dom";
 import { clearSignupPlan, getSignupPlan } from "@/lib/signupPlan";
 
 const formatInr = (amount: number) => `₹${amount.toLocaleString("en-IN")}`;
@@ -231,7 +232,10 @@ const BillingContent: React.FC<BillingContentProps> = ({ data, busyPlan, cancell
       <div>
         <h3 className="mb-1 text-lg font-semibold">Plans</h3>
         <p className="mb-4 text-sm text-muted-foreground">
-          Billed monthly per company through Razorpay (UPI, cards, netbanking). Everyone in your company shares the plan.
+          Billed monthly per company through Razorpay (UPI, cards, netbanking). Everyone in your company shares the plan.{" "}
+          <Link to="/refunds" className="underline">
+            Refund &amp; cancellation policy
+          </Link>
         </p>
         <div className="grid gap-4 md:grid-cols-3">
           {plans.map((plan) => (

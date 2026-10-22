@@ -422,7 +422,7 @@ const LandingV2 = () => {
               </article>
               <article className="price featured">
                 <div className="badge">For use-case evaluation</div>
-                <h3>Professional</h3>
+                <h3>Pilot</h3>
                 <div className="amount">
                   ₹9,999 <span>/ month</span>
                 </div>
@@ -435,7 +435,7 @@ const LandingV2 = () => {
               </article>
               <article className="price">
                 <div className="badge">For business teams</div>
-                <h3>Industrial</h3>
+                <h3>Production</h3>
                 <div className="amount">
                   ₹19,999 <span>/ month</span>
                 </div>
@@ -497,7 +497,8 @@ const LandingV2 = () => {
           </a>
           <p>Machine vision. Human possibilities.</p>
           <p>
-            © 2026 Vision-M · <Link to="/privacy">Privacy</Link> · <Link to="/terms">Terms</Link>
+            © 2026 Vision-M · <Link to="/privacy">Privacy</Link> · <Link to="/terms">Terms</Link> ·{" "}
+            <Link to="/refunds">Refunds</Link> · <Link to="/contact">Contact</Link>
           </p>
         </div>
       </footer>
