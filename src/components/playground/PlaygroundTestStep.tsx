@@ -33,6 +33,8 @@ interface ResultImage {
   /** per-class counts from the prediction ("class" is the class name) */
   byClass?: { class?: string; className?: string; classId?: number; count?: number }[];
   instanceCount?: number;
+  /** the photo's own name when the run used a shortened one */
+  originalName?: string;
 }
 
 interface TestFile {
@@ -252,7 +254,7 @@ export const PlaygroundTestStep: React.FC<{
       const found = new Set(
         (r.byClass ?? []).filter((c) => (c.count ?? 1) > 0).map((c) => c.class ?? c.className ?? `class ${c.classId}`)
       );
-      const actual = run?.source === "test" ? truth[baseOf(r.filename)] : undefined;
+      const actual = run?.source === "test" ? truth[baseOf(r.originalName ?? r.filename)] : undefined;
       let verdict: Verdict = "unknown";
       if (actual) {
         const missed = [...actual].some((c) => !found.has(c));
