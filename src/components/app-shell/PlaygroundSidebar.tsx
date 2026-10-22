@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams, matchPath } from "react-router-dom";
-import { BookOpen, ChevronDown, CreditCard, FileBarChart, FlaskConical, GraduationCap, Images, LayoutDashboard, Menu, type LucideIcon } from "lucide-react";
+import { BookOpen, CreditCard, FileBarChart, FlaskConical, GraduationCap, Images, LayoutDashboard, Menu, type LucideIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { liveProjectFilter } from "@/lib/liveProjects";
 import { useProfile } from "@/hooks/useProfile";
@@ -13,8 +13,9 @@ import { cn } from "@/lib/utils";
 
 /**
  * Sidebar for Playground workspaces: the overview, the three steps of the current mission
- * project (the one open now, else the last one opened, else the newest), resources and the
- * plan card. Other workspaces keep AppSidebar's menu.
+ * project (the one open now, else the last one opened, else the newest; switch projects in the
+ * project page's mission bar), resources and the plan card. Other workspaces keep AppSidebar's
+ * menu.
  */
 
 interface Project {
@@ -44,7 +45,6 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void }> = ({ onNav
   const isMobile = useIsMobile();
   const [projects, setProjects] = useState<Project[]>([]);
   const [lastId, setLastId] = useState<string | null>(null);
-  const [switcherOpen, setSwitcherOpen] = useState(false);
 
   const routeProjectId = matchPath("/dataset/:id", location.pathname)?.params.id ?? null;
   const step: Step | null = routeProjectId
@@ -183,63 +183,12 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void }> = ({ onNav
             </Button>
           )}
 
-          {isOpen && (
-            <div className="mb-5 px-1">
-              <p className="text-lg font-bold tracking-tight text-foreground">Vision-M</p>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ring">Playground edition</p>
-            </div>
-          )}
-
           <div className="flex-1 space-y-6 overflow-y-auto">
             <div className="space-y-1">
               {isOpen && (
                 <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Workspace</p>
               )}
-              {renderItem(workspace[0])}
-
-              {isOpen && current && (
-                <div className="px-1 pb-1 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => projects.length > 1 && setSwitcherOpen((o) => !o)}
-                    className={cn(
-                      "flex w-full items-center justify-between gap-2 rounded-md border bg-card px-2.5 py-1.5 text-left text-xs",
-                      projects.length > 1 && "hover:border-ring/60"
-                    )}
-                    aria-expanded={switcherOpen}
-                    title={projects.length > 1 ? "Switch project" : undefined}
-                  >
-                    <span className="min-w-0">
-                      <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">Project</span>
-                      <span className="block truncate font-medium text-foreground">{current.name}</span>
-                    </span>
-                    {projects.length > 1 && <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 transition-transform", switcherOpen && "rotate-180")} />}
-                  </button>
-                  {switcherOpen && (
-                    <ul className="mt-1 overflow-hidden rounded-md border bg-card text-xs">
-                      {projects.map((p) => (
-                        <li key={p.id}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSwitcherOpen(false);
-                              go(step && step !== "label" ? `/dataset/${p.id}?step=${step}` : `/dataset/${p.id}`);
-                            }}
-                            className={cn(
-                              "block w-full truncate px-2.5 py-1.5 text-left hover:bg-muted",
-                              p.id === current.id && "font-medium text-foreground"
-                            )}
-                          >
-                            {p.name}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-
-              {workspace.slice(1).map(renderItem)}
+              {workspace.map(renderItem)}
             </div>
 
             <div className="space-y-1">

@@ -1,8 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, Check, Circle, ImagePlus, Loader2, Lock, PenLine, Upload, X } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Circle, Compass, ImagePlus, Loader2, Lock, PenLine, Plus, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { LoadingState } from "@/components/pages/LoadingState";
 import { useToast } from "@/hooks/use-toast";
 import { useProfile } from "@/hooks/useProfile";
@@ -143,11 +151,12 @@ export const PlaygroundProjectPage: React.FC = () => {
     window.scrollTo({ top: 0 });
   };
   const { toast } = useToast();
-  const { company } = useProfile();
+  const { company, profile } = useProfile();
   const planAccess = usePlanAccess();
   const limits = planAccess.data?.access?.limits;
 
   const [project, setProject] = useState<{ id: string; name: string; description: string | null } | null>(null);
+  const [allProjects, setAllProjects] = useState<{ id: string; name: string; description: string | null }[]>([]);
   const [versions, setVersions] = useState<DatasetVersion[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [files, setFiles] = useState<ImageFile[]>([]);
@@ -213,6 +222,17 @@ export const PlaygroundProjectPage: React.FC = () => {
   useEffect(() => {
     if (project) void loadVersions(project.name).catch(() => setVersions([]));
   }, [project, loadVersions]);
+
+  // The company's projects, for the switcher in the mission bar
+  useEffect(() => {
+    if (!profile?.company_id) return;
+    supabase
+      .from("projects")
+      .select("id, name, description")
+      .eq("company_id", profile.company_id)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => setAllProjects(data ?? []));
+  }, [profile?.company_id]);
 
   useEffect(() => {
     getLearningProgress()
@@ -432,32 +452,77 @@ export const PlaygroundProjectPage: React.FC = () => {
         ) : (
           <div />
         )}
-        {versions.length > 1 && (
-          <select
-            value={selectedId ?? ""}
-            onChange={(e) => setSelectedId(e.target.value)}
-            className="rounded-lg border bg-card px-3 py-2 text-sm"
-            aria-label="Dataset"
-          >
-            {versions.map((v) => (
-              <option key={v.datasetId} value={v.datasetId}>
-                {v.isLinkedSample ? `GSN sample · ${v.version}` : `My images · ${v.version}`}
-              </option>
-            ))}
-          </select>
-        )}
       </div>
 
-      {/* Mission bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-secondary/40 px-5 py-4">
-        <p className="text-sm text-foreground">
-          {industryName && <strong>{industryName}</strong>}
-          {industryName && " / "}
-          {missionName}
-        </p>
+      {/* Mission bar: which project this is, and a switcher to the company's other projects */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-secondary/40 px-4 py-3 md:px-5">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="group flex min-w-0 items-center gap-3 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-background/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Switch project"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#171f1b] text-[#e9ff65]">
+                <Compass className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  {industryName ?? "Project"}
+                </span>
+                <span className="flex items-center gap-1.5 font-semibold text-foreground">
+                  <span className="truncate">{missionName}</span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+                </span>
+              </span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-72">
+            <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Your projects
+            </DropdownMenuLabel>
+            {allProjects.map((p) => {
+              const [pIndustry, pMission] = (p.description ?? "").includes(" · ") ? (p.description ?? "").split(" · ") : [null, p.name];
+              return (
+                <DropdownMenuItem
+                  key={p.id}
+                  onSelect={() => navigate(step === "label" ? `/dataset/${p.id}` : `/dataset/${p.id}?step=${step}`)}
+                  className="flex items-center justify-between gap-2"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">{pMission}</span>
+                    {pIndustry && <span className="block truncate text-xs text-muted-foreground">{pIndustry}</span>}
+                  </span>
+                  {p.id === project.id && <Check className="h-4 w-4 shrink-0 text-ring" />}
+                </DropdownMenuItem>
+              );
+            })}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => navigate("/dashboard")} className="gap-2">
+              <Plus className="h-4 w-4" /> Start a new mission
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {versions.length > 1 && (
+            <select
+              value={selectedId ?? ""}
+              onChange={(e) => setSelectedId(e.target.value)}
+              className="h-9 rounded-md border bg-card px-3 text-sm"
+              aria-label="Dataset"
+            >
+              {versions.map((v) => (
+                <option key={v.datasetId} value={v.datasetId}>
+                  {v.isLinkedSample ? `GSN sample · ${v.version}` : `My images · ${v.version}`}
+                </option>
+              ))}
+            </select>
+          )}
         <Button variant="outline" size="sm" onClick={() => navigate("/dashboard")}>
           Explore worlds
         </Button>
+        </div>
       </div>
 
       {/* Badges */}
