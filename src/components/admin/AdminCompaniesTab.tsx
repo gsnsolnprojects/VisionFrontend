@@ -10,7 +10,13 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { LoadingState } from "@/components/pages/LoadingState";
 import { ErrorState } from "@/components/pages/ErrorState";
 import { useToast } from "@/hooks/use-toast";
-import { deleteAdminCompany, getAdminCompanies, setAdminCompanyUnlimited, type AdminCompany } from "@/lib/api/admin";
+import {
+  deleteAdminCompany,
+  getAdminCompanies,
+  setAdminCompanyPlayground,
+  setAdminCompanyUnlimited,
+  type AdminCompany,
+} from "@/lib/api/admin";
 import { ConfirmByTypingDialog } from "./ConfirmByTypingDialog";
 import { errorMessage, formatDate } from "./adminFormat";
 
@@ -40,6 +46,7 @@ const PlanCell: React.FC<{ company: AdminCompany }> = ({ company }) => {
         <Badge variant="outline" className={STATUS_STYLE[status] ?? ""}>
           {STATUS_LABEL[status] ?? status}
         </Badge>
+        {sub?.freePlayground && <span className="text-xs text-muted-foreground">free, given by superadmin</span>}
         {sub?.cancelAtPeriodEnd && <span className="text-xs text-muted-foreground">cancels {formatDate(sub.currentPeriodEnd)}</span>}
         {sub?.status === "active" && !sub.cancelAtPeriodEnd && sub.currentPeriodEnd && (
           <span className="text-xs text-muted-foreground">renews {formatDate(sub.currentPeriodEnd)}</span>
@@ -119,6 +126,43 @@ export const AdminCompaniesTab: React.FC = () => {
     }
   };
 
+  const togglePlayground = async (company: AdminCompany, granted: boolean) => {
+    setBusyId(company.id);
+    try {
+      await setAdminCompanyPlayground(company.id, granted);
+      setCompanies((prev) =>
+        prev.map((c) =>
+          c.id === company.id
+            ? {
+                ...c,
+                subscription: {
+                  isUnlimited: false,
+                  ...c.subscription,
+                  plan: granted ? "playground" : c.subscription?.plan ?? null,
+                  planName: granted ? "Playground Edition" : c.subscription?.planName ?? null,
+                  status: granted ? "active" : "cancelled",
+                  currentPeriodEnd: null,
+                  cancelAtPeriodEnd: false,
+                  hasPaidSubscription: false,
+                  freePlayground: granted,
+                },
+              }
+            : c
+        )
+      );
+      toast({
+        title: granted ? "Playground access on" : "Playground access off",
+        description: granted
+          ? `${company.name} can use Playground without paying. Its members may need to refresh the page.`
+          : `${company.name} no longer has free Playground access.`,
+      });
+    } catch (err) {
+      toast({ title: "Couldn't change Playground access", description: errorMessage(err), variant: "destructive" });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const confirmDelete = async (typedName: string) => {
     if (!deleting) return;
     setBusyId(deleting.id);
@@ -168,6 +212,7 @@ export const AdminCompaniesTab: React.FC = () => {
                     <TableHead className="text-right">Datasets</TableHead>
                     <TableHead className="text-right">Models</TableHead>
                     <TableHead>Plan</TableHead>
+                    <TableHead>Free Playground</TableHead>
                     <TableHead>Unlimited</TableHead>
                     <TableHead>Created</TableHead>
                     <TableHead className="w-12" />
@@ -176,7 +221,7 @@ export const AdminCompaniesTab: React.FC = () => {
                 <TableBody>
                   {filtered.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="py-10 text-center text-muted-foreground">
+                      <TableCell colSpan={11} className="py-10 text-center text-muted-foreground">
                         No companies found
                       </TableCell>
                     </TableRow>
@@ -204,6 +249,25 @@ export const AdminCompaniesTab: React.FC = () => {
                         <TableCell className="text-right tabular-nums">{c.models}</TableCell>
                         <TableCell>
                           <PlanCell company={c} />
+                        </TableCell>
+                        <TableCell>
+                          {c.isGsn ? (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          ) : c.subscription?.hasPaidSubscription && c.subscription.status === "active" ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-xs text-muted-foreground">Paying</span>
+                              </TooltipTrigger>
+                              <TooltipContent>This company pays through Razorpay; its plan follows the payment.</TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <Switch
+                              checked={!!c.subscription?.freePlayground}
+                              disabled={busyId === c.id}
+                              onCheckedChange={(checked) => togglePlayground(c, checked)}
+                              aria-label={`Free Playground access for ${c.name}`}
+                            />
+                          )}
                         </TableCell>
                         <TableCell>
                           <Switch

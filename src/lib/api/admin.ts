@@ -55,6 +55,8 @@ export interface AdminCompany {
     isUnlimited: boolean;
     cancelAtPeriodEnd: boolean;
     hasPaidSubscription: boolean;
+    /** Playground given by the superadmin, without paying (missing on older backends) */
+    freePlayground?: boolean;
   } | null;
 }
 
@@ -130,6 +132,14 @@ export const setAdminCompanyUnlimited = (companyId: string, isUnlimited: boolean
   apiRequest<{ success: boolean }>(`/admin/companies/${companyId}/unlimited`, {
     method: "PATCH",
     body: JSON.stringify({ isUnlimited }),
+    maxRetries: 1,
+  });
+
+/** Give a company Playground without paying, or take that free access away */
+export const setAdminCompanyPlayground = (companyId: string, granted: boolean) =>
+  apiRequest<{ success: boolean }>(`/admin/companies/${companyId}/playground`, {
+    method: "PATCH",
+    body: JSON.stringify({ granted }),
     maxRetries: 1,
   });
 

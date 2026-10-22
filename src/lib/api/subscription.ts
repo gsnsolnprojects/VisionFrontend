@@ -8,6 +8,12 @@ export interface PlanLimits {
   users: number | null; // null = unlimited
   projects: number | null;
   liveCameraStreams: number | null;
+  // Optional: older backends don't send these
+  ownDatasets?: number | null; // datasets the company uploads itself (GSN sample links don't count)
+  imagesPerDataset?: number | null;
+  maxImageSizeMB?: number | null;
+  trainingRunsPerMonth?: number | null; // resets on the 1st (India time)
+  predictionsPerMonth?: number | null; // counts images, not batches
 }
 
 export interface Plan {

@@ -75,6 +75,12 @@ export interface LearningProgress {
   models: number;
   /** finished predictions */
   predictions: number;
+  /** images in the company's own datasets (sample links not counted); missing on older backends */
+  storedImages?: number;
+  /** training runs started this month (India time), not counting failed or cancelled */
+  trainingRunsThisMonth?: number;
+  /** finished predictions this month (India time) */
+  predictionsThisMonth?: number;
 }
 
 /** GET /api/dashboard/learning-progress - counts behind the Playground learning path */

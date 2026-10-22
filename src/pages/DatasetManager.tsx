@@ -635,15 +635,38 @@ const DatasetManager = () => {
     Record<string, { shown: boolean; inLibrary: boolean; eligible: boolean; reason: string | null }>
   >({});
   const [playgroundBusyId, setPlaygroundBusyId] = useState<string | null>(null);
-  // Companies outside GSN (and plans without their own datasets) add GSN sample datasets instead
-  // of uploading; the backend enforces the same. Until plan and company are known, show neither
-  // so the upload form never flashes for them.
+  // Companies outside GSN add GSN sample datasets, and upload their own when the plan includes
+  // trainOnOwnDatasets (Playground: 1 dataset, 500 images, 5 MB each); the backend enforces the
+  // same. Until plan and company are known, show neither so the upload form never flashes.
   const isGsnWorkspace = (profileCompany?.name ?? "").trim().toLowerCase() === "gsn";
   const companyKnown = !!profileCompany || !profile?.company_id;
   const planKnown = !!planAccess.data || !profile?.company_id;
-  const samplesOnly = !isGsnWorkspace || planAccess.data?.access?.features?.trainOnOwnDatasets === false;
-  const showUpload = planKnown && companyKnown && !samplesOnly;
-  const showSamplePicker = planKnown && companyKnown && samplesOnly;
+  const ownDatasetsAllowed = isGsnWorkspace || planAccess.data?.access?.features?.trainOnOwnDatasets === true;
+  const samplesOnly = !ownDatasetsAllowed;
+  const showUpload = planKnown && companyKnown && ownDatasetsAllowed;
+  const showSamplePicker = planKnown && companyKnown && !isGsnWorkspace;
+  const planLimits = isGsnWorkspace ? null : planAccess.data?.access?.limits ?? null;
+
+  /** The plan's image-count and file-size limits for an upload; returns why it's refused, or null */
+  const uploadAllowanceProblem = (selected: File[], imagesAlready: number): string | null => {
+    if (!planLimits) return null;
+    const images = selected.filter((f) => /\.(jpe?g|png)$/i.test(f.name));
+    const maxMB = planLimits.maxImageSizeMB;
+    if (typeof maxMB === "number") {
+      const tooBig = images.filter((f) => f.size > maxMB * 1024 * 1024);
+      if (tooBig.length) {
+        const names = tooBig.slice(0, 3).map((f) => f.name).join(", ");
+        return `Images can be up to ${maxMB} MB each on your plan. Too large: ${names}${tooBig.length > 3 ? ` and ${tooBig.length - 3} more` : ""}.`;
+      }
+    }
+    const maxImages = planLimits.imagesPerDataset;
+    if (typeof maxImages === "number" && imagesAlready + images.length > maxImages) {
+      return imagesAlready
+        ? `A dataset can have up to ${maxImages} images on your plan. This one has ${imagesAlready}, so you can add ${Math.max(0, maxImages - imagesAlready)} more.`
+        : `A dataset can have up to ${maxImages} images on your plan. You selected ${images.length}.`;
+    }
+    return null;
+  };
   const [project, setProject] = useState<any>(null);
   const [companyName, setCompanyName] = useState<string>("");
   const [version, setVersion] = useState<string>("");
@@ -1255,9 +1278,10 @@ const DatasetManager = () => {
     }
   };
 
-  // Files of a shared GSN sample (and everything for customers) can't be labelled, added or deleted
+  // Files of a shared GSN sample (and of any dataset when the plan has no own datasets) can't be
+  // labelled, added or deleted
   const viewedVersion = versions.find((v) => v.datasetId === (selectedVersionDatasetId || currentDatasetId));
-  const viewedReadOnly = !isGsnWorkspace || !!viewedVersion?.isLinkedSample;
+  const viewedReadOnly = !ownDatasetsAllowed || !!viewedVersion?.isLinkedSample;
   const fileHasPermission = (perm: string) =>
     viewedReadOnly && (perm === "uploadDatasets" || perm === "annotateDatasets")
       ? false
@@ -2175,6 +2199,12 @@ const DatasetManager = () => {
     }
     setVersionError(null);
 
+    const allowanceProblem = uploadAllowanceProblem(files, 0);
+    if (allowanceProblem) {
+      toast({ title: "Too much for your plan", description: allowanceProblem, variant: "destructive" });
+      return;
+    }
+
     const projectName = displayProjectName;
     const company = companyName || "Unknown";
 
@@ -2229,7 +2259,13 @@ const DatasetManager = () => {
 
       if (!res.ok) {
         const errorText = await res.text();
-        throw new Error(`Upload failed: ${res.status} - ${errorText}`);
+        let readable = "";
+        try {
+          readable = JSON.parse(errorText)?.message ?? "";
+        } catch {
+          // not JSON
+        }
+        throw new Error(readable || `Upload failed: ${res.status} - ${errorText}`);
       }
 
       const json = await res.json();
@@ -2521,6 +2557,11 @@ const DatasetManager = () => {
     if (!datasetId) return;
     if (addPhotosFiles.length === 0) {
       toast({ title: "No files selected", description: "Pick jpg/png photos (optional matching .txt labels)." });
+      return;
+    }
+    const allowanceProblem = uploadAllowanceProblem(addPhotosFiles, Number(statusProgress?.totalImages) || 0);
+    if (allowanceProblem) {
+      toast({ title: "Too much for your plan", description: allowanceProblem, variant: "destructive" });
       return;
     }
     setAddingPhotos(true);
@@ -2965,7 +3006,11 @@ const DatasetManager = () => {
             </div>
           </div>
           <p className="text-sm text-muted-foreground font-medium pt-3">
-            {samplesOnly ? "Choose a ready-made dataset" : "Upload datasets"}
+            {samplesOnly
+              ? "Choose a ready-made dataset"
+              : isGsnWorkspace
+                ? "Upload datasets"
+                : "Upload your own dataset or choose a ready-made one"}
           </p>
         </div>
       </motion.div>
@@ -2974,6 +3019,22 @@ const DatasetManager = () => {
         <ProtectedComponent requiredPermission="uploadDatasets">
           <SampleDatasetPicker projectName={displayProjectName} onAdded={() => void fetchVersions()} />
         </ProtectedComponent>
+      )}
+
+      {showUpload && planLimits && typeof planLimits.imagesPerDataset === "number" && (
+        <p className="mb-4 rounded-lg border bg-secondary/40 px-4 py-3 text-sm text-muted-foreground">
+          Your plan includes{" "}
+          <strong className="text-foreground">
+            {planLimits.ownDatasets ?? 1} dataset{(planLimits.ownDatasets ?? 1) === 1 ? "" : "s"} of your own
+          </strong>{" "}
+          with up to <strong className="text-foreground">{planLimits.imagesPerDataset} images</strong>
+          {typeof planLimits.maxImageSizeMB === "number" && (
+            <>
+              , <strong className="text-foreground">{planLimits.maxImageSizeMB} MB</strong> per image
+            </>
+          )}
+          . GSN sample datasets don&apos;t count towards this.
+        </p>
       )}
 
       {showUpload && (
@@ -3360,7 +3421,7 @@ const DatasetManager = () => {
                             >
                               View
                             </Button>
-                            {isGsnWorkspace && !v.isLinkedSample && (
+                            {ownDatasetsAllowed && !v.isLinkedSample && (
                             <ProtectedComponent requiredPermission="uploadDatasets">
                               <Button
                                 variant="outline"
