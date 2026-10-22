@@ -145,8 +145,9 @@ const TERMS: Section[] = [
     heading: "Plans and payments",
     body: (
       <p>
-        Paid plans are billed monthly per company through Razorpay. A plan renews each month until it is cancelled; after
-        cancelling, you keep access until the end of the month already paid for. Plan limits (such as projects, users and
+        Paid plans are billed monthly per company through Razorpay. A plan renews each month for up to 12 months, after
+        which you choose it again on the Billing page to continue. After cancelling, you keep access until the end of the
+        month already paid for. Plan limits (such as projects, users and
         models) apply as shown on the Billing page. Refunds follow our{" "}
         <Link to="/refunds">Refund &amp; Cancellation Policy</Link>.
       </p>
@@ -232,7 +233,8 @@ const REFUNDS: Section[] = [
     body: (
       <ul>
         <li>
-          Paid plans renew every month. A company admin can cancel at any time from Settings → Billing in the app, or
+          Paid plans renew every month for up to 12 months; after that, you choose the plan again to continue. A
+          company admin can cancel at any time from Settings → Billing in the app, or
           by emailing <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.
         </li>
         <li>
