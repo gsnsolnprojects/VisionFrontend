@@ -106,7 +106,7 @@ serve(async (req) => {
           id: user.id,
           name: user.user_metadata?.name || "",
           phone: user.user_metadata?.phone || "",
-          email: adminEmail,
+          email: user.email ?? adminEmail,
         }, {
           onConflict: "id",
         });
@@ -154,10 +154,11 @@ serve(async (req) => {
 
     // Create company (using service role, bypasses RLS)
     // Trim company name before inserting to ensure consistency
-    // Include both admin_email and email - some DB schemas have an email column (NOT NULL)
+    // admin_email is the creator's login email (join requests and admin checks match it against
+    // profile.email); email is the "Company Email" typed in the form, the company's contact address
     const insertPayload: Record<string, unknown> = {
       name: companyName.trim(),
-      admin_email: adminEmail,
+      admin_email: user.email ?? adminEmail,
       email: adminEmail,
       created_by: user.id,
     };
@@ -202,15 +203,14 @@ serve(async (req) => {
       );
     }
 
-    // Update profile with company_id, role='workspace_admin', and ensure email matches admin_email
-    // This ensures profile.email === company.admin_email for admin detection
-    // Sets role='workspace_admin' explicitly for the company creator
+    // Update profile with company_id and role='workspace_admin' for the company creator.
+    // The profile email stays the person's login email (it used to be overwritten with the
+    // company email, which showed the wrong address everywhere).
     const { error: updateProfileError } = await supabase
       .from("profiles")
       .update({ 
         company_id: company.id,
         role: 'workspace_admin', // Set creator as workspace_admin
-        email: adminEmail, // Ensure profile email matches company admin_email
       })
       .eq("id", user.id);
 
