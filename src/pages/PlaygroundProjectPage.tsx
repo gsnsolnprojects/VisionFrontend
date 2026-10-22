@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowRight, Check, Circle, ImagePlus, Loader2, Lock, PenLine, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,10 +12,11 @@ import { apiRequest, apiUrl, getAuthHeaders } from "@/lib/api/config";
 import { addDatasetFiles, deleteDatasetFile } from "@/lib/api/datasets";
 import { getLearningProgress } from "@/lib/api/dashboard";
 import { cn } from "@/lib/utils";
+import { PlaygroundTrainStep } from "@/components/playground/PlaygroundTrainStep";
 
 /**
- * Playground project screen (/dataset/:id for Playground workspaces): step 1 of the
- * Upload & label → Train → Test & evaluate → Report path. Shows the project's dataset as an
+ * Playground project screen (/dataset/:id for Playground workspaces): the Upload & label →
+ * Train → Test & evaluate → Report path (?step=train opens step 2). Shows the project's dataset as an
  * image grid with each image's labelled boxes drawn on it. A GSN sample dataset is view-only;
  * the company's own dataset can take more images and each image opens the labelling tool.
  * Other plans keep DatasetManager.
@@ -130,6 +131,12 @@ const LabelledThumbnail: React.FC<{ datasetId: string; file: ImageFile; boxes: B
 export const PlaygroundProjectPage: React.FC = () => {
   const { id: projectId } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const step = searchParams.get("step") === "train" ? "train" : "label";
+  const goToStep = (next: "label" | "train") => {
+    setSearchParams(next === "label" ? {} : { step: next });
+    window.scrollTo({ top: 0 });
+  };
   const { toast } = useToast();
   const { company } = useProfile();
   const planAccess = usePlanAccess();
@@ -238,14 +245,15 @@ export const PlaygroundProjectPage: React.FC = () => {
   );
 
   const counts = useMemo(() => {
-    let training = 0, test = 0, unlabelled = 0;
+    let training = 0, validation = 0, test = 0, unlabelled = 0;
     for (const f of files) {
       const kind = splitOf(f.folder).kind;
       if (kind === "training") training += 1;
+      if (f.folder === "val") validation += 1;
       if (kind === "test") test += 1;
       if (!isLabelled(f)) unlabelled += 1;
     }
-    return { all: files.length, training, test, unlabelled, labelled: files.length - unlabelled };
+    return { all: files.length, training, validation, test, unlabelled, labelled: files.length - unlabelled };
   }, [files, isLabelled]);
 
   const visible = useMemo(() => {
@@ -384,10 +392,10 @@ export const PlaygroundProjectPage: React.FC = () => {
     { label: "Result detective", done: hasPrediction },
   ];
   const steps = [
-    { n: 1, label: "Upload & label", active: true, onClick: undefined as (() => void) | undefined },
-    { n: 2, label: "Train", onClick: () => navigate("/dashboard?view=simulation") },
-    { n: 3, label: "Test & evaluate", onClick: () => navigate("/project/prediction") },
-    { n: 4, label: "Report", onClick: undefined, locked: true },
+    { n: 1, label: "Upload & label", active: step === "label", onClick: () => goToStep("label") },
+    { n: 2, label: "Train", active: step === "train", onClick: () => goToStep("train") },
+    { n: 3, label: "Test & evaluate", active: false, onClick: () => navigate("/project/prediction") },
+    { n: 4, label: "Report", active: false, onClick: undefined, locked: true },
   ];
   const filters: { id: Filter; label: string; count: number }[] = [
     { id: "all", label: "All images", count: counts.all },
@@ -400,10 +408,14 @@ export const PlaygroundProjectPage: React.FC = () => {
     <motion.div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Give your model good examples.</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Add images, check their labels and keep test images separate.</p>
-        </div>
+        {step === "label" ? (
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">Give your model good examples.</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Add images, check their labels and keep test images separate.</p>
+          </div>
+        ) : (
+          <div />
+        )}
         {versions.length > 1 && (
           <select
             value={selectedId ?? ""}
@@ -478,7 +490,33 @@ export const PlaygroundProjectPage: React.FC = () => {
         ))}
       </nav>
 
+      {step === "train" && (
+        dataset && selectedId ? (
+          <PlaygroundTrainStep
+            projectId={project.id}
+            companyName={companyName}
+            projectName={project.name}
+            datasetId={selectedId}
+            isSample={isSample}
+            classNames={classNames}
+            counts={
+              // The dataset's own split numbers when it has them (PCB keeps its split only on disk)
+              (dataset.trainCount ?? 0) > 0
+                ? { training: dataset.trainCount ?? 0, validation: dataset.valCount ?? 0, test: dataset.testCount ?? 0, labelled: counts.labelled }
+                : { training: counts.training - counts.validation, validation: counts.validation, test: counts.test, labelled: counts.labelled }
+            }
+            limits={limits}
+            onTestModel={() => navigate("/project/prediction")}
+          />
+        ) : (
+          <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">
+            Add a dataset in step 1 first: the model needs labelled photos to learn from.
+          </p>
+        )
+      )}
+
       {/* Dataset */}
+      {step === "label" && (
       <section className="rounded-2xl border bg-card p-5 md:p-6" aria-labelledby="dataset-heading">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -568,7 +606,7 @@ export const PlaygroundProjectPage: React.FC = () => {
                   </button>
                 ))}
               </div>
-              <Button className="gap-1.5" onClick={() => navigate("/dashboard?view=simulation")} disabled={counts.labelled === 0}>
+              <Button className="gap-1.5" onClick={() => goToStep("train")} disabled={counts.labelled === 0}>
                 Next: train a model
                 <ArrowRight className="h-4 w-4" />
               </Button>
@@ -662,6 +700,7 @@ export const PlaygroundProjectPage: React.FC = () => {
           </>
         )}
       </section>
+      )}
     </motion.div>
   );
 };
