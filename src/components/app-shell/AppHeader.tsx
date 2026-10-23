@@ -20,6 +20,7 @@ import {
 import { RoleBadge } from "@/components/RoleBadge";
 import { AppSidebar } from "./AppSidebar";
 import { usePlanAccess } from "@/contexts/plan-access-context";
+import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
 
@@ -288,7 +289,13 @@ export const AppHeader: React.FC = () => {
   return (
     <>
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 transition-colors duration-300 ease-in-out shadow-sm dark:shadow-none">
-        <div className="container flex h-16 items-center justify-between px-4">
+        {/* Playground: full width, so GSN's logo lines up with the sidebar's "Vision-M" below it */}
+        <div
+          className={cn(
+            "flex h-16 items-center justify-between",
+            isPlaygroundWorkspace ? "w-full px-5" : "container px-4"
+          )}
+        >
           {/* Left: Mobile Menu + Logo */}
           <div className="flex items-center gap-2">
             {/* Mobile Menu Sheet */}
