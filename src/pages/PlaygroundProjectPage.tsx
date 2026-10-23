@@ -24,6 +24,7 @@ import { PlaygroundTrainStep } from "@/components/playground/PlaygroundTrainStep
 import { PlaygroundTestStep } from "@/components/playground/PlaygroundTestStep";
 import { PlaygroundReportStep } from "@/components/playground/PlaygroundReportStep";
 import { getSamples } from "@/lib/api/samples";
+import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 
 /**
  * Playground project screen (/dataset/:id for Playground workspaces): the Upload & label →
@@ -223,6 +224,20 @@ export const PlaygroundProjectPage: React.FC = () => {
   useEffect(() => {
     if (project) void loadVersions(project.name).catch(() => setVersions([]));
   }, [project, loadVersions]);
+
+  // Top trail: Dashboard > mission > step (instead of the project id from the address)
+  const { setItems: setBreadcrumbs } = useBreadcrumbs();
+  useEffect(() => {
+    if (!project) return;
+    const mission = (project.description ?? "").includes(" · ") ? (project.description ?? "").split(" · ")[1] : project.name;
+    const stepLabel = { label: "Upload & label", train: "Train", test: "Test & evaluate", report: "Report" }[step];
+    setBreadcrumbs([
+      { label: "Dashboard", href: "/dashboard" },
+      { label: mission, href: `/dataset/${project.id}` },
+      { label: stepLabel },
+    ]);
+    return () => setBreadcrumbs(null);
+  }, [project, step, setBreadcrumbs]);
 
   // The company's projects, for the switcher in the mission bar
   useEffect(() => {

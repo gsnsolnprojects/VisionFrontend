@@ -21,6 +21,7 @@ import { RoleBadge } from "@/components/RoleBadge";
 import { AppSidebar } from "./AppSidebar";
 import { usePlanAccess } from "@/contexts/plan-access-context";
 import { cn } from "@/lib/utils";
+import { isSuperadmin } from "@/lib/utils/superadmin";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
 
@@ -367,9 +368,9 @@ export const AppHeader: React.FC = () => {
             </div>
           </div>
 
-          {/* Center: Backend Status Indicator */}
+          {/* Center: Backend Status Indicator (superadmin only) */}
           <div className="hidden md:flex items-center gap-4" role="status" aria-live="polite">
-            {!backendStatusLoading && (
+            {!backendStatusLoading && isSuperadmin(userRole, company?.name) && (
               <div className="flex items-center gap-1.5">
                 {isOnline ? (
                   <span 
