@@ -169,32 +169,25 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void }> = ({ onNav
     >
       <TooltipProvider>
         <nav className={cn("flex h-full flex-col", isOpen ? "p-4" : "p-3")} aria-label="Playground">
-          {/* Brand: GSN logo, then Vision-M · Playground edition */}
-          <div className={cn("mb-4 shrink-0", isOpen ? "space-y-4" : "flex justify-center")}>
-            <div className={cn("flex items-center", isOpen ? "justify-between gap-2" : "justify-center")}>
-              {isOpen && (
-                <span className="rounded-md p-1 dark:bg-white">
-                  <img src="/demo/gsn-logo.png" alt="GSN" className="h-12 w-auto" />
-                </span>
-              )}
-              {!isMobile && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0"
-                  onClick={toggleSidebar}
-                  aria-label={isOpen ? "Close sidebar" : "Open sidebar"}
-                  aria-expanded={isOpen}
-                >
-                  <Menu className="h-5 w-5" />
-                </Button>
-              )}
-            </div>
+          {/* Product name (the header shows GSN's logo) and the collapse button */}
+          <div className={cn("mb-5 flex shrink-0 items-start", isOpen ? "justify-between gap-2" : "justify-center")}>
             {isOpen && (
-              <div className="border-t pt-4">
+              <div className="px-1">
                 <p className="text-xl font-bold tracking-tight text-foreground">Vision-M</p>
                 <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-ring">Playground edition</p>
               </div>
+            )}
+            {!isMobile && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={toggleSidebar}
+                aria-label={isOpen ? "Close sidebar" : "Open sidebar"}
+                aria-expanded={isOpen}
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
             )}
           </div>
 

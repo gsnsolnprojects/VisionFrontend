@@ -19,12 +19,16 @@ import {
 } from "@/components/ui/tooltip";
 import { RoleBadge } from "@/components/RoleBadge";
 import { AppSidebar } from "./AppSidebar";
+import { usePlanAccess } from "@/contexts/plan-access-context";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
 
 export const AppHeader: React.FC = () => {
   const navigate = useNavigate();
   const { profile, isAdmin, company, loading, sessionReady, hasPermission, user, userRole } = useProfile();
+  const planAccess = usePlanAccess();
+  const isPlaygroundWorkspace =
+    planAccess.data?.access?.plan === "playground" && (company?.name ?? "").trim().toLowerCase() !== "gsn";
   const [hasPendingJoinRequest, setHasPendingJoinRequest] = useState(false);
   const { isOnline, isLoading: backendStatusLoading } = useBackendStatus();
   const { theme, toggleTheme } = useTheme();
@@ -317,14 +321,21 @@ export const AppHeader: React.FC = () => {
               className="flex items-center gap-2 cursor-pointer"
               onClick={() => navigate("/dashboard")}
             >
-              <Building2 className="h-6 w-6 text-primary" />
-              <span className="flex flex-col leading-none">
-                <span className="text-xl font-bold text-primary">
-                  VisionM
-                  {/* Vision: square brand mark, as on the landing page */}
-                  <span aria-hidden="true" className="hidden vision:inline-block ml-1 h-2 w-2 bg-[#88a530]" />
+              {isPlaygroundWorkspace ? (
+                // Playground: GSN's logo here; the sidebar names the product (Vision-M · Playground edition)
+                <span className="rounded-md dark:bg-white dark:px-1">
+                  <img src="/demo/gsn-logo.png" alt="GSN" className="h-10 w-auto" />
                 </span>
-              </span>
+              ) : (
+                <>
+                  <Building2 className="h-6 w-6 text-primary" />
+                  <span className="text-xl font-bold text-primary">
+                    VisionM
+                    {/* Vision: square brand mark, as on the landing page */}
+                    <span aria-hidden="true" className="hidden vision:inline-block ml-1 h-2 w-2 bg-[#88a530]" />
+                  </span>
+                </>
+              )}
               {profile?.companies?.name && (
                 <div className="hidden md:inline-flex items-center gap-2">
                   <TooltipProvider>
