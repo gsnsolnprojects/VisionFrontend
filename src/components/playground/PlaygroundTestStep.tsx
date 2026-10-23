@@ -89,6 +89,8 @@ export const PlaygroundTestStep: React.FC<{
   industryName: string | null;
   /** after a report is made (the Report step lists it) */
   onReportCreated: () => void;
+  /** open on "Your own photos" (the overview's quick try) */
+  preferUpload?: boolean;
   testFiles: TestFile[];
   /** class index -> name, for the held-out photos' known answers */
   classNames: string[];
@@ -101,6 +103,7 @@ export const PlaygroundTestStep: React.FC<{
   missionName,
   industryName,
   onReportCreated,
+  preferUpload = false,
   testFiles,
   classNames,
 }) => {
@@ -108,7 +111,7 @@ export const PlaygroundTestStep: React.FC<{
   const [models, setModels] = useState<ModelEntry[] | null>(null);
   const [modelId, setModelId] = useState<string | null>(null);
   const [addingSample, setAddingSample] = useState(false);
-  const [source, setSource] = useState<Source>(testFiles.length ? "test" : "upload");
+  const [source, setSource] = useState<Source>(!preferUpload && testFiles.length ? "test" : "upload");
   const [uploads, setUploads] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
   const [starting, setStarting] = useState(false);

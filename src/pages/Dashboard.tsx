@@ -46,8 +46,8 @@ import { SimulationView } from "@/components/SimulationView";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
 import { PlaygroundOverview } from "@/components/dashboard/PlaygroundOverview";
-import type { Mission } from "@/components/dashboard/IndustryPicker";
-import { getSamples, importSampleDataset } from "@/lib/api/samples";
+import type { Mission, MissionMode } from "@/components/dashboard/IndustryPicker";
+import { getSamples, importSampleDataset, importSampleModel } from "@/lib/api/samples";
 import { RoleBadge } from "@/components/RoleBadge";
 import { usePlanAccess, PLAN_REQUIRED_MESSAGE, BILLING_ROUTE } from "@/contexts/plan-access-context";
 
@@ -1084,13 +1084,43 @@ const Dashboard = () => {
 
   /**
    * Playground mission: open its project if it exists, otherwise create it (named after the
-   * mission, "Industry · Mission" as description) and, for a guided mission, add its GSN sample.
+   * mission, "Industry · Mission" as description). Guided and quick-try missions add the GSN
+   * sample; the quick try also adds GSN's trained model and opens Test & evaluate on the
+   * student's own photos.
    */
-  const startMission = async (industryName: string, mission: Mission, useSample: boolean) => {
+  const startMission = async (industryName: string, mission: Mission, mode: MissionMode) => {
     if (!user || !profile?.company_id) return;
+    const useSample = mode !== "own" && !!mission.sample;
+    const openProject = (id: string) => navigate(mode === "try" ? `/dataset/${id}?step=test&try=1` : `/dataset/${id}`);
+
+    /** GSN's best trained model for the sample, added to the project (already added is fine) */
+    const addReadyMadeModel = async (projectName: string) => {
+      const { models } = await getSamples();
+      const wanted = mission.sample!.trim().toLowerCase();
+      const best = models
+        .filter((m) => m.project.trim().toLowerCase() === wanted && m.modelType !== "RF_DETR")
+        .sort((a, b) => (b.mAP50 ?? 0) - (a.mAP50 ?? 0))[0];
+      if (!best) throw new Error("GSN doesn't have a ready-made model for this sample yet.");
+      try {
+        await importSampleModel(best.id, projectName);
+      } catch (err) {
+        if (!/already/i.test((err as Error).message)) throw err;
+      }
+    };
+
     const existing = projects.find((p) => String(p.name).trim().toLowerCase() === mission.title.toLowerCase());
     if (existing) {
-      navigate(`/dataset/${existing.id}`);
+      if (mode === "try") {
+        setLoading(true);
+        try {
+          await addReadyMadeModel(existing.name);
+        } catch (err) {
+          toast({ title: "Couldn't add the ready-made model", description: (err as Error).message, variant: "destructive" });
+        } finally {
+          setLoading(false);
+        }
+      }
+      openProject(existing.id);
       return;
     }
     if (!planAllowsNewProject()) return;
@@ -1111,16 +1141,17 @@ const Dashboard = () => {
       if (error || !project) throw error || new Error("Failed to create project");
       setProjects((prev) => [project, ...prev.filter((p) => p.id !== project.id)]);
 
-      if (useSample && mission.sample) {
+      if (useSample) {
         try {
           const { datasets } = await getSamples();
-          const wanted = mission.sample.trim().toLowerCase();
+          const wanted = mission.sample!.trim().toLowerCase();
           const sample = datasets.find((d) => d.project.trim().toLowerCase() === wanted);
           if (!sample) throw new Error("This sample isn't in the library right now.");
           await importSampleDataset(sample.id, project.name);
+          if (mode === "try") await addReadyMadeModel(project.name);
         } catch (sampleError) {
           toast({
-            title: "Project created, sample not added",
+            title: mode === "try" ? "Project created, ready-made model not added" : "Project created, sample not added",
             description: `${(sampleError as Error).message} You can upload your own images instead.`,
             variant: "destructive",
           });
@@ -1128,7 +1159,7 @@ const Dashboard = () => {
       }
 
       planAccess.refresh().catch(() => undefined);
-      navigate(`/dataset/${project.id}`);
+      openProject(project.id);
     } catch (error) {
       toast({
         title: "Couldn't start the mission",

@@ -1,118 +1,122 @@
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, ArrowUpRight, Check, Cpu, CupSoda, Hexagon, Pill, Plug, Shirt, type LucideIcon } from "lucide-react";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  Camera,
+  Check,
+  Clock,
+  Cpu,
+  CupSoda,
+  Hexagon,
+  Pill,
+  Plug,
+  Shirt,
+  Sparkles,
+  Upload,
+  type LucideIcon,
+} from "lucide-react";
 import { fadeInUpVariants } from "@/utils/animations";
 import { IndustryArt } from "@/components/landing/IndustryArt";
 import { Button } from "@/components/ui/button";
+import { AuthenticatedImage } from "@/components/AuthenticatedImage";
 import { useProfile } from "@/hooks/useProfile";
+import { getSamples, sampleDatasetThumbnailUrl, type SampleDataset, type SampleModel } from "@/lib/api/samples";
 import { cn } from "@/lib/utils";
 
 /**
  * Top of the Playground overview: "Pick a world" hero, the six industry cards and the picked
- * industry's three challenges. The picked industry is remembered per user in this browser and
- * drives the drawings (same drawings as the landing page, in the same order).
+ * industry's three challenges (guided sample, quick try of GSN's trained model, own project).
+ * The picked industry is remembered per user in this browser and drives the drawings (same
+ * drawings as the landing page, in the same order).
  */
 
 export interface Mission {
+  /** Project name for this mission */
   title: string;
-  /** Guided missions start with this GSN sample dataset (its project name in the sample library) */
+  /** GSN sample dataset (its project name in the sample library) that guided and quick-try start with */
   sample?: string;
-  /** What the guided sample shows */
-  sampleCopy?: string;
 }
+
+/** guided: labelled sample to explore and train on; try: GSN's trained model on your photos; own: your images */
+export type MissionMode = "guided" | "try" | "own";
 
 interface Industry {
   id: string;
   name: string;
   tagline: string;
   Icon: LucideIcon;
-  missions: [Mission, Mission, Mission];
+  /** Guided challenge on a GSN sample (the quick try uses the same project and sample) */
+  guided?: { title: string; sample: string; finds: string; photoNoun: string };
+  /** The student's own project: its name and an example defect to start with */
+  own: { title: string; example: string };
 }
 
 const INDUSTRIES: Industry[] = [
   {
-    id: "automotive",
     // id kept as "automotive" so browsers that remembered this card still pick it
+    id: "automotive",
     name: "Electrical Components",
     tagline: "Terminals, connectors and switchgear.",
     Icon: Plug,
-    missions: [
-      {
-        title: "Missing screw detective",
-        sample: "Terminals",
-        sampleCopy: "Real photos of terminal parts, already labelled: missing screws, missing bars and blackened parts.",
-      },
-      { title: "Missing feature check" },
-      { title: "Damaged edge explorer" },
-    ],
+    guided: {
+      title: "Missing screw detective",
+      sample: "Terminals",
+      finds: "missing screws, missing bars and blackened parts",
+      photoNoun: "terminal",
+    },
+    own: { title: "My electrical inspection", example: "a missing screw or a cracked housing" },
   },
   {
     id: "electronics",
     name: "Electronics & PCB",
     tagline: "Tiny components. Big inspection questions.",
     Icon: Cpu,
-    missions: [
-      {
-        title: "PCB defect detective",
-        sample: "PCB",
-        sampleCopy: "Real circuit board photos, already labelled with six defects: missing holes, shorts, open circuits and more.",
-      },
-      { title: "Orientation explorer" },
-      { title: "Visible assembly defects" },
-    ],
+    guided: {
+      title: "PCB defect detective",
+      sample: "PCB",
+      finds: "missing holes, shorts, open circuits, spurs and more",
+      photoNoun: "circuit board",
+    },
+    own: { title: "My circuit board inspection", example: "a missing component or a solder bridge" },
   },
   {
     id: "pharma",
     name: "Pharma Packaging",
     tagline: "Explore what makes packaging acceptable.",
     Icon: Pill,
-    missions: [
-      {
-        title: "Blister pack inspector",
-        sample: "Blister Pack",
-        sampleCopy: "Real blister pack photos, already labelled: good packs and packs with empty or damaged pockets.",
-      },
-      { title: "Missing label check" },
-      { title: "Carton damage explorer" },
-    ],
+    guided: {
+      title: "Blister pack inspector",
+      sample: "Blister Pack",
+      finds: "empty and damaged pockets",
+      photoNoun: "blister pack",
+    },
+    own: { title: "My packaging inspection", example: "an empty pocket or a torn foil" },
   },
   {
     id: "food",
     name: "Food & Beverages",
     tagline: "Explore the details behind everyday packs.",
     Icon: CupSoda,
-    missions: [
-      { title: "Packaging defect explorer" },
-      { title: "Label placement check" },
-      { title: "Visible product variation" },
-    ],
+    own: { title: "My food & beverage inspection", example: "a crooked label or a dented can" },
   },
   {
     id: "plastics",
     name: "Plastics & Precision Parts",
     tagline: "Investigate shape, finish and consistency.",
     Icon: Hexagon,
-    missions: [
-      { title: "Surface flaw explorer" },
-      { title: "Incomplete moulding check" },
-      { title: "Shape variation lab" },
-    ],
+    own: { title: "My plastic parts inspection", example: "an incomplete moulding or a surface scratch" },
   },
   {
     id: "textiles",
     name: "Textiles",
     tagline: "Look closer at patterns, stains and fabric.",
     Icon: Shirt,
-    missions: [
-      { title: "Fabric defect detective" },
-      { title: "Stain spotting lab" },
-      { title: "Pattern consistency check" },
-    ],
+    own: { title: "My fabric inspection", example: "a stain or a pulled thread" },
   },
 ];
 
-const OWN_IMAGES_COPY =
-  "Bring images of acceptable and defective examples. Practise consistent labelling and a focused inspection question.";
+const sameProject = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 const storageKey = (userId?: string) => `visionm_playground_industry_${userId ?? "anon"}`;
 
@@ -124,15 +128,25 @@ const readIndustry = (userId?: string): string | null => {
   }
 };
 
+type Samples = { datasets: SampleDataset[]; models: SampleModel[] };
+
 export const IndustryPicker: React.FC<{
-  onStartMission: (industryName: string, mission: Mission, useSample: boolean) => void;
+  onStartMission: (industryName: string, mission: Mission, mode: MissionMode) => void;
 }> = ({ onStartMission }) => {
   const { user } = useProfile();
   const [selected, setSelected] = useState<string | null>(null);
+  const [samples, setSamples] = useState<Samples | null>(null);
 
   useEffect(() => {
     setSelected(readIndustry(user?.id));
   }, [user?.id]);
+
+  // Which GSN samples and ready-made models exist decides which cards are live or "coming soon"
+  useEffect(() => {
+    getSamples()
+      .then(setSamples)
+      .catch(() => setSamples({ datasets: [], models: [] }));
+  }, []);
 
   const pick = (id: string) => {
     setSelected(id);
@@ -233,66 +247,183 @@ export const IndustryPicker: React.FC<{
       </motion.section>
 
       {/* Challenges for the picked industry */}
-      {industry && (
-        <motion.section
-          key={industry.id}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          aria-labelledby="challenge-heading"
-          className="rounded-2xl border bg-card p-5 md:p-7"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                02 / Pick your challenge
-              </p>
-              <h3 id="challenge-heading" className="mt-1 text-lg font-semibold text-foreground">
-                {industry.name}: what will you inspect?
-              </h3>
-            </div>
-            <span className="rounded-md bg-secondary px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-secondary-foreground">
-              Good / Defective
-            </span>
-          </div>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Pick a focused question. Explore examples, train a model and review what it gets wrong.
-          </p>
-
-          <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
-            {industry.missions.map((mission, i) => (
-              <article key={mission.title} className="flex flex-col rounded-xl border bg-background/40 p-4">
-                <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                  Mission {String(i + 1).padStart(2, "0")} · {mission.sample ? "Guided start" : "Your images"}
-                </p>
-                <div className="mt-3 overflow-hidden rounded-lg bg-[#171f1b]">
-                  <IndustryArt index={artIndex} />
-                </div>
-                <h4 className="mt-4 font-semibold text-foreground">{mission.title}</h4>
-                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                  {mission.sampleCopy ?? OWN_IMAGES_COPY}
-                </p>
-                <div className="mt-auto space-y-2 pt-5">
-                  {mission.sample && (
-                    <Button className="w-full gap-1" onClick={() => onStartMission(industry.name, mission, true)}>
-                      Start guided challenge
-                      <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                    </Button>
-                  )}
-                  <Button variant="outline" className="w-full gap-1" onClick={() => onStartMission(industry.name, mission, false)}>
-                    Upload my images
-                    <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
-                  </Button>
-                </div>
-              </article>
-            ))}
-          </div>
-
-          <p className="mt-5 text-xs text-muted-foreground">
-            Guided samples are real GSN inspection datasets: terminal blocks, circuit boards and blister packs.
-            Choosing an industry sets your learning context; it does not load an industry-trained AI model.
-          </p>
-        </motion.section>
-      )}
+      {industry && <Challenges industry={industry} samples={samples} onStartMission={onStartMission} />}
     </>
+  );
+};
+
+/** A challenge card's frame: label, picture, title, text and the action (or "coming soon") */
+const ChallengeCard: React.FC<{
+  kicker: string;
+  picture: React.ReactNode;
+  title: string;
+  children: React.ReactNode;
+  action?: { label: string; onClick: () => void; primary?: boolean; Icon: LucideIcon };
+  soon?: string;
+}> = ({ kicker, picture, title, children, action, soon }) => (
+  <article className={cn("flex flex-col rounded-xl border bg-background/40 p-4", soon && "opacity-75")}>
+    <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{kicker}</p>
+    <div className="mt-3 aspect-[25/13] overflow-hidden rounded-lg bg-[#171f1b]">{picture}</div>
+    <h4 className="mt-4 font-semibold text-foreground">{title}</h4>
+    <div className="mt-1 text-sm leading-relaxed text-muted-foreground">{children}</div>
+    <div className="mt-auto pt-5">
+      {soon ? (
+        <Button variant="outline" className="w-full gap-1.5" disabled>
+          <Clock className="h-4 w-4" aria-hidden="true" />
+          {soon}
+        </Button>
+      ) : (
+        action && (
+          <Button variant={action.primary ? "default" : "outline"} className="w-full gap-1.5" onClick={action.onClick}>
+            {action.label}
+            <action.Icon className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        )
+      )}
+    </div>
+  </article>
+);
+
+const Challenges: React.FC<{
+  industry: Industry;
+  samples: Samples | null;
+  onStartMission: (industryName: string, mission: Mission, mode: MissionMode) => void;
+}> = ({ industry, samples, onStartMission }) => {
+  const artIndex = Math.max(0, INDUSTRIES.findIndex((i) => i.id === industry.id));
+  const guided = industry.guided;
+  const loading = samples === null;
+  const sample = guided ? samples?.datasets.find((d) => sameProject(d.project, guided.sample)) : undefined;
+  const model = guided
+    ? samples?.models.find((m) => sameProject(m.project, guided.sample) && m.modelType !== "RF_DETR")
+    : undefined;
+  const guidedMission: Mission | null = guided ? { title: guided.title, sample: guided.sample } : null;
+
+  return (
+    <motion.section
+      key={industry.id}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      aria-labelledby="challenge-heading"
+      className="rounded-2xl border bg-card p-5 md:p-7"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            02 / Pick your challenge
+          </p>
+          <h3 id="challenge-heading" className="mt-1 text-lg font-semibold text-foreground">
+            {industry.name}: what will you inspect?
+          </h3>
+        </div>
+        <span className="rounded-md bg-secondary px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-secondary-foreground">
+          Find &amp; mark defects
+        </span>
+      </div>
+      <p className="mt-3 text-sm text-muted-foreground">
+        Explore labelled examples, try a ready-made model, or build your own. Each path teaches the same inspection
+        ideas.
+      </p>
+
+      <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+        {/* 1. Guided challenge on GSN's sample */}
+        <ChallengeCard
+          kicker="01 · Guided challenge"
+          title={guided?.title ?? "Guided challenge"}
+          picture={
+            sample ? (
+              <AuthenticatedImage
+                src={sampleDatasetThumbnailUrl(sample.id)}
+                alt={`A labelled ${guided?.photoNoun ?? "sample"} photo from GSN's dataset`}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <IndustryArt index={artIndex} />
+            )
+          }
+          soon={!guided || (!loading && !sample) ? "Guided sample coming soon" : undefined}
+          action={
+            guidedMission
+              ? {
+                  label: "Start guided challenge",
+                  primary: true,
+                  Icon: ArrowRight,
+                  onClick: () => onStartMission(industry.name, guidedMission, "guided"),
+                }
+              : undefined
+          }
+        >
+          {guided && sample ? (
+            <>
+              <strong className="font-medium text-foreground">
+                {sample.totalImages} labelled {guided.photoNoun} photos
+              </strong>{" "}
+              from a real inspection line: find {guided.finds}. Explore the labels, train a model, then test it.
+            </>
+          ) : (
+            "We're preparing a labelled GSN dataset for this industry. Start your own project meanwhile."
+          )}
+        </ChallengeCard>
+
+        {/* 2. Quick try: GSN's trained model on the student's own photos */}
+        <ChallengeCard
+          kicker="02 · Quick try"
+          title="Try a ready-made model"
+          picture={
+            <div className="relative h-full w-full">
+              <IndustryArt index={artIndex} />
+              <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded bg-[#e9ff65] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#171f1b]">
+                <Sparkles className="h-3 w-3" aria-hidden="true" /> Trained by GSN
+              </span>
+            </div>
+          }
+          soon={!guided || (!loading && !model) ? "Ready-made model coming soon" : undefined}
+          action={
+            guidedMission
+              ? {
+                  label: "Try the ready-made model",
+                  Icon: Camera,
+                  onClick: () => onStartMission(industry.name, guidedMission, "try"),
+                }
+              : undefined
+          }
+        >
+          {guided && model ? (
+            <>
+              Already trained by GSN to spot {guided.finds}. Upload up to 30 photos of {guided.photoNoun}s and see what
+              it finds in seconds. No labelling or training needed.
+            </>
+          ) : (
+            "A model trained by GSN will let you test your own photos straight away. Not available for this industry yet."
+          )}
+        </ChallengeCard>
+
+        {/* 3. The student's own project */}
+        <ChallengeCard
+          kicker="03 · Your own project"
+          title={industry.own.title}
+          picture={
+            <ol className="flex h-full flex-col justify-center gap-2 px-5 text-xs text-[#f5f5ee]">
+              {["Pick one defect", "Take 30–100 photos", "Upload & draw boxes", "Train and test"].map((step, i) => (
+                <li key={step} className="flex items-center gap-2.5">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#e9ff65] text-[10px] text-[#e9ff65]">
+                    {i + 1}
+                  </span>
+                  {step}
+                </li>
+              ))}
+            </ol>
+          }
+          action={{
+            label: "Upload my images",
+            Icon: Upload,
+            onClick: () => onStartMission(industry.name, { title: industry.own.title }, "own"),
+          }}
+        >
+          Pick one defect, e.g. {industry.own.example}. Take 30–100 photos, about half good and half with the defect, at
+          the same angle and light. Then draw a box around each defect.
+          <span className="mt-1 block text-xs">Up to 500 images, 5 MB each.</span>
+        </ChallengeCard>
+      </div>
+    </motion.section>
   );
 };

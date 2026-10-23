@@ -4,15 +4,15 @@ import { motion } from "framer-motion";
 import { staggerContainerVariants } from "@/utils/animations";
 import { usePlanAccess } from "@/contexts/plan-access-context";
 import { getLearningProgress, type LearningProgress } from "@/lib/api/dashboard";
-import { IndustryPicker, type Mission } from "./IndustryPicker";
+import { IndustryPicker, type Mission, type MissionMode } from "./IndustryPicker";
 import { SpotTheIssueQuiz } from "./SpotTheIssueQuiz";
 import { AllowanceMeters } from "./AllowanceMeters";
 
 interface PlaygroundOverviewProps {
   projects: unknown[];
   onCreateProject?: () => void;
-  /** Creates (or opens) the mission's project, with its GSN sample when useSample is true */
-  onStartMission?: (industryName: string, mission: Mission, useSample: boolean) => void;
+  /** Creates (or opens) the mission's project: guided, quick try (GSN's model) or own images */
+  onStartMission?: (industryName: string, mission: Mission, mode: MissionMode) => void;
 }
 
 /**
@@ -41,9 +41,9 @@ export const PlaygroundOverview: React.FC<PlaygroundOverviewProps> = ({ projects
   return (
     <motion.div className="space-y-8" variants={staggerContainerVariants} initial="hidden" animate="visible">
       <IndustryPicker
-        onStartMission={(industryName, mission, useSample) =>
+        onStartMission={(industryName, mission, mode) =>
           onStartMission
-            ? onStartMission(industryName, mission, useSample)
+            ? onStartMission(industryName, mission, mode)
             : onCreateProject
               ? onCreateProject()
               : navigate("/dashboard?action=create-project")

@@ -610,6 +610,7 @@ export const PlaygroundProjectPage: React.FC = () => {
             missionName={missionName}
             industryName={industryName}
             onReportCreated={() => goToStep("report")}
+            preferUpload={searchParams.get("try") === "1"}
             testFiles={testFiles}
             classNames={classNames}
           />
