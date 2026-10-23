@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ArrowUpRight, FolderOpen, Maximize2, Minimize2, Plus, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, FolderOpen, Maximize2, Minimize2, Moon, Plus, Sun, X } from "lucide-react";
 import {
   PLACEHOLDER_SLOTS,
   SHOWCASE_CATEGORIES,
@@ -12,14 +12,14 @@ import {
   type ShowcaseProject,
 } from "@/components/demo/projects";
 
-const PAGE_BG = "bg-[#0f1512]";
+const PAGE_BG = "bg-[rgb(var(--sc-bg))]";
 
 function StatusPill({ status }: { status: ShowcaseProject["status"] }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-[#e9ff65]/40 bg-[#0f1512]/75 px-2.5 py-1 backdrop-blur text-[11px] font-semibold text-[#e9ff65]">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgb(var(--sc-accent)/0.4)] bg-[rgb(var(--sc-deep)/0.75)] px-2.5 py-1 backdrop-blur text-[11px] font-semibold text-[rgb(var(--sc-accent))]">
       <span className="relative flex h-1.5 w-1.5">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#e9ff65]" />
-        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#e9ff65]" />
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[rgb(var(--sc-accent))]" />
+        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[rgb(var(--sc-accent))]" />
       </span>
       {status}
     </span>
@@ -43,7 +43,7 @@ function ProjectCard({ project, onOpen }: { project: ShowcaseProject; onOpen: ()
       onMouseMove={onMove}
       onMouseEnter={() => videoRef.current?.play().catch(() => undefined)}
       onMouseLeave={() => videoRef.current?.pause()}
-      className="group relative flex h-full min-h-[520px] w-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#171f1b] text-left outline-none focus-visible:ring-2 focus-visible:ring-[#e9ff65]"
+      className="group relative flex h-full min-h-[520px] w-full flex-col overflow-hidden rounded-3xl border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-panel))] text-left outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--sc-accent))]"
       style={{ borderRadius: 24 }}
     >
       <div className="relative h-[300px] shrink-0 overflow-hidden">
@@ -64,7 +64,7 @@ function ProjectCard({ project, onOpen }: { project: ShowcaseProject; onOpen: ()
             className="absolute inset-0 h-full w-full scale-[1.35] object-cover object-[50%_38%] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
           />
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#171f1b] via-[#171f1b]/40 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[rgb(var(--sc-panel))] via-[rgb(var(--sc-panel)/0.4)] to-transparent" />
         <div className="absolute left-5 top-5">
           <StatusPill status={project.status} />
         </div>
@@ -72,21 +72,21 @@ function ProjectCard({ project, onOpen }: { project: ShowcaseProject; onOpen: ()
 
       <div
         className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-        style={{ background: "radial-gradient(420px circle at var(--mx) var(--my), rgba(233,255,101,0.10), transparent 45%)" }}
+        style={{ background: "radial-gradient(420px circle at var(--mx) var(--my), rgb(var(--sc-accent)/0.10), transparent 45%)" }}
       />
 
       <div className="relative p-6 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#e9ff65]">{project.kicker}</p>
-        <h3 className="mt-2 text-3xl font-bold text-[#f5f5ee] sm:text-4xl">{project.name}</h3>
-        <p className="mt-2 max-w-xl text-[#bec9b0]">{project.tagline}</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[rgb(var(--sc-accent))]">{project.kicker}</p>
+        <h3 className="mt-2 text-3xl font-bold text-[rgb(var(--sc-fg))] sm:text-4xl">{project.name}</h3>
+        <p className="mt-2 max-w-xl text-[rgb(var(--sc-muted))]">{project.tagline}</p>
         <div className="mt-4 flex flex-wrap gap-2">
           {project.tags.map((t) => (
-            <span key={t} className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-[#bec9b0]">
+            <span key={t} className="rounded-full border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-tint)/0.05)] px-2.5 py-1 text-xs text-[rgb(var(--sc-muted))]">
               {t}
             </span>
           ))}
         </div>
-        <span className="mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-[#e9ff65] transition group-hover:gap-2.5">
+        <span className="mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-[rgb(var(--sc-accent))] transition group-hover:gap-2.5">
           Open interactive demo <ArrowUpRight className="h-4 w-4" />
         </span>
       </div>
@@ -101,13 +101,13 @@ function PlaceholderCard({ index }: { index: number }) {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.15 + index * 0.07 }}
-      className="relative flex min-h-[200px] flex-col items-center justify-center overflow-hidden rounded-3xl border border-dashed border-white/10 bg-white/[0.015]"
+      className="relative flex min-h-[200px] flex-col items-center justify-center overflow-hidden rounded-3xl border border-dashed border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-tint)/0.015)]"
     >
-      <div className="absolute inset-0 -translate-x-full animate-[showcase-shimmer_3.2s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-white/[0.04] to-transparent" style={{ animationDelay: `${index * 0.4}s` }} />
-      <span className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 text-[#7c8673]">
+      <div className="absolute inset-0 -translate-x-full animate-[showcase-shimmer_3.2s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-[rgb(var(--sc-tint)/0.04)] to-transparent" style={{ animationDelay: `${index * 0.4}s` }} />
+      <span className="flex h-10 w-10 items-center justify-center rounded-full border border-[rgb(var(--sc-tint)/0.1)] text-[rgb(var(--sc-subtle))]">
         <Plus className="h-4 w-4" />
       </span>
-      <p className="mt-3 text-sm font-medium text-[#7c8673]">Coming soon</p>
+      <p className="mt-3 text-sm font-medium text-[rgb(var(--sc-subtle))]">Coming soon</p>
     </motion.div>
   );
 }
@@ -124,10 +124,10 @@ function CategoryCard({ category, index, onOpen }: { category: ShowcaseCategory;
       className="relative pt-4"
     >
       {/* Folder tab */}
-      <div className="absolute left-8 top-0 h-8 w-36 rounded-t-2xl border border-b-0 border-white/10 bg-[#1a231e]" />
+      <div className="absolute left-8 top-0 h-8 w-36 rounded-t-2xl border border-b-0 border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-panel2))]" />
       <motion.button
         onClick={onOpen}
-        className="group relative flex h-full min-h-[460px] w-full flex-col overflow-hidden rounded-3xl rounded-tl-xl border border-white/10 bg-[#1a231e] text-left outline-none focus-visible:ring-2 focus-visible:ring-[#e9ff65]"
+        className="group relative flex h-full min-h-[460px] w-full flex-col overflow-hidden rounded-3xl rounded-tl-xl border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-panel2))] text-left outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--sc-accent))]"
       >
         <div className={`pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-gradient-to-br ${category.accent} opacity-20 blur-3xl transition-opacity duration-500 group-hover:opacity-35`} />
 
@@ -138,20 +138,20 @@ function CategoryCard({ category, index, onOpen }: { category: ShowcaseCategory;
 
         <div className="relative mt-auto p-6 sm:p-8">
           <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-[#f5f5ee]">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[rgb(var(--sc-tint)/0.1)] text-[rgb(var(--sc-fg))]">
               <Icon className="h-5 w-5" />
             </span>
-            <h3 className="text-3xl font-bold text-[#f5f5ee] sm:text-4xl">{category.name}</h3>
+            <h3 className="text-3xl font-bold text-[rgb(var(--sc-fg))] sm:text-4xl">{category.name}</h3>
             <span
               className={`ml-auto rounded-full px-3 py-1 text-xs font-semibold ${
-                empty ? "border border-amber-300/30 bg-amber-300/10 text-amber-200" : "border border-white/10 bg-white/5 text-[#bec9b0]"
+                empty ? "border border-[rgb(var(--sc-warn)/0.3)] bg-[rgb(var(--sc-warn)/0.1)] text-[rgb(var(--sc-warntext))]" : "border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-tint)/0.05)] text-[rgb(var(--sc-muted))]"
               }`}
             >
               {empty ? "Coming soon" : `${projects.length} project${projects.length > 1 ? "s" : ""}`}
             </span>
           </div>
-          <p className="mt-3 text-[#bec9b0]">{category.tagline}</p>
-          <span className="mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-[#e9ff65] transition group-hover:gap-2.5">
+          <p className="mt-3 text-[rgb(var(--sc-muted))]">{category.tagline}</p>
+          <span className="mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-[rgb(var(--sc-accent))] transition group-hover:gap-2.5">
             <FolderOpen className="h-4 w-4" /> Open folder <ArrowUpRight className="h-4 w-4" />
           </span>
         </div>
@@ -164,15 +164,15 @@ function CategoryCard({ category, index, onOpen }: { category: ShowcaseCategory;
 function EmptyFolder({ category, onBack }: { category: ShowcaseCategory; onBack: () => void }) {
   const { Icon } = category;
   return (
-    <div className="flex flex-col items-center rounded-3xl border border-dashed border-white/15 bg-white/[0.02] px-6 py-20 text-center">
+    <div className="flex flex-col items-center rounded-3xl border border-dashed border-[rgb(var(--sc-tint)/0.15)] bg-[rgb(var(--sc-tint)/0.02)] px-6 py-20 text-center">
       <span className={`flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br ${category.accent}`}>
-        <Icon className="h-8 w-8 text-[#f5f5ee]" />
+        <Icon className="h-8 w-8 text-[rgb(var(--sc-fg))]" />
       </span>
-      <h2 className="mt-6 text-2xl font-bold text-[#f5f5ee]">{category.name} demos are on the way</h2>
-      <p className="mt-2 max-w-md text-[#9aa591]">We're preparing hands-on demos of our {category.name} projects. Check back soon.</p>
+      <h2 className="mt-6 text-2xl font-bold text-[rgb(var(--sc-fg))]">{category.name} demos are on the way</h2>
+      <p className="mt-2 max-w-md text-[rgb(var(--sc-muted))]">We're preparing hands-on demos of our {category.name} projects. Check back soon.</p>
       <button
         onClick={onBack}
-        className="mt-8 inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-semibold text-[#f5f5ee] transition hover:bg-white/10"
+        className="mt-8 inline-flex items-center gap-2 rounded-xl border border-[rgb(var(--sc-tint)/0.15)] bg-[rgb(var(--sc-tint)/0.05)] px-5 py-2.5 text-sm font-semibold text-[rgb(var(--sc-fg))] transition hover:bg-[rgb(var(--sc-tint)/0.1)]"
       >
         <ArrowLeft className="h-4 w-4" /> All categories
       </button>
@@ -180,7 +180,17 @@ function EmptyFolder({ category, onBack }: { category: ShowcaseCategory; onBack:
   );
 }
 
-function ProjectOverlay({ project, backLabel, onClose }: { project: ShowcaseProject; backLabel: string; onClose: () => void }) {
+function ProjectOverlay({
+  project,
+  backLabel,
+  onClose,
+  themeButton,
+}: {
+  project: ShowcaseProject;
+  backLabel: string;
+  onClose: () => void;
+  themeButton: ReactNode;
+}) {
   const { Demo } = project;
 
   useEffect(() => {
@@ -197,7 +207,7 @@ function ProjectOverlay({ project, backLabel, onClose }: { project: ShowcaseProj
   return (
     <>
       <motion.div
-        className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
+        className="fixed inset-0 z-40 bg-[rgb(var(--sc-shade)/0.7)] backdrop-blur-sm"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -219,19 +229,20 @@ function ProjectOverlay({ project, backLabel, onClose }: { project: ShowcaseProj
           animate={{ opacity: 1, transition: { delay: 0.18, duration: 0.3 } }}
           exit={{ opacity: 0, transition: { duration: 0.12 } }}
         >
-          <div className={`sticky top-0 z-30 border-b border-white/5 bg-[#0f1512]/80 backdrop-blur-xl`}>
+          <div className={`sticky top-0 z-30 border-b border-[rgb(var(--sc-tint)/0.05)] bg-[rgb(var(--sc-deep)/0.8)] backdrop-blur-xl`}>
             <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-              <button onClick={onClose} className="inline-flex items-center gap-2 text-sm font-medium text-[#bec9b0] hover:text-[#f5f5ee]">
+              <button onClick={onClose} className="inline-flex items-center gap-2 text-sm font-medium text-[rgb(var(--sc-muted))] hover:text-[rgb(var(--sc-fg))]">
                 <ArrowLeft className="h-4 w-4" /> {backLabel}
               </button>
               <div className="flex items-center gap-3">
-                <span className="hidden text-sm font-semibold text-[#f5f5ee] sm:inline">{project.name}</span>
+                <span className="hidden text-sm font-semibold text-[rgb(var(--sc-fg))] sm:inline">{project.name}</span>
                 <StatusPill status={project.status} />
+                {themeButton}
                 <FullscreenButton />
                 <button
                   onClick={onClose}
                   aria-label="Close demo"
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[#bec9b0] transition hover:rotate-90 hover:bg-white/10 hover:text-[#f5f5ee]"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-tint)/0.05)] text-[rgb(var(--sc-muted))] transition hover:rotate-90 hover:bg-[rgb(var(--sc-tint)/0.1)] hover:text-[rgb(var(--sc-fg))]"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -242,6 +253,45 @@ function ProjectOverlay({ project, backLabel, onClose }: { project: ShowcaseProj
         </motion.div>
       </motion.div>
     </>
+  );
+}
+
+type ShowcaseTheme = "dark" | "light";
+const THEME_KEY = "visionm_showcase_theme";
+
+/** The showcase's own light / dark switch (remembered in this browser; dark by default) */
+function useShowcaseTheme(): [ShowcaseTheme, () => void] {
+  const [theme, setTheme] = useState<ShowcaseTheme>(() => {
+    try {
+      return localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark";
+    } catch {
+      return "dark";
+    }
+  });
+  const toggle = () =>
+    setTheme((t) => {
+      const next = t === "dark" ? "light" : "dark";
+      try {
+        localStorage.setItem(THEME_KEY, next);
+      } catch {
+        // remembering is a convenience only
+      }
+      return next;
+    });
+  return [theme, toggle];
+}
+
+function ThemeButton({ theme, onToggle }: { theme: ShowcaseTheme; onToggle: () => void }) {
+  const label = theme === "dark" ? "Switch to light theme" : "Switch to dark theme";
+  return (
+    <button
+      onClick={onToggle}
+      aria-label={label}
+      title={label}
+      className="flex h-9 w-9 items-center justify-center rounded-lg border border-[rgb(var(--sc-tint)/0.15)] bg-[rgb(var(--sc-tint)/0.05)] text-[rgb(var(--sc-fg2))] transition hover:bg-[rgb(var(--sc-tint)/0.1)] hover:text-[rgb(var(--sc-fg))]"
+    >
+      {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+    </button>
   );
 }
 
@@ -269,7 +319,7 @@ function FullscreenButton() {
       onClick={toggle}
       aria-label={label}
       title={label}
-      className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-[#e8ebe0] transition hover:bg-white/10 hover:text-[#f5f5ee]"
+      className="flex h-9 w-9 items-center justify-center rounded-lg border border-[rgb(var(--sc-tint)/0.15)] bg-[rgb(var(--sc-tint)/0.05)] text-[rgb(var(--sc-fg))] transition hover:bg-[rgb(var(--sc-tint)/0.1)] hover:text-[rgb(var(--sc-fg))]"
     >
       {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
     </button>
@@ -300,6 +350,8 @@ export default function ShowcasePage() {
 
   const categoryPath = category ? `/showcase/${category.id}` : "/showcase";
   const close = useCallback(() => navigate(categoryPath), [navigate, categoryPath]);
+  const [theme, toggleTheme] = useShowcaseTheme();
+  const themeButton = <ThemeButton theme={theme} onToggle={toggleTheme} />;
 
   if (categoryId && !category) {
     // Old links were /showcase/:projectId; send them to the project's new home.
@@ -309,20 +361,21 @@ export default function ShowcasePage() {
   if (projectId && !active) return <Navigate to={categoryPath} replace />;
 
   return (
-    <div className={`relative min-h-screen overflow-x-hidden ${PAGE_BG} text-[#f5f5ee]`}>
+    <div data-sc-theme={theme} className={`sc relative min-h-screen overflow-x-hidden ${PAGE_BG} text-[rgb(var(--sc-fg))]`}>
       <style>{`@keyframes showcase-shimmer { 0% { transform: translateX(-100%) } 60%, 100% { transform: translateX(100%) } }`}</style>
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(1000px_520px_at_80%_-10%,rgba(136,165,48,0.22),transparent_60%),radial-gradient(800px_420px_at_0%_0%,rgba(233,255,101,0.08),transparent_65%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(1000px_520px_at_80%_-10%,rgb(var(--sc-accent2)/0.22),transparent_60%),radial-gradient(800px_420px_at_0%_0%,rgb(var(--sc-accent)/0.08),transparent_65%)]" />
 
       <header className="relative mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
         <Link to="/" className="flex items-center gap-3">
-          <span className="rounded-xl bg-white px-2.5 py-1.5 shadow-lg shadow-black/30">
+          <span className="rounded-xl bg-[rgb(var(--sc-tint))] px-2.5 py-1.5 shadow-lg shadow-[color:rgb(var(--sc-shade)/0.3)]">
             <img src="/demo/gsn-logo.png" alt="GSN" className="h-6 w-auto" />
           </span>
-          <span className="hidden text-sm font-semibold text-[#e8ebe0] sm:inline">GSN Solutions</span>
+          <span className="hidden text-sm font-semibold text-[rgb(var(--sc-fg))] sm:inline">GSN Solutions</span>
         </Link>
         <div className="flex items-center gap-2">
+          {themeButton}
           <FullscreenButton />
-          <Link to="/auth" className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-[#f5f5ee] transition hover:bg-white/10">
+          <Link to="/auth" className="rounded-lg border border-[rgb(var(--sc-tint)/0.15)] bg-[rgb(var(--sc-tint)/0.05)] px-4 py-2 text-sm font-semibold text-[rgb(var(--sc-fg))] transition hover:bg-[rgb(var(--sc-tint)/0.1)]">
             Sign in
           </Link>
         </div>
@@ -333,14 +386,14 @@ export default function ShowcasePage() {
           {!category ? (
             <motion.div key="home" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.35 }}>
               <div className="max-w-5xl py-12 sm:py-20">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#e9ff65]">Project showcase</p>
-                <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-[#f5f5ee] sm:text-6xl">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[rgb(var(--sc-accent))]">Project showcase</p>
+                <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-[rgb(var(--sc-fg))] sm:text-6xl">
                   What we’re building{" "}
-                  <span className="whitespace-nowrap bg-gradient-to-r from-[#e9ff65] via-[#c8e04a] to-[#88a530] bg-clip-text text-transparent">
+                  <span className="whitespace-nowrap bg-gradient-to-r from-[rgb(var(--sc-accent))] via-[rgb(var(--sc-accent))] to-[rgb(var(--sc-accent2))] bg-clip-text text-transparent">
                     right now
                   </span>
                 </h1>
-                <p className="mt-5 text-lg text-[#9aa591]">Live, hands-on demos of GSN's current projects. Pick an area to explore its projects.</p>
+                <p className="mt-5 text-lg text-[rgb(var(--sc-muted))]">Live, hands-on demos of GSN's current projects. Pick an area to explore its projects.</p>
               </div>
 
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
@@ -357,19 +410,19 @@ export default function ShowcasePage() {
           ) : (
             <motion.div key={category.id} initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.35 }}>
               <div className="max-w-4xl py-10 sm:py-16">
-                <button onClick={() => navigate("/showcase")} className="inline-flex items-center gap-2 text-sm font-medium text-[#9aa591] transition hover:text-[#f5f5ee]">
+                <button onClick={() => navigate("/showcase")} className="inline-flex items-center gap-2 text-sm font-medium text-[rgb(var(--sc-muted))] transition hover:text-[rgb(var(--sc-fg))]">
                   <ArrowLeft className="h-4 w-4" /> All categories
                 </button>
                 <div className="mt-6 flex items-center gap-4">
                   <span className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br ${category.accent} shadow-lg`}>
-                    <category.Icon className="h-7 w-7 text-[#f5f5ee]" />
+                    <category.Icon className="h-7 w-7 text-[rgb(var(--sc-fg))]" />
                   </span>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#e9ff65]">{category.tagline}</p>
-                    <h1 className="text-4xl font-extrabold tracking-tight text-[#f5f5ee] sm:text-5xl">{category.name}</h1>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[rgb(var(--sc-accent))]">{category.tagline}</p>
+                    <h1 className="text-4xl font-extrabold tracking-tight text-[rgb(var(--sc-fg))] sm:text-5xl">{category.name}</h1>
                   </div>
                 </div>
-                <p className="mt-5 text-lg text-[#9aa591]">{category.description}</p>
+                <p className="mt-5 text-lg text-[rgb(var(--sc-muted))]">{category.description}</p>
               </div>
 
               {category.projects.length === 0 ? (
@@ -386,12 +439,12 @@ export default function ShowcasePage() {
         </AnimatePresence>
       </main>
 
-      <footer className="relative border-t border-white/5 py-8 text-center text-xs text-[#7c8673]">
+      <footer className="relative border-t border-[rgb(var(--sc-tint)/0.05)] py-8 text-center text-xs text-[rgb(var(--sc-subtle))]">
         © {new Date().getFullYear()} GSN Solutions
       </footer>
 
       <AnimatePresence>
-        {active && category && <ProjectOverlay key={active.id} project={active} backLabel={category.name} onClose={close} />}
+        {active && category && <ProjectOverlay key={active.id} project={active} backLabel={category.name} onClose={close} themeButton={themeButton} />}
       </AnimatePresence>
     </div>
   );

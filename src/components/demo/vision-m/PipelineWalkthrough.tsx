@@ -6,12 +6,12 @@ const STEP_MS = 7000;
 
 function ScreenshotFrame({ src, alt }: { src: string; alt: string }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-white/10 bg-slate-900 shadow-2xl shadow-black/50">
-      <div className="flex items-center gap-1.5 border-b border-white/10 bg-slate-800/80 px-3 py-2">
-        <span className="h-2.5 w-2.5 rounded-full bg-rose-400/80" />
-        <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
-        <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
-        <span className="ml-3 truncate text-[11px] text-slate-400">app.vision-m · {alt}</span>
+    <div className="overflow-hidden rounded-xl border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-deep))] shadow-2xl shadow-[color:rgb(var(--sc-shade)/0.5)]">
+      <div className="flex items-center gap-1.5 border-b border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-panel2)/0.8)] px-3 py-2">
+        <span className="h-2.5 w-2.5 rounded-full bg-[rgb(var(--sc-bad)/0.8)]" />
+        <span className="h-2.5 w-2.5 rounded-full bg-[rgb(var(--sc-warn)/0.8)]" />
+        <span className="h-2.5 w-2.5 rounded-full bg-[rgb(var(--sc-ok)/0.8)]" />
+        <span className="ml-3 truncate text-[11px] text-[rgb(var(--sc-muted))]">app.vision-m · {alt}</span>
       </div>
       <img src={src} alt={alt} className="block w-full" loading="lazy" />
     </div>
@@ -30,12 +30,12 @@ const AUGMENTS: { name: string; style: CSSProperties }[] = [
 
 function AugmentVisual() {
   return (
-    <div className="grid grid-cols-[1.1fr_2fr] items-center gap-4 rounded-xl border border-white/10 bg-slate-900/70 p-4 sm:gap-6 sm:p-6">
+    <div className="grid grid-cols-[1.1fr_2fr] items-center gap-4 rounded-xl border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-deep)/0.7)] p-4 sm:gap-6 sm:p-6">
       <div>
-        <div className="overflow-hidden rounded-lg ring-2 ring-cyan-400">
+        <div className="overflow-hidden rounded-lg ring-2 ring-[color:rgb(var(--sc-accent))]">
           <img src={AUG_SRC} alt="Original" className="aspect-square w-full object-cover" />
         </div>
-        <p className="mt-2 text-center text-xs font-semibold text-cyan-300">1 original</p>
+        <p className="mt-2 text-center text-xs font-semibold text-[rgb(var(--sc-accentsoft))]">1 original</p>
       </div>
       <div>
         <div className="grid grid-cols-3 gap-2">
@@ -46,14 +46,14 @@ function AugmentVisual() {
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.15 + i * 0.12 }}
             >
-              <div className="overflow-hidden rounded-md border border-white/10">
+              <div className="overflow-hidden rounded-md border border-[rgb(var(--sc-tint)/0.1)]">
                 <img src={AUG_SRC} alt={a.name} className="aspect-square w-full object-cover" style={a.style} />
               </div>
-              <p className="mt-1 text-center text-[10px] text-slate-400 sm:text-[11px]">{a.name}</p>
+              <p className="mt-1 text-center text-[10px] text-[rgb(var(--sc-muted))] sm:text-[11px]">{a.name}</p>
             </motion.div>
           ))}
         </div>
-        <p className="mt-2 text-center text-xs font-semibold text-slate-300">→ 6 new training images, labels moved with them</p>
+        <p className="mt-2 text-center text-xs font-semibold text-[rgb(var(--sc-fg2))]">→ 6 new training images, labels moved with them</p>
       </div>
     </div>
   );
@@ -66,15 +66,15 @@ function DeployVisual() {
     { name: "TFLite", ext: ".tflite", target: "Android inspection app", Icon: Smartphone },
   ];
   return (
-    <div className="rounded-xl border border-white/10 bg-slate-900/70 p-5 sm:p-7">
+    <div className="rounded-xl border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-deep)/0.7)] p-5 sm:p-7">
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mx-auto flex w-fit items-center gap-2 rounded-full border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-200"
+        className="mx-auto flex w-fit items-center gap-2 rounded-full border border-[rgb(var(--sc-accent)/0.4)] bg-[rgb(var(--sc-accent)/0.1)] px-4 py-2 text-sm font-semibold text-[rgb(var(--sc-accentsoft))]"
       >
         <Brain className="h-4 w-4" /> blister_packet_v1 · trained model
       </motion.div>
-      <div className="mx-auto h-6 w-px bg-gradient-to-b from-cyan-400/60 to-white/10" />
+      <div className="mx-auto h-6 w-px bg-gradient-to-b from-[rgb(var(--sc-accent)/0.6)] to-[rgb(var(--sc-tint)/0.1)]" />
       <div className="grid grid-cols-3 gap-2 sm:gap-4">
         {formats.map(({ name, ext, target, Icon }, i) => (
           <motion.div
@@ -84,14 +84,14 @@ function DeployVisual() {
             transition={{ delay: 0.2 + i * 0.15 }}
             className="flex flex-col items-center text-center"
           >
-            <div className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-2 py-3">
-              <p className="text-sm font-bold text-white">{name}</p>
-              <p className="font-mono text-[11px] text-cyan-300">{ext}</p>
+            <div className="w-full rounded-lg border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-tint)/0.04)] px-2 py-3">
+              <p className="text-sm font-bold text-[rgb(var(--sc-fg))]">{name}</p>
+              <p className="font-mono text-[11px] text-[rgb(var(--sc-accentsoft))]">{ext}</p>
             </div>
-            <div className="h-5 w-px bg-white/15" />
-            <div className="flex w-full flex-col items-center gap-1.5 rounded-lg bg-gradient-to-b from-sky-500/15 to-transparent px-2 py-3">
-              <Icon className="h-5 w-5 text-sky-300" />
-              <p className="text-[11px] leading-tight text-slate-300 sm:text-xs">{target}</p>
+            <div className="h-5 w-px bg-[rgb(var(--sc-tint)/0.15)]" />
+            <div className="flex w-full flex-col items-center gap-1.5 rounded-lg bg-gradient-to-b from-[rgb(var(--sc-accent)/0.15)] to-transparent px-2 py-3">
+              <Icon className="h-5 w-5 text-[rgb(var(--sc-accentsoft))]" />
+              <p className="text-[11px] leading-tight text-[rgb(var(--sc-fg2))] sm:text-xs">{target}</p>
             </div>
           </motion.div>
         ))}
@@ -197,26 +197,26 @@ export function PipelineWalkthrough() {
               <span
                 className={`relative flex h-10 w-10 items-center justify-center rounded-full border transition-all sm:h-12 sm:w-12 ${
                   isActive
-                    ? "border-cyan-300 bg-cyan-400 text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.55)]"
+                    ? "border-[rgb(var(--sc-accent))] bg-[rgb(var(--sc-accent))] text-[rgb(var(--sc-onaccent))] shadow-[0_0_24px_rgb(var(--sc-accent)/0.55)]"
                     : done
-                      ? "border-cyan-400/50 bg-cyan-400/15 text-cyan-200"
-                      : "border-white/15 bg-white/5 text-slate-400 group-hover:text-slate-200"
+                      ? "border-[rgb(var(--sc-accent)/0.5)] bg-[rgb(var(--sc-accent)/0.15)] text-[rgb(var(--sc-accentsoft))]"
+                      : "border-[rgb(var(--sc-tint)/0.15)] bg-[rgb(var(--sc-tint)/0.05)] text-[rgb(var(--sc-muted))] group-hover:text-[rgb(var(--sc-fg2))]"
                 }`}
               >
                 {done ? <Check className="h-4 w-4 sm:h-5 sm:w-5" /> : <s.Icon className="h-4 w-4 sm:h-5 sm:w-5" />}
               </span>
-              <span className={`text-[11px] font-semibold sm:text-sm ${isActive ? "text-white" : "text-slate-400"}`}>{s.title}</span>
-              <span className="relative h-0.5 w-full overflow-hidden rounded-full bg-white/10">
+              <span className={`text-[11px] font-semibold sm:text-sm ${isActive ? "text-[rgb(var(--sc-fg))]" : "text-[rgb(var(--sc-muted))]"}`}>{s.title}</span>
+              <span className="relative h-0.5 w-full overflow-hidden rounded-full bg-[rgb(var(--sc-tint)/0.1)]">
                 {isActive && (
                   <motion.span
                     key={`${active}-${running}`}
-                    className="absolute inset-y-0 left-0 bg-cyan-400"
+                    className="absolute inset-y-0 left-0 bg-[rgb(var(--sc-accent))]"
                     initial={{ width: running ? "0%" : "100%" }}
                     animate={{ width: "100%" }}
                     transition={{ duration: running ? STEP_MS / 1000 : 0, ease: "linear" }}
                   />
                 )}
-                {done && <span className="absolute inset-0 bg-cyan-400/50" />}
+                {done && <span className="absolute inset-0 bg-[rgb(var(--sc-accent)/0.5)]" />}
               </span>
             </button>
           );
@@ -235,20 +235,20 @@ export function PipelineWalkthrough() {
             className="grid items-center gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]"
           >
             <div>
-              <p className="font-mono text-xs text-cyan-300">
+              <p className="font-mono text-xs text-[rgb(var(--sc-accentsoft))]">
                 STEP {String(active + 1).padStart(2, "0")} / {String(STEPS.length).padStart(2, "0")}
               </p>
-              <h3 className="mt-2 text-2xl font-bold text-white sm:text-3xl">{step.summary}</h3>
+              <h3 className="mt-2 text-2xl font-bold text-[rgb(var(--sc-fg))] sm:text-3xl">{step.summary}</h3>
               <ul className="mt-5 space-y-3">
                 {step.points.map((p) => (
-                  <li key={p} className="flex gap-3 text-slate-300">
-                    <Layers className="mt-0.5 h-4 w-4 shrink-0 text-cyan-400" />
+                  <li key={p} className="flex gap-3 text-[rgb(var(--sc-fg2))]">
+                    <Layers className="mt-0.5 h-4 w-4 shrink-0 text-[rgb(var(--sc-accent))]" />
                     <span>{p}</span>
                   </li>
                 ))}
               </ul>
               {!autoplay && (
-                <button onClick={() => setAutoplay(true)} className="mt-6 text-sm font-medium text-cyan-300 hover:text-cyan-200">
+                <button onClick={() => setAutoplay(true)} className="mt-6 text-sm font-medium text-[rgb(var(--sc-accentsoft))] hover:text-[rgb(var(--sc-accentsoft))]">
                   ▶ Resume auto-play
                 </button>
               )}

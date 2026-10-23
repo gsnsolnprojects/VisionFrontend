@@ -38,7 +38,7 @@ export function DetectionPlayground() {
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
       {/* Stage */}
       <div className="flex flex-col gap-4 min-w-0">
-        <div className="relative rounded-2xl border border-white/10 bg-black/40 p-3 sm:p-4">
+        <div className="relative rounded-2xl border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-shade)/0.4)] p-3 sm:p-4">
           <div
             className="relative mx-auto overflow-hidden rounded-xl"
             style={{
@@ -68,14 +68,14 @@ export function DetectionPlayground() {
                   initial={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                 >
-                  <div className="absolute inset-0 bg-[linear-gradient(rgba(34,211,238,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.08)_1px,transparent_1px)] bg-[size:28px_28px]" />
+                  <div className="absolute inset-0 bg-[linear-gradient(rgb(var(--sc-accent)/0.08)_1px,transparent_1px),linear-gradient(90deg,rgb(var(--sc-accent)/0.08)_1px,transparent_1px)] bg-[size:28px_28px]" />
                   <motion.div
-                    className="absolute inset-x-0 h-24 bg-gradient-to-b from-transparent via-cyan-400/35 to-transparent"
+                    className="absolute inset-x-0 h-24 bg-gradient-to-b from-transparent via-[rgb(var(--sc-accent)/0.35)] to-transparent"
                     initial={{ top: "-25%" }}
                     animate={{ top: "100%" }}
                     transition={{ duration: SCAN_MS / 1000, ease: "easeInOut" }}
                   >
-                    <div className="absolute inset-x-0 top-1/2 h-px bg-cyan-300 shadow-[0_0_16px_4px_rgba(34,211,238,0.7)]" />
+                    <div className="absolute inset-x-0 top-1/2 h-px bg-[rgb(var(--sc-accent))] shadow-[0_0_16px_4px_rgb(var(--sc-accent)/0.7)]" />
                   </motion.div>
                 </motion.div>
               )}
@@ -92,8 +92,8 @@ export function DetectionPlayground() {
                     key={`${sample.id}-${i}`}
                     className={`pointer-events-none absolute rounded-[4px] ${
                       defect
-                        ? "border-2 border-rose-500 bg-rose-500/10 shadow-[0_0_18px_rgba(244,63,94,0.55)]"
-                        : "border-2 border-dashed border-cyan-300/80"
+                        ? "border-2 border-[rgb(var(--sc-bad))] bg-[rgb(var(--sc-bad)/0.1)] shadow-[0_0_18px_rgb(var(--sc-bad)/0.55)]"
+                        : "border-2 border-dashed border-[rgb(var(--sc-accent)/0.8)]"
                     }`}
                     style={{ left: pct(x1), top: pct(y1), width: pct(x2 - x1), height: pct(y2 - y1) }}
                     initial={{ opacity: 0, scale: 1.12 }}
@@ -102,7 +102,7 @@ export function DetectionPlayground() {
                   >
                     <span
                       className={`absolute -top-[22px] left-[-2px] whitespace-nowrap rounded-t px-1.5 py-0.5 text-[11px] font-semibold leading-none ${
-                        defect ? "bg-rose-500 text-white" : "bg-cyan-300 text-slate-900"
+                        defect ? "bg-[rgb(var(--sc-bad))] text-[rgb(var(--sc-fg))]" : "bg-[rgb(var(--sc-accent))] text-[rgb(var(--sc-onaccent))]"
                       }`}
                       style={y1 < 0.06 ? { top: 2, left: 2, borderRadius: 4 } : undefined}
                     >
@@ -121,7 +121,7 @@ export function DetectionPlayground() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="flex items-center gap-1.5 rounded-full bg-slate-950/80 px-3 py-1.5 text-xs font-semibold text-cyan-200 backdrop-blur"
+                    className="flex items-center gap-1.5 rounded-full bg-[rgb(var(--sc-deep)/0.8)] px-3 py-1.5 text-xs font-semibold text-[rgb(var(--sc-accentsoft))] backdrop-blur"
                   >
                     <ScanLine className="h-3.5 w-3.5 animate-pulse" /> Analyzing…
                   </motion.span>
@@ -130,8 +130,8 @@ export function DetectionPlayground() {
                     key={verdictOk ? "ok" : "nok"}
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold tracking-wide text-white shadow-lg ${
-                      verdictOk ? "bg-emerald-500" : "bg-rose-600"
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold tracking-wide text-[rgb(var(--sc-fg))] shadow-lg ${
+                      verdictOk ? "bg-[rgb(var(--sc-ok))]" : "bg-[rgb(var(--sc-bad))]"
                     }`}
                   >
                     {verdictOk ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
@@ -140,7 +140,7 @@ export function DetectionPlayground() {
                 )}
               </AnimatePresence>
             </div>
-            <span className="pointer-events-none absolute right-3 bottom-3 flex items-center gap-1 rounded-full bg-slate-950/80 px-2.5 py-1 text-[11px] font-medium text-slate-300 backdrop-blur">
+            <span className="pointer-events-none absolute right-3 bottom-3 flex items-center gap-1 rounded-full bg-[rgb(var(--sc-deep)/0.8)] px-2.5 py-1 text-[11px] font-medium text-[rgb(var(--sc-fg2))] backdrop-blur">
               <Cpu className="h-3 w-3" /> {sample.inferenceMs} ms
             </span>
           </div>
@@ -157,11 +157,11 @@ export function DetectionPlayground() {
                 aria-selected={active}
                 onClick={() => setSampleId(s.id)}
                 className={`group relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 transition sm:h-20 sm:w-20 ${
-                  active ? "border-cyan-400 shadow-[0_0_0_4px_rgba(34,211,238,0.15)]" : "border-white/10 opacity-70 hover:opacity-100"
+                  active ? "border-[rgb(var(--sc-accent))] shadow-[0_0_0_4px_rgb(var(--sc-accent)/0.15)]" : "border-[rgb(var(--sc-tint)/0.1)] opacity-70 hover:opacity-100"
                 }`}
               >
                 <img src={s.image} alt={s.product} className="h-full w-full object-cover" loading="lazy" />
-                <span className="absolute inset-x-0 bottom-0 bg-slate-950/75 py-0.5 text-center text-[10px] font-medium text-slate-200">
+                <span className="absolute inset-x-0 bottom-0 bg-[rgb(var(--sc-deep)/0.75)] py-0.5 text-center text-[10px] font-medium text-[rgb(var(--sc-fg2))]">
                   {s.product === "Car seat" ? "Seat" : "Blister"}
                 </span>
               </button>
@@ -175,17 +175,17 @@ export function DetectionPlayground() {
         <div
           className={`rounded-2xl border p-5 transition-colors ${
             scanning
-              ? "border-white/10 bg-white/[0.03]"
+              ? "border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-tint)/0.03)]"
               : verdictOk
-                ? "border-emerald-500/40 bg-emerald-500/10"
-                : "border-rose-500/40 bg-rose-500/10"
+                ? "border-[rgb(var(--sc-ok)/0.4)] bg-[rgb(var(--sc-ok)/0.1)]"
+                : "border-[rgb(var(--sc-bad)/0.4)] bg-[rgb(var(--sc-bad)/0.1)]"
           }`}
         >
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Verdict · {sample.product}</p>
-          <p className="mt-1 text-2xl font-bold text-white">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[rgb(var(--sc-muted))]">Verdict · {sample.product}</p>
+          <p className="mt-1 text-2xl font-bold text-[rgb(var(--sc-fg))]">
             {scanning ? "Inspecting…" : verdictOk ? "Pass" : `Reject · ${defectsKept.length} defect${defectsKept.length > 1 ? "s" : ""}`}
           </p>
-          <p className="mt-1 text-sm text-slate-400">
+          <p className="mt-1 text-sm text-[rgb(var(--sc-muted))]">
             {scanning
               ? "Running the trained model on this image."
               : verdictOk
@@ -194,12 +194,12 @@ export function DetectionPlayground() {
           </p>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+        <div className="rounded-2xl border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-tint)/0.03)] p-5">
           <div className="flex items-baseline justify-between">
-            <label htmlFor="conf-threshold" className="text-sm font-semibold text-white">
+            <label htmlFor="conf-threshold" className="text-sm font-semibold text-[rgb(var(--sc-fg))]">
               Confidence threshold
             </label>
-            <span className="font-mono text-sm text-cyan-300">{threshold.toFixed(2)}</span>
+            <span className="font-mono text-sm text-[rgb(var(--sc-accentsoft))]">{threshold.toFixed(2)}</span>
           </div>
           <input
             id="conf-threshold"
@@ -209,26 +209,26 @@ export function DetectionPlayground() {
             step={0.01}
             value={threshold}
             onChange={(e) => setThreshold(Number(e.target.value))}
-            className="mt-3 w-full accent-cyan-400"
+            className="mt-3 w-full accent-[color:rgb(var(--sc-accent))]"
           />
-          <p className="mt-2 text-xs leading-relaxed text-slate-400">
+          <p className="mt-2 text-xs leading-relaxed text-[rgb(var(--sc-muted))]">
             Drag it down to see weaker guesses appear. Drag it up and only very confident detections stay. On the line, this is
             tuned per product.
           </p>
-          <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm text-slate-300">
+          <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm text-[rgb(var(--sc-fg2))]">
             <input
               type="checkbox"
               checked={showProduct}
               onChange={(e) => setShowProduct(e.target.checked)}
-              className="h-4 w-4 accent-cyan-400"
+              className="h-4 w-4 accent-[color:rgb(var(--sc-accent))]"
             />
             Show product outline
           </label>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-          <p className="text-sm font-semibold text-white">
-            Detections <span className="font-normal text-slate-400">({kept.length} of {detections.length} kept)</span>
+        <div className="rounded-2xl border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-tint)/0.03)] p-5">
+          <p className="text-sm font-semibold text-[rgb(var(--sc-fg))]">
+            Detections <span className="font-normal text-[rgb(var(--sc-muted))]">({kept.length} of {detections.length} kept)</span>
           </p>
           <ul className="mt-3 space-y-2.5">
             {listed.map((d, i) => {
@@ -236,19 +236,19 @@ export function DetectionPlayground() {
               return (
                 <li key={i} className={`transition-opacity ${on ? "opacity-100" : "opacity-35"}`}>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="flex items-center gap-2 font-medium capitalize text-slate-200">
-                      <span className={`h-2 w-2 rounded-full ${isDefect(d) ? "bg-rose-500" : "bg-cyan-300"}`} />
+                    <span className="flex items-center gap-2 font-medium capitalize text-[rgb(var(--sc-fg2))]">
+                      <span className={`h-2 w-2 rounded-full ${isDefect(d) ? "bg-[rgb(var(--sc-bad))]" : "bg-[rgb(var(--sc-accent))]"}`} />
                       {d.label}
-                      {!on && <span className="text-[10px] font-normal normal-case text-slate-500">filtered</span>}
+                      {!on && <span className="text-[10px] font-normal normal-case text-[rgb(var(--sc-subtle))]">filtered</span>}
                     </span>
-                    <span className="font-mono text-slate-300">{Math.round(d.confidence * 100)}%</span>
+                    <span className="font-mono text-[rgb(var(--sc-fg2))]">{Math.round(d.confidence * 100)}%</span>
                   </div>
-                  <div className="relative mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
+                  <div className="relative mt-1 h-1.5 overflow-hidden rounded-full bg-[rgb(var(--sc-tint)/0.1)]">
                     <div
-                      className={`h-full rounded-full ${isDefect(d) ? "bg-rose-500" : "bg-cyan-400"}`}
+                      className={`h-full rounded-full ${isDefect(d) ? "bg-[rgb(var(--sc-bad))]" : "bg-[rgb(var(--sc-accent))]"}`}
                       style={{ width: pct(d.confidence) }}
                     />
-                    <div className="absolute inset-y-0 w-0.5 bg-white" style={{ left: pct(threshold) }} />
+                    <div className="absolute inset-y-0 w-0.5 bg-[rgb(var(--sc-tint))]" style={{ left: pct(threshold) }} />
                   </div>
                 </li>
               );

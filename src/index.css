@@ -208,3 +208,55 @@ html:not([data-theme="classic"]) ::selection {
 html:not([data-theme="classic"]) {
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/*
+ * Showcase (/showcase) and its demos: one palette, dark (default) and light.
+ * Colours are "R G B" so Tailwind classes can add opacity: bg-[rgb(var(--sc-accent)/0.1)].
+ * tint/shade are the overlay colours (white on dark, ink on light).
+ */
+.sc {
+  --sc-bg: 15 21 18;
+  --sc-deep: 11 16 13;
+  --sc-panel: 23 31 27;
+  --sc-panel2: 34 44 38;
+  --sc-fg: 245 245 238;
+  --sc-fg2: 220 226 208;
+  --sc-muted: 190 201 176;
+  --sc-subtle: 132 143 122;
+  --sc-tint: 255 255 255;
+  --sc-shade: 0 0 0;
+  --sc-accent: 233 255 101;
+  --sc-accent2: 136 165 48;
+  --sc-accentsoft: 212 232 138;
+  --sc-onaccent: 15 21 18;
+  --sc-ok: 52 211 153;
+  --sc-oktext: 110 231 183;
+  --sc-bad: 244 63 94;
+  --sc-badtext: 253 164 175;
+  --sc-badbg: 42 15 26;
+  --sc-warn: 251 191 36;
+  --sc-warntext: 252 211 77;
+}
+.sc[data-sc-theme="light"] {
+  --sc-bg: 245 245 238;
+  --sc-deep: 233 236 224;
+  --sc-panel: 255 255 255;
+  --sc-panel2: 238 241 230;
+  --sc-fg: 23 31 27;
+  --sc-fg2: 43 53 47;
+  --sc-muted: 91 99 89;
+  --sc-subtle: 124 134 115;
+  --sc-tint: 23 31 27;
+  --sc-shade: 23 31 27;
+  --sc-accent: 107 138 31;
+  --sc-accent2: 79 107 34;
+  --sc-accentsoft: 79 107 34;
+  --sc-onaccent: 245 245 238;
+  --sc-ok: 16 185 129;
+  --sc-oktext: 4 120 87;
+  --sc-bad: 225 29 72;
+  --sc-badtext: 190 18 60;
+  --sc-badbg: 255 228 230;
+  --sc-warn: 245 158 11;
+  --sc-warntext: 180 83 9;
+}

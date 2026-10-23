@@ -25,9 +25,9 @@ const secondsTo = (x: number) => ((x - START) / (END - START)) * TRAVEL_S;
 
 /** Light colour per state: idle cyan, green for a good part, red for a reject. */
 const SIGNAL = {
-  idle: { bar: "bg-cyan-200 shadow-[0_0_14px_4px_rgba(103,232,249,0.55)]", cone: "from-cyan-200/40 via-cyan-300/15 to-cyan-300/10", spot: "bg-cyan-300/25", led: "bg-cyan-300 shadow-[0_0_6px_rgba(103,232,249,0.9)]" },
-  ok: { bar: "bg-emerald-300 shadow-[0_0_18px_6px_rgba(52,211,153,0.7)]", cone: "from-emerald-300/50 via-emerald-400/20 to-emerald-400/10", spot: "bg-emerald-400/35", led: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,1)]" },
-  bad: { bar: "bg-rose-400 shadow-[0_0_18px_6px_rgba(244,63,94,0.75)]", cone: "from-rose-400/50 via-rose-500/20 to-rose-500/10", spot: "bg-rose-500/35", led: "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,1)]" },
+  idle: { bar: "bg-[rgb(var(--sc-accentsoft))] shadow-[0_0_14px_4px_rgb(var(--sc-accentsoft)/0.55)]", cone: "from-[rgb(var(--sc-accentsoft)/0.4)] via-[rgb(var(--sc-accent)/0.15)] to-[rgb(var(--sc-accent)/0.1)]", spot: "bg-[rgb(var(--sc-accent)/0.25)]", led: "bg-[rgb(var(--sc-accent))] shadow-[0_0_6px_rgb(var(--sc-accentsoft)/0.9)]" },
+  ok: { bar: "bg-[rgb(var(--sc-ok))] shadow-[0_0_18px_6px_rgb(var(--sc-ok)/0.7)]", cone: "from-[rgb(var(--sc-ok)/0.5)] via-[rgb(var(--sc-ok)/0.2)] to-[rgb(var(--sc-ok)/0.1)]", spot: "bg-[rgb(var(--sc-ok)/0.35)]", led: "bg-[rgb(var(--sc-ok))] shadow-[0_0_8px_rgb(var(--sc-ok)/1)]" },
+  bad: { bar: "bg-[rgb(var(--sc-bad))] shadow-[0_0_18px_6px_rgb(var(--sc-bad)/0.75)]", cone: "from-[rgb(var(--sc-bad)/0.5)] via-[rgb(var(--sc-bad)/0.2)] to-[rgb(var(--sc-bad)/0.1)]", spot: "bg-[rgb(var(--sc-bad)/0.35)]", led: "bg-[rgb(var(--sc-bad))] shadow-[0_0_8px_rgb(var(--sc-bad)/1)]" },
 } as const;
 const SIGNAL_HOLD_MS = 1200;
 
@@ -60,8 +60,8 @@ function PartTile({ part, inspected }: { part: Part; inspected: boolean }) {
           <motion.span
             initial={{ opacity: 0, y: 6, scale: 0.8 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            className={`absolute -top-7 left-1/2 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold text-white shadow ${
-              bad ? "bg-rose-600" : "bg-emerald-500"
+            className={`absolute -top-7 left-1/2 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold text-[rgb(var(--sc-fg))] shadow ${
+              bad ? "bg-[rgb(var(--sc-bad))]" : "bg-[rgb(var(--sc-ok))]"
             }`}
           >
             {bad ? <XCircle className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3" />}
@@ -70,8 +70,8 @@ function PartTile({ part, inspected }: { part: Part; inspected: boolean }) {
         )}
       </AnimatePresence>
       <div
-        className={`relative overflow-hidden rounded-md border-2 shadow-lg shadow-black/50 transition-colors ${
-          inspected ? (bad ? "border-rose-500" : "border-emerald-400") : "border-white/20"
+        className={`relative overflow-hidden rounded-md border-2 shadow-lg shadow-[color:rgb(var(--sc-shade)/0.5)] transition-colors ${
+          inspected ? (bad ? "border-[rgb(var(--sc-bad))]" : "border-[rgb(var(--sc-ok))]") : "border-[rgb(var(--sc-tint)/0.2)]"
         }`}
         style={{ aspectRatio: `${sample.width} / ${sample.height}` }}
       >
@@ -86,7 +86,7 @@ function PartTile({ part, inspected }: { part: Part; inspected: boolean }) {
                   key={i}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="absolute border border-rose-500 bg-rose-500/20"
+                  className="absolute border border-[rgb(var(--sc-bad))] bg-[rgb(var(--sc-bad)/0.2)]"
                   style={{ left: `${x1 * 100}%`, top: `${y1 * 100}%`, width: `${(x2 - x1) * 100}%`, height: `${(y2 - y1) * 100}%` }}
                 />
               );
@@ -167,33 +167,33 @@ export function StationSimulator() {
   }, []);
 
   const tiles = [
-    { label: "Inspected", value: counts.total, tone: "text-white" },
-    { label: "Passed", value: counts.ok, tone: "text-emerald-300" },
-    { label: "Rejected", value: counts.bad, tone: "text-rose-300" },
+    { label: "Inspected", value: counts.total, tone: "text-[rgb(var(--sc-fg))]" },
+    { label: "Passed", value: counts.ok, tone: "text-[rgb(var(--sc-oktext))]" },
+    { label: "Rejected", value: counts.bad, tone: "text-[rgb(var(--sc-badtext))]" },
   ];
 
   return (
     <div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {tiles.map((t) => (
-          <div key={t.label} className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+          <div key={t.label} className="rounded-xl border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-tint)/0.03)] px-4 py-3">
             <p className={`text-2xl font-bold tabular-nums ${t.tone}`}>{t.value}</p>
-            <p className="text-xs text-slate-400">{t.label}</p>
+            <p className="text-xs text-[rgb(var(--sc-muted))]">{t.label}</p>
           </div>
         ))}
         <div
           className={`flex items-center gap-2 rounded-xl border px-4 py-3 transition-colors ${
-            last === null ? "border-white/10 bg-white/[0.03]" : last ? "border-rose-500/40 bg-rose-500/10" : "border-emerald-500/40 bg-emerald-500/10"
+            last === null ? "border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-tint)/0.03)]" : last ? "border-[rgb(var(--sc-bad)/0.4)] bg-[rgb(var(--sc-bad)/0.1)]" : "border-[rgb(var(--sc-ok)/0.4)] bg-[rgb(var(--sc-ok)/0.1)]"
           }`}
         >
           {last === null ? (
-            <p className="text-sm text-slate-400">Waiting for first part…</p>
+            <p className="text-sm text-[rgb(var(--sc-muted))]">Waiting for first part…</p>
           ) : (
             <>
-              {last ? <XCircle className="h-6 w-6 text-rose-400" /> : <CheckCircle2 className="h-6 w-6 text-emerald-400" />}
+              {last ? <XCircle className="h-6 w-6 text-[rgb(var(--sc-badtext))]" /> : <CheckCircle2 className="h-6 w-6 text-[rgb(var(--sc-oktext))]" />}
               <div>
-                <p className="text-lg font-bold leading-tight text-white">{last ? "NOT OK" : "OK"}</p>
-                <p className="text-xs text-slate-400">Last result</p>
+                <p className="text-lg font-bold leading-tight text-[rgb(var(--sc-fg))]">{last ? "NOT OK" : "OK"}</p>
+                <p className="text-xs text-[rgb(var(--sc-muted))]">Last result</p>
               </div>
             </>
           )}
@@ -202,31 +202,31 @@ export function StationSimulator() {
 
       <div
         ref={sceneRef}
-        className="relative mt-4 h-[380px] overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(600px_300px_at_40%_0%,rgba(34,211,238,0.10),transparent_70%)] bg-[#081022]"
+        className="relative mt-4 h-[380px] overflow-hidden rounded-2xl border border-[rgb(var(--sc-tint)/0.1)] bg-[radial-gradient(600px_300px_at_40%_0%,rgb(var(--sc-accent)/0.10),transparent_70%)] bg-[rgb(var(--sc-deep))]"
       >
         <style>{`@keyframes vm-belt { from { background-position: 0 0 } to { background-position: 40px 0 } }`}</style>
 
         {/* Edge computer, wired to the camera */}
-        <div className="absolute left-4 top-4 hidden items-center gap-2 rounded-lg border border-white/10 bg-slate-900/80 px-3 py-2 text-xs text-slate-300 sm:flex">
-          <Cpu className="h-4 w-4 text-cyan-300" /> Edge computer
-          <span className={`ml-1 h-2 w-2 rounded-full ${flash ? "bg-emerald-400" : "bg-slate-600"}`} />
+        <div className="absolute left-4 top-4 hidden items-center gap-2 rounded-lg border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-deep)/0.8)] px-3 py-2 text-xs text-[rgb(var(--sc-fg2))] sm:flex">
+          <Cpu className="h-4 w-4 text-[rgb(var(--sc-accentsoft))]" /> Edge computer
+          <span className={`ml-1 h-2 w-2 rounded-full ${flash ? "bg-[rgb(var(--sc-ok))]" : "bg-[rgb(var(--sc-subtle))]"}`} />
         </div>
-        <div className="absolute left-[150px] top-[34px] hidden h-px border-t border-dashed border-cyan-400/40 sm:block" style={{ width: `calc(${CAMERA}% - 190px)` }} />
+        <div className="absolute left-[150px] top-[34px] hidden h-px border-t border-dashed border-[rgb(var(--sc-accent)/0.4)] sm:block" style={{ width: `calc(${CAMERA}% - 190px)` }} />
 
         {/* Camera + light cone */}
         <div className="absolute top-3 z-10 -ml-11 w-[88px]" style={{ left: `${CAMERA}%` }}>
           {/* Body */}
-          <div className="relative flex h-11 items-center justify-center gap-2 rounded-lg border border-white/15 bg-gradient-to-b from-slate-700 to-slate-800 shadow-lg">
-            <Camera className="h-4 w-4 text-slate-300" />
+          <div className="relative flex h-11 items-center justify-center gap-2 rounded-lg border border-[rgb(var(--sc-tint)/0.15)] bg-gradient-to-b from-[rgb(var(--sc-panel2))] to-[rgb(var(--sc-panel2))] shadow-lg">
+            <Camera className="h-4 w-4 text-[rgb(var(--sc-fg2))]" />
             {/* Lens: always lit, flares white on each capture */}
-            <span className="relative flex h-5 w-5 items-center justify-center rounded-full border-2 border-cyan-300 bg-slate-950 shadow-[0_0_12px_rgba(34,211,238,0.8)]">
-              <span className="h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_8px_2px_rgba(103,232,249,0.9)]" />
-              <span className="absolute left-[3px] top-[3px] h-1 w-1 rounded-full bg-white/80" />
+            <span className="relative flex h-5 w-5 items-center justify-center rounded-full border-2 border-[rgb(var(--sc-accent))] bg-[rgb(var(--sc-deep))] shadow-[0_0_12px_rgb(var(--sc-accent)/0.8)]">
+              <span className="h-2 w-2 rounded-full bg-[rgb(var(--sc-accent))] shadow-[0_0_8px_2px_rgb(var(--sc-accentsoft)/0.9)]" />
+              <span className="absolute left-[3px] top-[3px] h-1 w-1 rounded-full bg-[rgb(var(--sc-tint)/0.8)]" />
               <AnimatePresence>
                 {flash > 0 && (
                   <motion.span
                     key={flash}
-                    className="absolute -inset-1.5 rounded-full bg-white"
+                    className="absolute -inset-1.5 rounded-full bg-[rgb(var(--sc-tint))]"
                     initial={{ opacity: 1, scale: 0.6 }}
                     animate={{ opacity: 0, scale: 1.6 }}
                     transition={{ duration: 0.4 }}
@@ -239,7 +239,7 @@ export function StationSimulator() {
           </div>
           {/* LED light bar */}
           <div className={`mx-auto mt-0.5 h-1.5 w-[72px] rounded-full transition-all duration-150 ${SIGNAL[signal].bar}`} />
-          <p className="absolute left-full top-3 ml-2 hidden whitespace-nowrap text-[10px] font-medium text-slate-400 sm:block">Camera + light</p>
+          <p className="absolute left-full top-3 ml-2 hidden whitespace-nowrap text-[10px] font-medium text-[rgb(var(--sc-muted))] sm:block">Camera + light</p>
         </div>
         {/* Light cone, from the LED bar down to the belt */}
         <div
@@ -259,32 +259,32 @@ export function StationSimulator() {
 
         {/* Belt */}
         <div
-          className="absolute inset-x-0 bottom-[76px] h-5 border-y border-white/10 bg-slate-700"
+          className="absolute inset-x-0 bottom-[76px] h-5 border-y border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-panel2))]"
           style={{
-            backgroundImage: "repeating-linear-gradient(90deg, rgba(255,255,255,0.08) 0 2px, transparent 2px 40px)",
+            backgroundImage: "repeating-linear-gradient(90deg, rgb(var(--sc-tint)/0.08) 0 2px, transparent 2px 40px)",
             animation: "vm-belt 0.65s linear infinite",
           }}
         />
         {/* Reject diverter */}
         <div
           className={`absolute bottom-[76px] -ml-7 h-5 w-14 rounded-sm transition-colors duration-150 ${
-            gateOpen ? "bg-rose-500 shadow-[0_0_20px_rgba(244,63,94,0.8)]" : "bg-slate-600"
+            gateOpen ? "bg-[rgb(var(--sc-bad))] shadow-[0_0_20px_rgb(var(--sc-bad)/0.8)]" : "bg-[rgb(var(--sc-subtle))]"
           }`}
           style={{ left: `${GATE}%` }}
         />
         <div
-          className="absolute bottom-2 -ml-14 flex h-14 w-28 items-end justify-center rounded-b-lg border border-t-0 border-dashed border-rose-400/40 bg-rose-500/5 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-rose-300/80"
+          className="absolute bottom-2 -ml-14 flex h-14 w-28 items-end justify-center rounded-b-lg border border-t-0 border-dashed border-[rgb(var(--sc-bad)/0.4)] bg-[rgb(var(--sc-bad)/0.05)] pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[rgb(var(--sc-badtext)/0.8)]"
           style={{ left: `${GATE}%` }}
         >
           Reject bin
         </div>
-        <p className="absolute bottom-[54px] -ml-12 w-24 text-center text-[10px] font-medium text-slate-400" style={{ left: `${CAMERA}%` }}>
+        <p className="absolute bottom-[54px] -ml-12 w-24 text-center text-[10px] font-medium text-[rgb(var(--sc-muted))]" style={{ left: `${CAMERA}%` }}>
           Inspection point
         </p>
-        <p className="absolute bottom-[100px] right-3 text-[10px] font-medium text-emerald-300/70">Good parts →</p>
+        <p className="absolute bottom-[100px] right-3 text-[10px] font-medium text-[rgb(var(--sc-oktext)/0.7)]">Good parts →</p>
       </div>
 
-      <ol className="mt-5 grid gap-3 text-sm text-slate-300 sm:grid-cols-4">
+      <ol className="mt-5 grid gap-3 text-sm text-[rgb(var(--sc-fg2))] sm:grid-cols-4">
         {[
           "Part arrives under the camera",
           "Camera takes a photo, AI checks it on the edge computer",
@@ -292,12 +292,12 @@ export function StationSimulator() {
           "Every result is counted and saved with its photo",
         ].map((s, i) => (
           <li key={s} className="flex gap-3">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-cyan-400/15 text-xs font-bold text-cyan-300">{i + 1}</span>
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[rgb(var(--sc-accent)/0.15)] text-xs font-bold text-[rgb(var(--sc-accentsoft))]">{i + 1}</span>
             {s}
           </li>
         ))}
       </ol>
-      <p className="mt-4 text-xs text-slate-500">Animation for illustration. The parts and the defect boxes on them are real results from our blister-pack model.</p>
+      <p className="mt-4 text-xs text-[rgb(var(--sc-subtle))]">Animation for illustration. The parts and the defect boxes on them are real results from our blister-pack model.</p>
     </div>
   );
 }

@@ -82,18 +82,18 @@ function simulate(v: (typeof VEHICLES)[number], tick: number) {
 function FleetMap({ states }: { states: ReturnType<typeof simulate>[] }) {
   return (
     <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} className="h-full w-full">
-      <rect width={MAP_W} height={MAP_H} fill="#0a1426" />
+      <rect width={MAP_W} height={MAP_H} fill="rgb(var(--sc-panel))" />
       {/* city blocks */}
       {[40, 100, 180, 240].flatMap((y) =>
-        [80, 180, 230, 320].map((x) => <rect key={`${x}-${y}`} x={x} y={y - 30} width={60} height={34} rx={4} fill="#101d36" />)
+        [80, 180, 230, 320].map((x) => <rect key={`${x}-${y}`} x={x} y={y - 30} width={60} height={34} rx={4} fill="rgb(var(--sc-panel))" />)
       )}
-      <path d="M0 110 C 120 90, 200 130, 420 100" stroke="#12304f" strokeWidth={14} fill="none" />
+      <path d="M0 110 C 120 90, 200 130, 420 100" stroke="rgb(var(--sc-panel2))" strokeWidth={14} fill="none" />
       {/* roads */}
       {[60, 150, 238].map((y) => (
-        <line key={`h${y}`} x1={20} x2={400} y1={y} y2={y} stroke="#1e2d4a" strokeWidth={7} strokeLinecap="round" />
+        <line key={`h${y}`} x1={20} x2={400} y1={y} y2={y} stroke="rgb(var(--sc-panel2))" strokeWidth={7} strokeLinecap="round" />
       ))}
       {[60, 160, 200, 300, 380].map((x) => (
-        <line key={`v${x}`} x1={x} x2={x} y1={40} y2={258} stroke="#1e2d4a" strokeWidth={7} strokeLinecap="round" />
+        <line key={`v${x}`} x1={x} x2={x} y1={40} y2={258} stroke="rgb(var(--sc-panel2))" strokeWidth={7} strokeLinecap="round" />
       ))}
       {/* active routes */}
       {ROUTES.map((r, i) => (
@@ -101,21 +101,21 @@ function FleetMap({ states }: { states: ReturnType<typeof simulate>[] }) {
           key={i}
           points={r.map((p) => p.join(",")).join(" ")}
           fill="none"
-          stroke="#2dd4bf"
+          stroke="rgb(var(--sc-accent))"
           strokeOpacity={0.18}
           strokeWidth={3}
           strokeDasharray="6 6"
         />
       ))}
       <g>
-        <rect x={DEPOT[0] - 22} y={DEPOT[1] - 12} width={44} height={24} rx={6} fill="#14233f" stroke="#334155" />
-        <text x={DEPOT[0]} y={DEPOT[1] + 4} textAnchor="middle" fontSize={9} fill="#94a3b8">
+        <rect x={DEPOT[0] - 22} y={DEPOT[1] - 12} width={44} height={24} rx={6} fill="rgb(var(--sc-panel2))" stroke="rgb(var(--sc-panel2))" />
+        <text x={DEPOT[0]} y={DEPOT[1] + 4} textAnchor="middle" fontSize={9} fill="rgb(var(--sc-muted))">
           Depot
         </text>
       </g>
       {/* vehicles */}
       {states.map((s, i) => {
-        const color = s.mode === "moving" ? "#34d399" : s.mode === "idle" ? "#fbbf24" : "#94a3b8";
+        const color = s.mode === "moving" ? "rgb(var(--sc-ok))" : s.mode === "idle" ? "rgb(var(--sc-warn))" : "rgb(var(--sc-muted))";
         return (
           <motion.g key={VEHICLES[i].id} animate={{ x: s.pos[0], y: s.pos[1] }} transition={{ duration: 1, ease: "linear" }}>
             {s.mode === "moving" && (
@@ -124,8 +124,8 @@ function FleetMap({ states }: { states: ReturnType<typeof simulate>[] }) {
                 <animate attributeName="opacity" values="0.4;0;0.4" dur="1.6s" repeatCount="indefinite" />
               </circle>
             )}
-            <circle r={6} fill={color} stroke="#0a1426" strokeWidth={2} />
-            <text y={-10} textAnchor="middle" fontSize={8.5} fill="#cbd5e1">
+            <circle r={6} fill={color} stroke="rgb(var(--sc-panel))" strokeWidth={2} />
+            <text y={-10} textAnchor="middle" fontSize={8.5} fill="rgb(var(--sc-fg2))">
               {VEHICLES[i].id}
             </text>
           </motion.g>
@@ -164,34 +164,34 @@ export function FleetMock() {
         </div>
 
         <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-          <div className="overflow-hidden rounded-xl border border-white/10" style={{ aspectRatio: `${MAP_W} / ${MAP_H}` }}>
+          <div className="overflow-hidden rounded-xl border border-[rgb(var(--sc-tint)/0.1)]" style={{ aspectRatio: `${MAP_W} / ${MAP_H}` }}>
             <FleetMap states={states} />
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {states.map((s, i) => (
-              <div key={VEHICLES[i].id} className="rounded-xl border border-white/10 bg-white/[0.03] p-2.5">
+              <div key={VEHICLES[i].id} className="rounded-xl border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-tint)/0.03)] p-2.5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="truncate text-xs font-semibold text-white">{VEHICLES[i].name}</p>
-                    <p className="text-[10px] text-slate-500">{VEHICLES[i].id}</p>
+                    <p className="truncate text-xs font-semibold text-[rgb(var(--sc-fg))]">{VEHICLES[i].name}</p>
+                    <p className="text-[10px] text-[rgb(var(--sc-subtle))]">{VEHICLES[i].id}</p>
                   </div>
                   <StatusPill tone={MODE_TONE[s.mode]}>{MODE_LABEL[s.mode]}</StatusPill>
                 </div>
                 <div className="mt-2 grid grid-cols-3 gap-1 text-[10px]">
                   <div>
-                    <p className="text-slate-500">Speed</p>
-                    <p className="flex items-center gap-1 font-semibold tabular-nums text-slate-200">
-                      <Gauge className="h-3 w-3 text-slate-500" />
+                    <p className="text-[rgb(var(--sc-subtle))]">Speed</p>
+                    <p className="flex items-center gap-1 font-semibold tabular-nums text-[rgb(var(--sc-fg2))]">
+                      <Gauge className="h-3 w-3 text-[rgb(var(--sc-subtle))]" />
                       {s.speed} km/h
                     </p>
                   </div>
                   <div>
-                    <p className="text-slate-500">Today</p>
-                    <p className="font-semibold tabular-nums text-slate-200">{s.km.toFixed(1)} km</p>
+                    <p className="text-[rgb(var(--sc-subtle))]">Today</p>
+                    <p className="font-semibold tabular-nums text-[rgb(var(--sc-fg2))]">{s.km.toFixed(1)} km</p>
                   </div>
                   <div>
-                    <p className="text-slate-500">Util</p>
-                    <p className="font-semibold tabular-nums text-slate-200">{s.util}%</p>
+                    <p className="text-[rgb(var(--sc-subtle))]">Util</p>
+                    <p className="font-semibold tabular-nums text-[rgb(var(--sc-fg2))]">{s.util}%</p>
                   </div>
                 </div>
               </div>

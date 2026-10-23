@@ -58,12 +58,12 @@ function simulate(tick: number): LiftState[] {
 function Building({ lifts }: { lifts: LiftState[] }) {
   const max = 24;
   return (
-    <div className="relative flex h-full min-h-[300px] items-end gap-3 rounded-xl border border-white/10 bg-gradient-to-b from-slate-900 to-[#0a1426] px-4 pb-3 pt-6">
+    <div className="relative flex h-full min-h-[300px] items-end gap-3 rounded-xl border border-[rgb(var(--sc-tint)/0.1)] bg-gradient-to-b from-[rgb(var(--sc-deep))] to-[rgb(var(--sc-panel))] px-4 pb-3 pt-6">
       {/* floor lines */}
       <div className="pointer-events-none absolute inset-x-4 bottom-3 top-6">
         {Array.from({ length: max / 4 + 1 }, (_, i) => (
-          <div key={i} className="absolute inset-x-0 border-t border-dashed border-white/5" style={{ bottom: `${(i * 4 * 100) / max}%` }}>
-            <span className="absolute -left-1 -translate-x-full -translate-y-1/2 text-[9px] text-slate-600">{i * 4}</span>
+          <div key={i} className="absolute inset-x-0 border-t border-dashed border-[rgb(var(--sc-tint)/0.05)]" style={{ bottom: `${(i * 4 * 100) / max}%` }}>
+            <span className="absolute -left-1 -translate-x-full -translate-y-1/2 text-[9px] text-[rgb(var(--sc-subtle))]">{i * 4}</span>
           </div>
         ))}
       </div>
@@ -71,10 +71,10 @@ function Building({ lifts }: { lifts: LiftState[] }) {
         const l = LIFTS[i];
         return (
           <div key={l.id} className="relative flex h-full flex-1 flex-col items-center">
-            <div className="relative w-full flex-1 rounded-md border border-white/10 bg-black/30" style={{ maxHeight: `${(l.floors / max) * 100}%`, marginTop: "auto" }}>
+            <div className="relative w-full flex-1 rounded-md border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-shade)/0.3)]" style={{ maxHeight: `${(l.floors / max) * 100}%`, marginTop: "auto" }}>
               <motion.div
                 className={`absolute inset-x-1 flex h-7 items-center justify-center rounded border text-[10px] font-bold ${
-                  s.fault ? "border-rose-400 bg-rose-500/30 text-rose-100" : "border-teal-300/70 bg-teal-400/20 text-teal-100"
+                  s.fault ? "border-[rgb(var(--sc-bad))] bg-[rgb(var(--sc-bad)/0.3)] text-[rgb(var(--sc-badtext))]" : "border-[rgb(var(--sc-accent)/0.7)] bg-[rgb(var(--sc-accent)/0.2)] text-[rgb(var(--sc-accentsoft))]"
                 }`}
                 animate={{ bottom: `calc(${(s.floor / l.floors) * 100}% - ${(s.floor / l.floors) * 28}px)` }}
                 transition={{ duration: 0.9, ease: "easeInOut" }}
@@ -82,8 +82,8 @@ function Building({ lifts }: { lifts: LiftState[] }) {
                 {s.fault ? "!" : s.doorsOpen ? "◂ ▸" : s.dir > 0 ? "▲" : s.dir < 0 ? "▼" : "■"}
               </motion.div>
             </div>
-            <p className="mt-2 text-[10px] font-semibold text-slate-400">{l.id}</p>
-            <p className={`text-xs font-bold tabular-nums ${s.fault ? "text-rose-300" : "text-white"}`}>Floor {s.floor}</p>
+            <p className="mt-2 text-[10px] font-semibold text-[rgb(var(--sc-muted))]">{l.id}</p>
+            <p className={`text-xs font-bold tabular-nums ${s.fault ? "text-[rgb(var(--sc-badtext))]" : "text-[rgb(var(--sc-fg))]"}`}>Floor {s.floor}</p>
           </div>
         );
       })}
@@ -93,14 +93,14 @@ function Building({ lifts }: { lifts: LiftState[] }) {
 
 function SummaryCard({ value, label, Icon, gradient }: { value: number; label: string; Icon: typeof CheckCircle2; gradient: string }) {
   return (
-    <div className={`flex items-center justify-between rounded-xl bg-gradient-to-br ${gradient} px-4 py-3 text-white shadow-lg`}>
+    <div className={`flex items-center justify-between rounded-xl bg-gradient-to-br ${gradient} px-4 py-3 text-[rgb(var(--sc-fg))] shadow-lg`}>
       <div>
         <motion.p key={value} initial={{ scale: 1.3, opacity: 0.4 }} animate={{ scale: 1, opacity: 1 }} className="text-2xl font-extrabold tabular-nums sm:text-3xl">
           {value}
         </motion.p>
-        <p className="text-xs font-medium text-white/85 sm:text-sm">{label}</p>
+        <p className="text-xs font-medium text-[rgb(var(--sc-fg)/0.85)] sm:text-sm">{label}</p>
       </div>
-      <Icon className="h-7 w-7 text-white/80" />
+      <Icon className="h-7 w-7 text-[rgb(var(--sc-fg)/0.8)]" />
     </div>
   );
 }
@@ -114,16 +114,16 @@ export function ElevatorMock() {
     <div ref={ref}>
       <EdgeWindow section="Elevator Overview · All zones">
         <div className="grid grid-cols-3 gap-2 sm:gap-3">
-          <SummaryCard value={lifts.length - errors} label="Active elevators" Icon={CheckCircle2} gradient="from-sky-700 to-blue-500" />
-          <SummaryCard value={errors} label="Inactive elevators" Icon={XCircle} gradient="from-teal-700 to-cyan-500" />
-          <SummaryCard value={errors} label="Error status" Icon={AlertTriangle} gradient={errors ? "from-rose-700 to-rose-500" : "from-cyan-600 to-sky-400"} />
+          <SummaryCard value={lifts.length - errors} label="Active elevators" Icon={CheckCircle2} gradient="from-[rgb(var(--sc-accent2))] to-[rgb(var(--sc-accent))]" />
+          <SummaryCard value={errors} label="Inactive elevators" Icon={XCircle} gradient="from-[rgb(var(--sc-accent2))] to-[rgb(var(--sc-accent))]" />
+          <SummaryCard value={errors} label="Error status" Icon={AlertTriangle} gradient={errors ? "from-[rgb(var(--sc-bad))] to-[rgb(var(--sc-bad))]" : "from-[rgb(var(--sc-accent2))] to-[rgb(var(--sc-accent))]"} />
         </div>
 
         <div className="mt-3 flex items-center justify-between">
-          <p className="text-sm font-semibold text-white">
-            Elevator status <span className="ml-1 text-xs font-medium text-rose-400">Live</span>
+          <p className="text-sm font-semibold text-[rgb(var(--sc-fg))]">
+            Elevator status <span className="ml-1 text-xs font-medium text-[rgb(var(--sc-badtext))]">Live</span>
           </p>
-          <p className="text-[11px] text-slate-500">Last updated: just now</p>
+          <p className="text-[11px] text-[rgb(var(--sc-subtle))]">Last updated: just now</p>
         </div>
 
         <div className="mt-2 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
@@ -135,35 +135,35 @@ export function ElevatorMock() {
                 <motion.div
                   key={l.id}
                   layout
-                  className={`rounded-xl border p-3 transition-colors ${s.fault ? "border-rose-500/50 bg-rose-500/10" : "border-white/10 bg-white/[0.03]"}`}
+                  className={`rounded-xl border p-3 transition-colors ${s.fault ? "border-[rgb(var(--sc-bad)/0.5)] bg-[rgb(var(--sc-bad)/0.1)]" : "border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-tint)/0.03)]"}`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className="rounded bg-slate-950 px-1.5 py-0.5 text-[10px] font-bold text-white">{l.id}</span>
-                      <span className="text-xs text-slate-400">{l.name}</span>
+                      <span className="rounded bg-[rgb(var(--sc-deep))] px-1.5 py-0.5 text-[10px] font-bold text-[rgb(var(--sc-fg))]">{l.id}</span>
+                      <span className="text-xs text-[rgb(var(--sc-muted))]">{l.name}</span>
                     </div>
-                    <span className={`text-xs font-semibold ${s.fault ? "text-rose-300" : "text-emerald-300"}`}>{s.fault ? "Out of service" : "In service"}</span>
+                    <span className={`text-xs font-semibold ${s.fault ? "text-[rgb(var(--sc-badtext))]" : "text-[rgb(var(--sc-oktext))]"}`}>{s.fault ? "Out of service" : "In service"}</span>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs">
-                    <span className="text-sky-300">
+                    <span className="text-[rgb(var(--sc-accentsoft))]">
                       Floor: <b className="tabular-nums">{s.floor}</b>
                     </span>
-                    <span className="text-slate-300">
+                    <span className="text-[rgb(var(--sc-fg2))]">
                       Trips today: <b className="tabular-nums">{s.trips}</b>
                     </span>
-                    <span className="text-slate-400">{s.doorsOpen ? "Doors open" : s.dir ? (s.dir > 0 ? "Going up" : "Going down") : "Stopped"}</span>
+                    <span className="text-[rgb(var(--sc-muted))]">{s.doorsOpen ? "Doors open" : s.dir ? (s.dir > 0 ? "Going up" : "Going down") : "Stopped"}</span>
                   </div>
                   <AnimatePresence>
                     {s.fault && (
                       <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-                        <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-rose-300">
+                        <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-[rgb(var(--sc-badtext))]">
                           <AlertTriangle className="h-3.5 w-3.5" /> Error code: 51D
                         </p>
-                        <p className="text-[11px] text-rose-200/70">Relay SFS - BKP pull-in error · flagged on the dashboard instantly</p>
+                        <p className="text-[11px] text-[rgb(var(--sc-badtext)/0.7)]">Relay SFS - BKP pull-in error · flagged on the dashboard instantly</p>
                       </motion.div>
                     )}
                   </AnimatePresence>
-                  {!s.fault && <p className="mt-1 text-[11px] text-emerald-400/80">No active errors</p>}
+                  {!s.fault && <p className="mt-1 text-[11px] text-[rgb(var(--sc-oktext)/0.8)]">No active errors</p>}
                 </motion.div>
               );
             })}

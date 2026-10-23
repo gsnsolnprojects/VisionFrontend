@@ -25,7 +25,7 @@ const START_SLOT = 54; // the demo opens at 12:30
 const MINUTES_PER_SLOT = 5;
 const STATE_TONE: Record<State, StatusTone> = { running: "green", idle: "amber", down: "rose" };
 const STATE_LABEL: Record<State, string> = { running: "Running", idle: "Idle", down: "Down" };
-const BAR: Record<State, string> = { running: "bg-emerald-400", idle: "bg-amber-400", down: "bg-rose-500" };
+const BAR: Record<State, string> = { running: "bg-[rgb(var(--sc-ok))]", idle: "bg-[rgb(var(--sc-warn))]", down: "bg-[rgb(var(--sc-bad))]" };
 
 /** Builds the full shift for one machine as runs of states, deterministic per machine. */
 function buildShift(m: (typeof MACHINES)[number]): State[] {
@@ -104,39 +104,39 @@ export function MachineMock() {
               { tone: "rose", label: "Down" },
             ]}
           />
-          <p className="text-[11px] text-slate-400">
-            Shift A · 08:00 – 20:00 · now <span className="font-semibold tabular-nums text-white">{clockAt(now)}</span>
+          <p className="text-[11px] text-[rgb(var(--sc-muted))]">
+            Shift A · 08:00 – 20:00 · now <span className="font-semibold tabular-nums text-[rgb(var(--sc-fg))]">{clockAt(now)}</span>
           </p>
         </div>
 
         <div className="relative mt-3 space-y-2">
           {machines.map((m) => (
-            <div key={m.name} className="grid grid-cols-[110px_minmax(0,1fr)] items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 sm:grid-cols-[150px_minmax(0,1fr)_170px]">
+            <div key={m.name} className="grid grid-cols-[110px_minmax(0,1fr)] items-center gap-3 rounded-xl border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-tint)/0.03)] px-3 py-2 sm:grid-cols-[150px_minmax(0,1fr)_170px]">
               <div className="min-w-0">
-                <p className="truncate text-xs font-semibold text-white">{m.name}</p>
+                <p className="truncate text-xs font-semibold text-[rgb(var(--sc-fg))]">{m.name}</p>
                 <StatusPill tone={STATE_TONE[m.state]}>{STATE_LABEL[m.state]}</StatusPill>
               </div>
               {/* shift timeline */}
-              <div className="relative h-5 overflow-hidden rounded-md bg-white/5">
+              <div className="relative h-5 overflow-hidden rounded-md bg-[rgb(var(--sc-tint)/0.05)]">
                 <div className="flex h-full">
                   {m.segs.map((s, i) => (
                     <motion.div key={i} layout className={`h-full ${BAR[s.state]} ${s.state === "running" ? "opacity-80" : "opacity-90"}`} style={{ width: `${(s.len / SHIFT_SLOTS) * 100}%` }} />
                   ))}
                 </div>
-                <div className="absolute inset-y-0 w-0.5 bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]" style={{ left: `${((now + 1) / SHIFT_SLOTS) * 100}%` }} />
+                <div className="absolute inset-y-0 w-0.5 bg-[rgb(var(--sc-tint))] shadow-[0_0_8px_rgb(var(--sc-tint)/0.8)]" style={{ left: `${((now + 1) / SHIFT_SLOTS) * 100}%` }} />
               </div>
               <div className="hidden grid-cols-3 gap-1 text-[10px] sm:grid">
                 <div>
-                  <p className="text-slate-500">Working</p>
-                  <p className="font-semibold tabular-nums text-emerald-300">{fmtHours(m.run)}</p>
+                  <p className="text-[rgb(var(--sc-subtle))]">Working</p>
+                  <p className="font-semibold tabular-nums text-[rgb(var(--sc-oktext))]">{fmtHours(m.run)}</p>
                 </div>
                 <div>
-                  <p className="text-slate-500">Idle</p>
-                  <p className="font-semibold tabular-nums text-amber-300">{fmtHours(m.idle)}</p>
+                  <p className="text-[rgb(var(--sc-subtle))]">Idle</p>
+                  <p className="font-semibold tabular-nums text-[rgb(var(--sc-warntext))]">{fmtHours(m.idle)}</p>
                 </div>
                 <div>
-                  <p className="text-slate-500">Util</p>
-                  <p className="font-semibold tabular-nums text-white">{m.util}%</p>
+                  <p className="text-[rgb(var(--sc-subtle))]">Util</p>
+                  <p className="font-semibold tabular-nums text-[rgb(var(--sc-fg))]">{m.util}%</p>
                 </div>
               </div>
             </div>
@@ -148,18 +148,18 @@ export function MachineMock() {
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
-                className="absolute -top-2 right-2 z-10 flex max-w-xs items-start gap-2 rounded-xl border border-rose-500/40 bg-[#2a0f1a]/95 p-3 shadow-xl backdrop-blur"
+                className="absolute -top-2 right-2 z-10 flex max-w-xs items-start gap-2 rounded-xl border border-[rgb(var(--sc-bad)/0.4)] bg-[rgb(var(--sc-badbg)/0.95)] p-3 shadow-xl backdrop-blur"
               >
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[rgb(var(--sc-badtext))]" />
                 <div>
-                  <p className="text-xs font-semibold text-rose-200">{downMachine.name} stopped</p>
-                  <p className="text-[11px] text-rose-200/70">Down for {fmtHours(downMachine.down)} · flagged on the dashboard</p>
+                  <p className="text-xs font-semibold text-[rgb(var(--sc-badtext))]">{downMachine.name} stopped</p>
+                  <p className="text-[11px] text-[rgb(var(--sc-badtext)/0.7)]">Down for {fmtHours(downMachine.down)} · flagged on the dashboard</p>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
-        <div className="mt-1 flex justify-between pl-[122px] pr-0 text-[9px] text-slate-600 sm:pl-[162px] sm:pr-[182px]">
+        <div className="mt-1 flex justify-between pl-[122px] pr-0 text-[9px] text-[rgb(var(--sc-subtle))] sm:pl-[162px] sm:pr-[182px]">
           <span>08:00</span>
           <span>14:00</span>
           <span>20:00</span>

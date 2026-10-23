@@ -22,7 +22,7 @@ const LOGO_SIZE = {
 export function EdgeLogo({ size = "md" }: { size?: keyof typeof LOGO_SIZE }) {
   const s = LOGO_SIZE[size];
   return (
-    <span className={`inline-flex shrink-0 items-center bg-white shadow-sm ${s.chip}`}>
+    <span className={`inline-flex shrink-0 items-center bg-[rgb(var(--sc-tint))] shadow-sm ${s.chip}`}>
       <img src="/demo/gsn-edge/gsn-edge-logo.png" alt="GSN Edge" className={`${s.img} w-auto max-w-none`} />
     </span>
   );
@@ -32,23 +32,23 @@ export function EdgeLogo({ size = "md" }: { size?: keyof typeof LOGO_SIZE }) {
 export function EdgeWindow({ section, tabs, children }: { section: string; tabs?: string[]; children: ReactNode }) {
   const now = useClock();
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0b1224] shadow-2xl shadow-black/60">
-      <div className="flex items-center gap-3 border-b border-white/10 bg-slate-900/80 px-4 py-2.5">
+    <div className="overflow-hidden rounded-2xl border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-panel))] shadow-2xl shadow-[color:rgb(var(--sc-shade)/0.6)]">
+      <div className="flex items-center gap-3 border-b border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-deep)/0.8)] px-4 py-2.5">
         <EdgeLogo size="sm" />
-        <span className="text-slate-600">/</span>
-        <span className="truncate text-sm text-slate-300">{section}</span>
-        <span className="ml-auto hidden text-xs tabular-nums text-slate-400 sm:inline">
+        <span className="text-[rgb(var(--sc-subtle))]">/</span>
+        <span className="truncate text-sm text-[rgb(var(--sc-fg2))]">{section}</span>
+        <span className="ml-auto hidden text-xs tabular-nums text-[rgb(var(--sc-muted))] sm:inline">
           {now.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })},{" "}
           {now.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", second: "2-digit" })}
         </span>
-        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium text-slate-400">Simulated data</span>
+        <span className="rounded-full border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-tint)/0.05)] px-2 py-0.5 text-[10px] font-medium text-[rgb(var(--sc-muted))]">Simulated data</span>
       </div>
       {tabs && (
-        <div className="flex gap-5 overflow-x-auto border-b border-white/10 px-4 text-sm">
+        <div className="flex gap-5 overflow-x-auto border-b border-[rgb(var(--sc-tint)/0.1)] px-4 text-sm">
           {tabs.map((t, i) => (
             <span
               key={t}
-              className={`whitespace-nowrap border-b-2 py-2.5 font-medium ${i === 0 ? "border-teal-400 text-teal-300" : "border-transparent text-slate-500"}`}
+              className={`whitespace-nowrap border-b-2 py-2.5 font-medium ${i === 0 ? "border-[rgb(var(--sc-accent))] text-[rgb(var(--sc-accentsoft))]" : "border-transparent text-[rgb(var(--sc-subtle))]"}`}
             >
               {t}
             </span>
@@ -75,20 +75,20 @@ export function KpiCard({
   tone: "teal" | "green" | "amber" | "blue" | "rose" | "slate";
 }) {
   const tones = {
-    teal: "border-l-teal-400 text-teal-300 bg-teal-400/10",
-    green: "border-l-emerald-400 text-emerald-300 bg-emerald-400/10",
-    amber: "border-l-amber-400 text-amber-300 bg-amber-400/10",
-    blue: "border-l-sky-400 text-sky-300 bg-sky-400/10",
-    rose: "border-l-rose-400 text-rose-300 bg-rose-400/10",
-    slate: "border-l-slate-400 text-slate-300 bg-slate-400/10",
+    teal: "border-l-[rgb(var(--sc-accent))] text-[rgb(var(--sc-accentsoft))] bg-[rgb(var(--sc-accent)/0.1)]",
+    green: "border-l-[rgb(var(--sc-ok))] text-[rgb(var(--sc-oktext))] bg-[rgb(var(--sc-ok)/0.1)]",
+    amber: "border-l-[rgb(var(--sc-warn))] text-[rgb(var(--sc-warntext))] bg-[rgb(var(--sc-warn)/0.1)]",
+    blue: "border-l-[rgb(var(--sc-accent))] text-[rgb(var(--sc-accentsoft))] bg-[rgb(var(--sc-accent)/0.1)]",
+    rose: "border-l-[rgb(var(--sc-bad))] text-[rgb(var(--sc-badtext))] bg-[rgb(var(--sc-bad)/0.1)]",
+    slate: "border-l-[rgb(var(--sc-subtle))] text-[rgb(var(--sc-fg2))] bg-[rgb(var(--sc-subtle)/0.1)]",
   }[tone];
   const [edge, text, chip] = tones.split(" ");
   return (
-    <div className={`flex items-start justify-between rounded-xl border border-l-4 border-white/10 ${edge} bg-white/[0.03] px-3 py-2.5 sm:px-4 sm:py-3`}>
+    <div className={`flex items-start justify-between rounded-xl border border-l-4 border-[rgb(var(--sc-tint)/0.1)] ${edge} bg-[rgb(var(--sc-tint)/0.03)] px-3 py-2.5 sm:px-4 sm:py-3`}>
       <div className="min-w-0">
-        <p className="text-xl font-bold tabular-nums text-white sm:text-2xl">{value}</p>
-        <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-300 sm:text-[11px]">{label}</p>
-        {sub && <p className="text-[10px] text-slate-500 sm:text-[11px]">{sub}</p>}
+        <p className="text-xl font-bold tabular-nums text-[rgb(var(--sc-fg))] sm:text-2xl">{value}</p>
+        <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-[rgb(var(--sc-fg2))] sm:text-[11px]">{label}</p>
+        {sub && <p className="text-[10px] text-[rgb(var(--sc-subtle))] sm:text-[11px]">{sub}</p>}
       </div>
       <span className={`hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg sm:flex ${chip} ${text}`}>
         <Icon className="h-4 w-4" />
@@ -99,18 +99,18 @@ export function KpiCard({
 
 export type StatusTone = "green" | "amber" | "slate" | "rose" | "blue";
 const STATUS_DOT: Record<StatusTone, string> = {
-  green: "bg-emerald-400",
-  amber: "bg-amber-400",
-  slate: "bg-slate-400",
-  rose: "bg-rose-500",
-  blue: "bg-sky-400",
+  green: "bg-[rgb(var(--sc-ok))]",
+  amber: "bg-[rgb(var(--sc-warn))]",
+  slate: "bg-[rgb(var(--sc-subtle))]",
+  rose: "bg-[rgb(var(--sc-bad))]",
+  blue: "bg-[rgb(var(--sc-accent))]",
 };
 const STATUS_PILL: Record<StatusTone, string> = {
-  green: "bg-emerald-500/15 text-emerald-300 border-emerald-400/30",
-  amber: "bg-amber-500/15 text-amber-300 border-amber-400/30",
-  slate: "bg-slate-500/15 text-slate-300 border-slate-400/30",
-  rose: "bg-rose-500/20 text-rose-300 border-rose-400/40",
-  blue: "bg-sky-500/15 text-sky-300 border-sky-400/30",
+  green: "bg-[rgb(var(--sc-ok)/0.15)] text-[rgb(var(--sc-oktext))] border-[rgb(var(--sc-ok)/0.3)]",
+  amber: "bg-[rgb(var(--sc-warn)/0.15)] text-[rgb(var(--sc-warntext))] border-[rgb(var(--sc-warn)/0.3)]",
+  slate: "bg-[rgb(var(--sc-subtle)/0.15)] text-[rgb(var(--sc-fg2))] border-[rgb(var(--sc-subtle)/0.3)]",
+  rose: "bg-[rgb(var(--sc-bad)/0.2)] text-[rgb(var(--sc-badtext))] border-[rgb(var(--sc-bad)/0.4)]",
+  blue: "bg-[rgb(var(--sc-accent)/0.15)] text-[rgb(var(--sc-accentsoft))] border-[rgb(var(--sc-accent)/0.3)]",
 };
 
 export function StatusPill({ tone, children }: { tone: StatusTone; children: ReactNode }) {
@@ -124,7 +124,7 @@ export function StatusPill({ tone, children }: { tone: StatusTone; children: Rea
 
 export function Legend({ items }: { items: { tone: StatusTone; label: string }[] }) {
   return (
-    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-400">
+    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[rgb(var(--sc-muted))]">
       {items.map((i) => (
         <span key={i.label} className="flex items-center gap-1.5">
           <span className={`h-2 w-2 rounded-sm ${STATUS_DOT[i.tone]}`} />

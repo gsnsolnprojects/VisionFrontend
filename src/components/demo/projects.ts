@@ -48,7 +48,7 @@ export const SHOWCASE_CATEGORIES: ShowcaseCategory[] = [
       "Cameras that spot defects on the production line, and the platform to train them. Delivered as a complete station, or as a web app to build your own models.",
     Icon: Eye,
     Art: VisionArt,
-    accent: "from-[#e9ff65] via-[#b5d334] to-[#88a530]",
+    accent: "from-[rgb(var(--sc-accent))] via-[rgb(var(--sc-accent))] to-[rgb(var(--sc-accent2))]",
     projects: [
       {
         id: "vision-m",
@@ -59,7 +59,7 @@ export const SHOWCASE_CATEGORIES: ShowcaseCategory[] = [
         tags: ["Installed on-site", "Camera & lighting", "Desktop app", "Works offline"],
         poster: "/demo/vision-m/station-cover.jpg",
         posterPosition: "50% 30%",
-        accent: "from-[#e9ff65] via-[#b5d334] to-[#88a530]",
+        accent: "from-[rgb(var(--sc-accent))] via-[rgb(var(--sc-accent))] to-[rgb(var(--sc-accent2))]",
         Demo: SolutionDemo,
       },
       {
@@ -70,7 +70,7 @@ export const SHOWCASE_CATEGORIES: ShowcaseCategory[] = [
         status: "Live",
         tags: ["AI labelling", "No-code training", "Live testing", "ONNX / TFLite export"],
         poster: "/demo/vision-m/studio-cover.jpg",
-        accent: "from-[#d4e88a] via-[#a3c13a] to-[#6b8a1f]",
+        accent: "from-[rgb(var(--sc-accentsoft))] via-[rgb(var(--sc-accent2))] to-[rgb(var(--sc-accent2))]",
         Demo: StudioDemo,
       },
     ],
@@ -82,7 +82,7 @@ export const SHOWCASE_CATEGORIES: ShowcaseCategory[] = [
     description: "Sensors, gateways and dashboards that bring live data from machines, energy meters and assets into one place.",
     Icon: RadioTower,
     Art: IotArt,
-    accent: "from-[#b5d334] via-[#88a530] to-[#4f6b22]",
+    accent: "from-[rgb(var(--sc-accent))] via-[rgb(var(--sc-accent2))] to-[rgb(var(--sc-accent2))]",
     projects: [
       {
         id: "gsn-edge",
@@ -92,7 +92,7 @@ export const SHOWCASE_CATEGORIES: ShowcaseCategory[] = [
         status: "Live",
         tags: ["Machine monitoring", "Elevators", "Vehicle fleet", "Energy"],
         poster: "/demo/gsn-edge/edge-cover.jpg",
-        accent: "from-[#b5d334] via-[#88a530] to-[#4f6b22]",
+        accent: "from-[rgb(var(--sc-accent))] via-[rgb(var(--sc-accent2))] to-[rgb(var(--sc-accent2))]",
         Demo: GsnEdgeDemo,
       },
     ],

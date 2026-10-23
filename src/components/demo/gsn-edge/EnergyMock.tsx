@@ -40,33 +40,33 @@ function LiveChart({ data }: { data: number[] }) {
     <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="h-full w-full">
       <defs>
         <linearGradient id="edge-energy-fill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.35" />
-          <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
+          <stop offset="0%" stopColor="rgb(var(--sc-accent))" stopOpacity="0.35" />
+          <stop offset="100%" stopColor="rgb(var(--sc-accent))" stopOpacity="0" />
         </linearGradient>
       </defs>
       {[0.25, 0.5, 0.75].map((f) => (
-        <line key={f} x1="0" x2={w} y1={h * f} y2={h * f} stroke="rgba(148,163,184,0.12)" />
+        <line key={f} x1="0" x2={w} y1={h * f} y2={h * f} stroke="rgb(var(--sc-muted)/0.12)" />
       ))}
-      <line x1="0" x2={w} y1={ty} y2={ty} stroke="#f43f5e" strokeDasharray="6 6" strokeWidth="1.5" />
-      <text x={w - 6} y={ty - 6} textAnchor="end" fill="#fda4af" fontSize="12">
+      <line x1="0" x2={w} y1={ty} y2={ty} stroke="rgb(var(--sc-bad))" strokeDasharray="6 6" strokeWidth="1.5" />
+      <text x={w - 6} y={ty - 6} textAnchor="end" fill="rgb(var(--sc-badtext))" fontSize="12">
         Critical above {THRESHOLD_KW} kW
       </text>
       <path d={`${line} L${w},${h} L0,${h} Z`} fill="url(#edge-energy-fill)" />
-      <path d={line} fill="none" stroke="#60a5fa" strokeWidth="2.5" strokeLinejoin="round" />
-      <circle cx={x(data.length - 1)} cy={y(data[data.length - 1])} r="4.5" fill="#60a5fa" stroke="#0b1224" strokeWidth="2" />
+      <path d={line} fill="none" stroke="rgb(var(--sc-accent))" strokeWidth="2.5" strokeLinejoin="round" />
+      <circle cx={x(data.length - 1)} cy={y(data[data.length - 1])} r="4.5" fill="rgb(var(--sc-accent))" stroke="rgb(var(--sc-panel))" strokeWidth="2" />
     </svg>
   );
 }
 
-function Kpi({ label, value, unit, Icon, tone = "text-white", badge }: { label: string; value: string; unit?: string; Icon: typeof Zap; tone?: string; badge?: string }) {
+function Kpi({ label, value, unit, Icon, tone = "text-[rgb(var(--sc-fg))]", badge }: { label: string; value: string; unit?: string; Icon: typeof Zap; tone?: string; badge?: string }) {
   return (
-    <div className="relative rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
-      {badge && <span className="absolute -top-2 left-2 rounded bg-amber-400 px-1.5 text-[9px] font-bold text-slate-900">{badge}</span>}
-      <Icon className="h-3.5 w-3.5 text-slate-500" />
-      <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">{label}</p>
+    <div className="relative rounded-xl border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-tint)/0.03)] px-3 py-2.5">
+      {badge && <span className="absolute -top-2 left-2 rounded bg-[rgb(var(--sc-warn))] px-1.5 text-[9px] font-bold text-[#111827]">{badge}</span>}
+      <Icon className="h-3.5 w-3.5 text-[rgb(var(--sc-subtle))]" />
+      <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-[rgb(var(--sc-muted))]">{label}</p>
       <p className={`text-base font-bold tabular-nums sm:text-lg ${tone}`}>
         {value}
-        {unit && <span className="ml-1 text-[10px] font-medium text-slate-500">{unit}</span>}
+        {unit && <span className="ml-1 text-[10px] font-medium text-[rgb(var(--sc-subtle))]">{unit}</span>}
       </p>
     </div>
   );
@@ -102,44 +102,44 @@ export function EnergyMock() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <Zap className="h-5 w-5 text-sky-300" />
-              <p className="text-lg font-bold text-white">Energy Overview</p>
+              <Zap className="h-5 w-5 text-[rgb(var(--sc-accentsoft))]" />
+              <p className="text-lg font-bold text-[rgb(var(--sc-fg))]">Energy Overview</p>
               <span
                 className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors ${
-                  alarm ? "border-rose-400/40 bg-rose-500/15 text-rose-300" : "border-emerald-400/30 bg-emerald-500/15 text-emerald-300"
+                  alarm ? "border-[rgb(var(--sc-bad)/0.4)] bg-[rgb(var(--sc-bad)/0.15)] text-[rgb(var(--sc-badtext))]" : "border-[rgb(var(--sc-ok)/0.3)] bg-[rgb(var(--sc-ok)/0.15)] text-[rgb(var(--sc-oktext))]"
                 }`}
               >
-                <span className={`h-1.5 w-1.5 rounded-full ${alarm ? "animate-pulse bg-rose-400" : "bg-emerald-400"}`} />
+                <span className={`h-1.5 w-1.5 rounded-full ${alarm ? "animate-pulse bg-[rgb(var(--sc-bad))]" : "bg-[rgb(var(--sc-ok))]"}`} />
                 {alarm ? "Alarm active" : "System normal"}
               </span>
             </div>
-            <p className="mt-1 text-xs text-slate-400">Total meters: 4 · Online: 4 · Offline: 0</p>
+            <p className="mt-1 text-xs text-[rgb(var(--sc-muted))]">Total meters: 4 · Online: 4 · Offline: 0</p>
           </div>
           <div className="flex items-center gap-2">
-            <span className="rounded bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white">LIVE</span>
-            <span className="inline-flex items-center gap-1.5 rounded-lg border border-sky-400/40 px-2.5 py-1 text-xs font-medium text-sky-300">
+            <span className="rounded bg-[rgb(var(--sc-ok))] px-1.5 py-0.5 text-[10px] font-bold text-[rgb(var(--sc-fg))]">LIVE</span>
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-[rgb(var(--sc-accent)/0.4)] px-2.5 py-1 text-xs font-medium text-[rgb(var(--sc-accentsoft))]">
               <FileText className="h-3.5 w-3.5" /> Generate report
             </span>
           </div>
         </div>
 
         <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-          <Kpi label="Current power" value={total.toFixed(0)} unit="kW" Icon={Zap} tone={alarm ? "text-rose-300" : "text-white"} />
-          <Kpi label="Today" value={todayKwh.toLocaleString("en-IN", { maximumFractionDigits: 0 })} unit="kWh" Icon={Activity} tone="text-emerald-300" />
-          <Kpi label="Avg PF" value={pf.toFixed(2)} Icon={Gauge} badge={pf < 0.9 ? "Warning" : undefined} tone={pf < 0.9 ? "text-amber-300" : "text-white"} />
-          <Kpi label="Avg V" value={volts.toFixed(1)} unit="V" Icon={Activity} tone="text-sky-300" />
-          <Kpi label="Avg A" value={amps.toFixed(1)} unit="A" Icon={Activity} tone="text-sky-300" />
-          <Kpi label="Avg Hz" value={hz.toFixed(2)} unit="Hz" Icon={Radio} tone="text-violet-300" />
-          <Kpi label="Alarms" value={String(alarmsToday)} unit="today" Icon={Bell} tone={alarm ? "text-rose-300" : "text-white"} />
+          <Kpi label="Current power" value={total.toFixed(0)} unit="kW" Icon={Zap} tone={alarm ? "text-[rgb(var(--sc-badtext))]" : "text-[rgb(var(--sc-fg))]"} />
+          <Kpi label="Today" value={todayKwh.toLocaleString("en-IN", { maximumFractionDigits: 0 })} unit="kWh" Icon={Activity} tone="text-[rgb(var(--sc-oktext))]" />
+          <Kpi label="Avg PF" value={pf.toFixed(2)} Icon={Gauge} badge={pf < 0.9 ? "Warning" : undefined} tone={pf < 0.9 ? "text-[rgb(var(--sc-warntext))]" : "text-[rgb(var(--sc-fg))]"} />
+          <Kpi label="Avg V" value={volts.toFixed(1)} unit="V" Icon={Activity} tone="text-[rgb(var(--sc-accentsoft))]" />
+          <Kpi label="Avg A" value={amps.toFixed(1)} unit="A" Icon={Activity} tone="text-[rgb(var(--sc-accentsoft))]" />
+          <Kpi label="Avg Hz" value={hz.toFixed(2)} unit="Hz" Icon={Radio} tone="text-[rgb(var(--sc-accentsoft))]" />
+          <Kpi label="Alarms" value={String(alarmsToday)} unit="today" Icon={Bell} tone={alarm ? "text-[rgb(var(--sc-badtext))]" : "text-[rgb(var(--sc-fg))]"} />
         </div>
 
         <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+          <div className="rounded-xl border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-tint)/0.03)] p-3">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-white">Fleet energy (kW)</p>
+              <p className="text-sm font-semibold text-[rgb(var(--sc-fg))]">Fleet energy (kW)</p>
               <div className="flex gap-1 text-[10px]">
                 {["15m", "1h", "24h", "7d"].map((r, i) => (
-                  <span key={r} className={`rounded-full border px-2 py-0.5 ${i === 0 ? "border-sky-500 bg-sky-500 text-white" : "border-white/10 text-slate-400"}`}>
+                  <span key={r} className={`rounded-full border px-2 py-0.5 ${i === 0 ? "border-[rgb(var(--sc-accent))] bg-[rgb(var(--sc-accent))] text-[rgb(var(--sc-fg))]" : "border-[rgb(var(--sc-tint)/0.1)] text-[rgb(var(--sc-muted))]"}`}>
                     {r}
                   </span>
                 ))}
@@ -150,21 +150,21 @@ export function EnergyMock() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-            <p className="text-sm font-semibold text-white">Meters</p>
+          <div className="rounded-xl border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-tint)/0.03)] p-3">
+            <p className="text-sm font-semibold text-[rgb(var(--sc-fg))]">Meters</p>
             <ul className="mt-2 space-y-2.5">
               {METERS.map((m, i) => (
                 <li key={m.name}>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="flex items-center gap-1.5 text-slate-300">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    <span className="flex items-center gap-1.5 text-[rgb(var(--sc-fg2))]">
+                      <span className="h-1.5 w-1.5 rounded-full bg-[rgb(var(--sc-ok))]" />
                       {m.name}
                     </span>
-                    <span className={`font-semibold tabular-nums ${m.spike && alarm ? "text-rose-300" : "text-white"}`}>{meters[i].toFixed(1)} kW</span>
+                    <span className={`font-semibold tabular-nums ${m.spike && alarm ? "text-[rgb(var(--sc-badtext))]" : "text-[rgb(var(--sc-fg))]"}`}>{meters[i].toFixed(1)} kW</span>
                   </div>
-                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
+                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[rgb(var(--sc-tint)/0.1)]">
                     <motion.div
-                      className={`h-full rounded-full ${m.spike && alarm ? "bg-rose-400" : "bg-sky-400"}`}
+                      className={`h-full rounded-full ${m.spike && alarm ? "bg-[rgb(var(--sc-bad))]" : "bg-[rgb(var(--sc-accent))]"}`}
                       animate={{ width: `${(meters[i] / 180) * 100}%` }}
                       transition={{ duration: 0.6 }}
                     />
@@ -181,12 +181,12 @@ export function EnergyMock() {
               initial={{ opacity: 0, x: 40 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 40 }}
-              className="absolute right-4 top-4 z-10 flex max-w-xs items-start gap-3 rounded-xl border border-rose-500/40 bg-[#2a0f1a]/95 p-3 shadow-xl backdrop-blur"
+              className="absolute right-4 top-4 z-10 flex max-w-xs items-start gap-3 rounded-xl border border-[rgb(var(--sc-bad)/0.4)] bg-[rgb(var(--sc-badbg)/0.95)] p-3 shadow-xl backdrop-blur"
             >
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-400" />
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-[rgb(var(--sc-badtext))]" />
               <div>
-                <p className="text-sm font-semibold text-rose-200">Critical · Active power</p>
-                <p className="text-xs text-rose-200/70">
+                <p className="text-sm font-semibold text-[rgb(var(--sc-badtext))]">Critical · Active power</p>
+                <p className="text-xs text-[rgb(var(--sc-badtext)/0.7)]">
                   Plant demand {total.toFixed(0)} kW is above the {THRESHOLD_KW} kW limit (Compressor house).
                 </p>
               </div>

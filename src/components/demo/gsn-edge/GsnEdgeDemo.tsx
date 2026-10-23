@@ -57,11 +57,11 @@ function Features() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: (i % 4) * 0.06 }}
-            className="group rounded-xl border border-white/10 bg-white/[0.03] p-5 transition hover:-translate-y-0.5 hover:border-teal-400/40 hover:bg-teal-400/[0.06]"
+            className="group rounded-xl border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-tint)/0.03)] p-5 transition hover:-translate-y-0.5 hover:border-[rgb(var(--sc-accent)/0.4)] hover:bg-[rgb(var(--sc-accent)/0.06)]"
           >
-            <Icon className="h-5 w-5 text-teal-300 transition group-hover:scale-110" />
-            <p className="mt-3 font-semibold text-white">{title}</p>
-            <p className="mt-1 text-sm text-slate-400">{text}</p>
+            <Icon className="h-5 w-5 text-[rgb(var(--sc-accentsoft))] transition group-hover:scale-110" />
+            <p className="mt-3 font-semibold text-[rgb(var(--sc-fg))]">{title}</p>
+            <p className="mt-1 text-sm text-[rgb(var(--sc-muted))]">{text}</p>
           </motion.div>
         ))}
       </div>
@@ -80,7 +80,7 @@ function Rollout() {
   return (
     <Section eyebrow="Getting started" title="From devices to dashboards in four steps">
       <ol className="relative grid gap-6 md:grid-cols-4">
-        <div className="absolute left-5 right-5 top-5 hidden h-px bg-gradient-to-r from-teal-400/60 via-teal-400/30 to-teal-400/10 md:block" />
+        <div className="absolute left-5 right-5 top-5 hidden h-px bg-gradient-to-r from-[rgb(var(--sc-accent)/0.6)] via-[rgb(var(--sc-accent)/0.3)] to-[rgb(var(--sc-accent)/0.1)] md:block" />
         {STEPS.map((s, i) => (
           <motion.li
             key={s.title}
@@ -90,15 +90,15 @@ function Rollout() {
             transition={{ delay: i * 0.12 }}
             className="relative flex gap-4 md:flex-col"
           >
-            <span className="relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-teal-300/60 bg-[#050914] text-teal-200">
+            <span className="relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[rgb(var(--sc-accent)/0.6)] bg-[rgb(var(--sc-deep))] text-[rgb(var(--sc-accentsoft))]">
               <s.Icon className="h-4 w-4" />
             </span>
             <div>
-              <p className="font-semibold text-white">
-                <span className="mr-1 text-teal-300">{i + 1}.</span>
+              <p className="font-semibold text-[rgb(var(--sc-fg))]">
+                <span className="mr-1 text-[rgb(var(--sc-accentsoft))]">{i + 1}.</span>
                 {s.title}
               </p>
-              <p className="mt-1 text-sm text-slate-400">{s.text}</p>
+              <p className="mt-1 text-sm text-[rgb(var(--sc-muted))]">{s.text}</p>
             </div>
           </motion.li>
         ))}
@@ -110,7 +110,7 @@ function Rollout() {
 export function GsnEdgeDemo({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   return (
-    <div className="text-slate-100">
+    <div className="text-[rgb(var(--sc-fg))]">
       <ProductHero
         badge={
           <>
@@ -119,7 +119,7 @@ export function GsnEdgeDemo({ onClose }: { onClose: () => void }) {
         }
         title={
           <>
-            GSN <span className="bg-gradient-to-r from-teal-300 via-cyan-400 to-indigo-400 bg-clip-text text-transparent">Edge</span>
+            GSN <span className="bg-gradient-to-r from-[rgb(var(--sc-accent))] via-[rgb(var(--sc-accent))] to-[rgb(var(--sc-accent))] bg-clip-text text-transparent">Edge</span>
           </>
         }
         text="One dashboard for everything you need to keep an eye on. Machines in the toolroom, lifts in your buildings, vans on the road and meters on the wall all report in live, with alarms the moment something goes wrong."
@@ -142,7 +142,7 @@ export function GsnEdgeDemo({ onClose }: { onClose: () => void }) {
         eyebrow="Case studies"
         title={
           <>
-            One platform, <span className="text-teal-300">four very different jobs.</span>
+            One platform, <span className="text-[rgb(var(--sc-accentsoft))]">four very different jobs.</span>
           </>
         }
         subtitle="Pick an industry to see the problem it solves and the GSN Edge screen they use, running live."
@@ -156,16 +156,16 @@ export function GsnEdgeDemo({ onClose }: { onClose: () => void }) {
         text="Tell us what you want to monitor: machines, lifts, vehicles, energy or something else. We'll show you how it would look in GSN Edge."
         actions={
           <>
-            <Link to="/" className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 font-semibold text-slate-900 transition hover:-translate-y-0.5">
+            <Link to="/" className="inline-flex items-center gap-2 rounded-xl bg-[rgb(var(--sc-tint))] px-6 py-3 font-semibold text-[rgb(var(--sc-onaccent))] transition hover:-translate-y-0.5">
               Request a demo <ArrowRight className="h-4 w-4" />
             </Link>
             <button
               onClick={() => navigate("/showcase/vision")}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/20 px-6 py-3 font-semibold text-white transition hover:bg-white/10"
+              className="inline-flex items-center gap-2 rounded-xl border border-[rgb(var(--sc-tint)/0.2)] px-6 py-3 font-semibold text-[rgb(var(--sc-fg))] transition hover:bg-[rgb(var(--sc-tint)/0.1)]"
             >
               Explore our Vision projects
             </button>
-            <button onClick={onClose} className="inline-flex items-center gap-2 rounded-xl px-4 py-3 font-semibold text-slate-300 transition hover:text-white">
+            <button onClick={onClose} className="inline-flex items-center gap-2 rounded-xl px-4 py-3 font-semibold text-[rgb(var(--sc-fg2))] transition hover:text-[rgb(var(--sc-fg))]">
               Back to IoT
             </button>
           </>

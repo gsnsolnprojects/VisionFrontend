@@ -72,11 +72,11 @@ function Capabilities() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: (i % 4) * 0.06 }}
-            className="group rounded-xl border border-white/10 bg-white/[0.03] p-5 transition hover:-translate-y-0.5 hover:border-cyan-400/40 hover:bg-cyan-400/[0.06]"
+            className="group rounded-xl border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-tint)/0.03)] p-5 transition hover:-translate-y-0.5 hover:border-[rgb(var(--sc-accent)/0.4)] hover:bg-[rgb(var(--sc-accent)/0.06)]"
           >
-            <Icon className="h-5 w-5 text-cyan-300 transition group-hover:scale-110" />
-            <p className="mt-3 font-semibold text-white">{title}</p>
-            <p className="mt-1 text-sm text-slate-400">{text}</p>
+            <Icon className="h-5 w-5 text-[rgb(var(--sc-accentsoft))] transition group-hover:scale-110" />
+            <p className="mt-3 font-semibold text-[rgb(var(--sc-fg))]">{title}</p>
+            <p className="mt-1 text-sm text-[rgb(var(--sc-muted))]">{text}</p>
           </motion.div>
         ))}
       </div>
@@ -107,23 +107,23 @@ function Architecture() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.12 }}
-              className="w-full rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.06] to-white/[0.02] p-5"
+              className="w-full rounded-2xl border border-[rgb(var(--sc-tint)/0.1)] bg-gradient-to-b from-[rgb(var(--sc-tint)/0.06)] to-[rgb(var(--sc-tint)/0.02)] p-5"
             >
               <div className="flex items-center gap-2">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-cyan-400/15 text-cyan-300">
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[rgb(var(--sc-accent)/0.15)] text-[rgb(var(--sc-accentsoft))]">
                   <Icon className="h-5 w-5" />
                 </span>
-                <p className="font-semibold text-white">{title}</p>
+                <p className="font-semibold text-[rgb(var(--sc-fg))]">{title}</p>
               </div>
-              <ul className="mt-3 space-y-1 text-sm text-slate-400">
+              <ul className="mt-3 space-y-1 text-sm text-[rgb(var(--sc-muted))]">
                 {items.map((it) => (
                   <li key={it}>{it}</li>
                 ))}
               </ul>
             </motion.div>
             {i < ARCH.length - 1 && (
-              <div className="relative h-6 w-0.5 shrink-0 overflow-hidden bg-white/10 lg:h-0.5 lg:w-6">
-                <span className="absolute inset-0 animate-[pulse_1.6s_ease-in-out_infinite] bg-cyan-400/70" />
+              <div className="relative h-6 w-0.5 shrink-0 overflow-hidden bg-[rgb(var(--sc-tint)/0.1)] lg:h-0.5 lg:w-6">
+                <span className="absolute inset-0 animate-[pulse_1.6s_ease-in-out_infinite] bg-[rgb(var(--sc-accent)/0.7)]" />
               </div>
             )}
           </div>
@@ -136,7 +136,7 @@ function Architecture() {
 export function StudioDemo({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   return (
-    <div className="text-slate-100">
+    <div className="text-[rgb(var(--sc-fg))]">
       <ProductHero
         badge={
           <>
@@ -146,7 +146,7 @@ export function StudioDemo({ onClose }: { onClose: () => void }) {
         title={
           <>
             Vision-M{" "}
-            <span className="bg-gradient-to-r from-cyan-300 via-sky-400 to-blue-500 bg-clip-text text-transparent">Studio</span>
+            <span className="bg-gradient-to-r from-[rgb(var(--sc-accent))] via-[rgb(var(--sc-accent))] to-[rgb(var(--sc-accent))] bg-clip-text text-transparent">Studio</span>
           </>
         }
         text="Teach a camera to spot defects, right in your browser. Six steps take you from a folder of photos to a working model. Click any step below, or let it play."
@@ -169,7 +169,7 @@ export function StudioDemo({ onClose }: { onClose: () => void }) {
         eyebrow="Interactive · real model output"
         title={
           <>
-            Be the inspector. <span className="text-cyan-300">Move the threshold.</span>
+            Be the inspector. <span className="text-[rgb(var(--sc-accentsoft))]">Move the threshold.</span>
           </>
         }
         subtitle="Real predictions from blister-pack and car-seat models trained in Studio, on images they never saw while training. Pick an image, then drag the slider to see how confidence changes the verdict."
@@ -181,14 +181,14 @@ export function StudioDemo({ onClose }: { onClose: () => void }) {
         title="From Studio to a live camera"
         subtitle="A blister-pack model built in Studio, running on a live webcam. Unedited recording."
       >
-        <figure className="mx-auto max-w-4xl overflow-hidden rounded-2xl border border-white/10 bg-slate-900 shadow-2xl shadow-black/60">
+        <figure className="mx-auto max-w-4xl overflow-hidden rounded-2xl border border-[rgb(var(--sc-tint)/0.1)] bg-[rgb(var(--sc-deep))] shadow-2xl shadow-[color:rgb(var(--sc-shade)/0.6)]">
           <div className="relative">
             <CroppedVideo {...BLISTER_FEED} />
             <div className="absolute right-3 top-3">
               <LiveBadge />
             </div>
           </div>
-          <figcaption className="p-5 text-sm text-slate-400">
+          <figcaption className="p-5 text-sm text-[rgb(var(--sc-muted))]">
             Each pack is called OK or NOT OK as it is held up to the camera, with defect boxes drawn live.
           </figcaption>
         </figure>
@@ -207,16 +207,16 @@ export function StudioDemo({ onClose }: { onClose: () => void }) {
         text="Start with photos of good and defective parts. Need a complete station on your line instead? That's Vision-M."
         actions={
           <>
-            <Link to="/auth" className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 font-semibold text-slate-900 transition hover:-translate-y-0.5">
+            <Link to="/auth" className="inline-flex items-center gap-2 rounded-xl bg-[rgb(var(--sc-tint))] px-6 py-3 font-semibold text-[rgb(var(--sc-onaccent))] transition hover:-translate-y-0.5">
               Open Studio <ArrowRight className="h-4 w-4" />
             </Link>
             <button
               onClick={() => navigate("/showcase/vision/vision-m")}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/20 px-6 py-3 font-semibold text-white transition hover:bg-white/10"
+              className="inline-flex items-center gap-2 rounded-xl border border-[rgb(var(--sc-tint)/0.2)] px-6 py-3 font-semibold text-[rgb(var(--sc-fg))] transition hover:bg-[rgb(var(--sc-tint)/0.1)]"
             >
               See Vision-M for factories
             </button>
-            <button onClick={onClose} className="inline-flex items-center gap-2 rounded-xl px-4 py-3 font-semibold text-slate-300 transition hover:text-white">
+            <button onClick={onClose} className="inline-flex items-center gap-2 rounded-xl px-4 py-3 font-semibold text-[rgb(var(--sc-fg2))] transition hover:text-[rgb(var(--sc-fg))]">
               All projects
             </button>
           </>
