@@ -259,13 +259,13 @@ function ProjectOverlay({
 type ShowcaseTheme = "dark" | "light";
 const THEME_KEY = "visionm_showcase_theme";
 
-/** The showcase's own light / dark switch (remembered in this browser; dark by default) */
+/** The showcase's own light / dark switch (remembered in this browser; light by default) */
 function useShowcaseTheme(): [ShowcaseTheme, () => void] {
   const [theme, setTheme] = useState<ShowcaseTheme>(() => {
     try {
-      return localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark";
+      return localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light";
     } catch {
-      return "dark";
+      return "light";
     }
   });
   const toggle = () =>
