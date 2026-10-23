@@ -22,7 +22,7 @@ const LOGO_SIZE = {
 export function EdgeLogo({ size = "md" }: { size?: keyof typeof LOGO_SIZE }) {
   const s = LOGO_SIZE[size];
   return (
-    <span className={`inline-flex shrink-0 items-center bg-[rgb(var(--sc-tint))] shadow-sm ${s.chip}`}>
+    <span className={`inline-flex shrink-0 items-center bg-[#ffffff] shadow-sm ${s.chip}`}>
       <img src="/demo/gsn-edge/gsn-edge-logo.png" alt="GSN Edge" className={`${s.img} w-auto max-w-none`} />
     </span>
   );
