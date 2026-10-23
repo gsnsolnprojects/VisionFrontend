@@ -112,7 +112,12 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void }> = ({ onNav
     { label: "Dataset & labels", Icon: Images, active: step === "label", onClick: () => openStep("label") },
     { label: "Train a model", Icon: GraduationCap, active: step === "train", onClick: () => openStep("train") },
     { label: "Test & evaluate", Icon: FlaskConical, active: step === "test", onClick: () => openStep("test") },
-    { label: "Reports", Icon: FileBarChart, active: step === "report", onClick: () => openStep("report") },
+    {
+      label: "Reports",
+      Icon: FileBarChart,
+      active: location.pathname === "/reports" || step === "report",
+      onClick: () => go("/reports"),
+    },
   ];
   const resources: Item[] = [
     {
