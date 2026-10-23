@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, ArrowUpRight, Check, Cog, Cpu, CupSoda, Hexagon, Pill, Shirt, type LucideIcon } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, Cpu, CupSoda, Hexagon, Pill, Plug, Shirt, type LucideIcon } from "lucide-react";
 import { fadeInUpVariants } from "@/utils/animations";
 import { IndustryArt } from "@/components/landing/IndustryArt";
 import { Button } from "@/components/ui/button";
@@ -32,9 +32,10 @@ interface Industry {
 const INDUSTRIES: Industry[] = [
   {
     id: "automotive",
-    name: "Automotive Components",
-    tagline: "Find the flaw. Understand the quality check.",
-    Icon: Cog,
+    // id kept as "automotive" so browsers that remembered this card still pick it
+    name: "Electrical Components",
+    tagline: "Terminals, connectors and switchgear.",
+    Icon: Plug,
     missions: [
       {
         title: "Missing screw detective",
@@ -287,7 +288,7 @@ export const IndustryPicker: React.FC<{
           </div>
 
           <p className="mt-5 text-xs text-muted-foreground">
-            Guided samples are real GSN inspection datasets: terminals (automotive), circuit boards and blister packs.
+            Guided samples are real GSN inspection datasets: terminal blocks, circuit boards and blister packs.
             Choosing an industry sets your learning context; it does not load an industry-trained AI model.
           </p>
         </motion.section>
