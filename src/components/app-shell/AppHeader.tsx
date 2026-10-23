@@ -19,16 +19,12 @@ import {
 } from "@/components/ui/tooltip";
 import { RoleBadge } from "@/components/RoleBadge";
 import { AppSidebar } from "./AppSidebar";
-import { usePlanAccess } from "@/contexts/plan-access-context";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
 
 export const AppHeader: React.FC = () => {
   const navigate = useNavigate();
   const { profile, isAdmin, company, loading, sessionReady, hasPermission, user, userRole } = useProfile();
-  const planAccess = usePlanAccess();
-  const isPlaygroundWorkspace =
-    planAccess.data?.access?.plan === "playground" && (company?.name ?? "").trim().toLowerCase() !== "gsn";
   const [hasPendingJoinRequest, setHasPendingJoinRequest] = useState(false);
   const { isOnline, isLoading: backendStatusLoading } = useBackendStatus();
   const { theme, toggleTheme } = useTheme();
@@ -328,9 +324,6 @@ export const AppHeader: React.FC = () => {
                   {/* Vision: square brand mark, as on the landing page */}
                   <span aria-hidden="true" className="hidden vision:inline-block ml-1 h-2 w-2 bg-[#88a530]" />
                 </span>
-                {isPlaygroundWorkspace && (
-                  <span className="mt-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-ring">Playground edition</span>
-                )}
               </span>
               {profile?.companies?.name && (
                 <div className="hidden md:inline-flex items-center gap-2">
