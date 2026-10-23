@@ -115,7 +115,12 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void }> = ({ onNav
     { label: "Reports", Icon: FileBarChart, active: step === "report", onClick: () => openStep("report") },
   ];
   const resources: Item[] = [
-    { label: "Learning centre", Icon: BookOpen, active: false, soon: true },
+    {
+      label: "Learning centre",
+      Icon: BookOpen,
+      active: location.pathname === "/learn",
+      onClick: () => go("/learn"),
+    },
     {
       label: "Plan & usage",
       Icon: CreditCard,

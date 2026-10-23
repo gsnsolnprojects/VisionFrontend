@@ -7,6 +7,7 @@ import LandingV2 from "@/pages/LandingV2";
 import Auth from "@/pages/Auth";
 import Dashboard from "@/pages/Dashboard";
 import DatasetManager from "@/pages/DatasetManager";
+import LearningCentrePage from "@/pages/LearningCentrePage";
 import ProjectDatasetRoute from "@/pages/ProjectDatasetRoute";
 import ResetPassword from "@/pages/ResetPassword";
 import SetPasswordPage from "@/pages/SetPasswordPage";
@@ -65,6 +66,7 @@ const APP_PATHS = [
   "/account/security",
   "/account/preferences",
   "/admin",
+  "/learn",
   "/datasets",
   "/dataset/:id",
 ];
@@ -166,6 +168,7 @@ const ProtectedRoutes = () => {
 
         {/* Superadmin panel (GSN platform admin only) */}
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/learn" element={<LearningCentrePage />} />
 
         {/* Dataset Manager - keep existing routes for backward compatibility */}
         <Route path="/datasets" element={<DatasetManager />} />
