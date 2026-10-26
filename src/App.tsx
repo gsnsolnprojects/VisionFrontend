@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, useNavigate, useLocation, matchPath } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation, matchPath } from "react-router-dom";
 import { useEffect } from "react";
 // Previous dark landing page — hidden for now (file kept). To bring it back,
 // restore this import and use <Landing /> on the "/" route below.
@@ -27,14 +27,6 @@ import { ProjectsPage } from "@/pages/ProjectsPage";
 import { TeamMembersPage } from "@/pages/TeamMembersPage";
 import { TeamInvitationsPage } from "@/pages/TeamInvitationsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
-import { SettingsWorkspacePage } from "@/pages/SettingsWorkspacePage";
-import { SettingsBillingPage } from "@/pages/SettingsBillingPage";
-import { SettingsUsagePage } from "@/pages/SettingsUsagePage";
-import { SettingsMobileInspectPage } from "@/pages/SettingsMobileInspectPage";
-import { AccountPage } from "@/pages/AccountPage";
-import { AccountProfilePage } from "@/pages/AccountProfilePage";
-import { AccountSecurityPage } from "@/pages/AccountSecurityPage";
-import { AccountPreferencesPage } from "@/pages/AccountPreferencesPage";
 import PredictionPage from "@/pages/PredictionPage";
 import PredictionHistoryDetailsPage from "@/pages/PredictionHistoryDetailsPage";
 import CorrosionDashboardPage from "@/pages/CorrosionDashboardPage";
@@ -58,10 +50,7 @@ const APP_PATHS = [
   "/dashboard/team/members",
   "/dashboard/team/invitations",
   "/dashboard/settings",
-  "/dashboard/settings/workspace",
-  "/dashboard/settings/billing",
-  "/dashboard/settings/usage",
-  "/dashboard/settings/mobile-inspect",
+  "/dashboard/settings/:section",
   "/account",
   "/account/profile",
   "/account/security",
@@ -157,16 +146,16 @@ const ProtectedRoutes = () => {
         
         {/* Settings */}
         <Route path="/dashboard/settings" element={<SettingsPage />} />
-        <Route path="/dashboard/settings/workspace" element={<SettingsWorkspacePage />} />
-        <Route path="/dashboard/settings/billing" element={<SettingsBillingPage />} />
-        <Route path="/dashboard/settings/usage" element={<SettingsUsagePage />} />
-        <Route path="/dashboard/settings/mobile-inspect" element={<SettingsMobileInspectPage />} />
+        {/* Old addresses open the matching section */}
+        <Route path="/dashboard/settings/workspace" element={<Navigate to="/dashboard/settings/company" replace />} />
+        <Route path="/dashboard/settings/usage" element={<Navigate to="/dashboard/settings/billing" replace />} />
+        <Route path="/dashboard/settings/:section" element={<SettingsPage />} />
         
         {/* Account */}
-        <Route path="/account" element={<AccountPage />} />
-        <Route path="/account/profile" element={<AccountProfilePage />} />
-        <Route path="/account/security" element={<AccountSecurityPage />} />
-        <Route path="/account/preferences" element={<AccountPreferencesPage />} />
+        <Route path="/account" element={<Navigate to="/dashboard/settings" replace />} />
+        <Route path="/account/profile" element={<Navigate to="/dashboard/settings" replace />} />
+        <Route path="/account/security" element={<Navigate to="/dashboard/settings/password" replace />} />
+        <Route path="/account/preferences" element={<Navigate to="/dashboard/settings/appearance" replace />} />
 
         {/* Superadmin panel (GSN platform admin only) */}
         <Route path="/admin" element={<AdminPage />} />

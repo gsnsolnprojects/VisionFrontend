@@ -3,7 +3,6 @@ import { motion } from "framer-motion";
 import { useProfile } from "@/hooks/useProfile";
 import { useToast } from "@/hooks/use-toast";
 import { usePlanAccess } from "@/contexts/plan-access-context";
-import { PageHeader } from "@/components/pages/PageHeader";
 import { LoadingState } from "@/components/pages/LoadingState";
 import { ErrorState } from "@/components/pages/ErrorState";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -338,7 +337,6 @@ export const SettingsBillingPage: React.FC = () => {
 
   return (
     <div>
-      <PageHeader title="Billing & Subscription" description="Your company's plan, limits and usage" />
       {isLoading ? (
         <LoadingState message="Loading billing information..." />
       ) : error || !data ? (

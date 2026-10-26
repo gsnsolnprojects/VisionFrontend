@@ -3,7 +3,6 @@ import React, { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/hooks/useProfile";
-import { PageHeader } from "@/components/pages/PageHeader";
 import { LoadingState } from "@/components/pages/LoadingState";
 import { EmptyState } from "@/components/pages/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -185,7 +184,6 @@ export const SettingsMobileInspectPage: React.FC = () => {
   if (!profile?.company_id) {
     return (
       <div>
-        <PageHeader title="Mobile Inspect" />
         <EmptyState
           icon={Smartphone}
           title="No workspace"
@@ -199,11 +197,6 @@ export const SettingsMobileInspectPage: React.FC = () => {
 
   return (
     <div>
-      <PageHeader
-        title="Mobile Inspect"
-        description="Pin the YOLO_SEG corrosion model used by the Android inspect app"
-      />
-
       <motion.div className="space-y-4 max-w-2xl" variants={fadeInUpVariants} initial="hidden" animate="visible">
         <Alert>
           <Info className="h-4 w-4" />
