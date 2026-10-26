@@ -612,6 +612,9 @@ export const PlaygroundTestStep: React.FC<{
                         <ResultPhoto url={r.url} alt={`Model result for ${r.filename}`} />
                       </div>
                       <div className="space-y-1 p-3 text-xs">
+                        <p className="truncate font-medium text-foreground" title={r.filename}>
+                          {r.filename}
+                        </p>
                         <p className="text-foreground">
                           <span className="text-muted-foreground">Model found: </span>
                           {r.found.size ? [...r.found].map(nice).join(", ") : "nothing"}

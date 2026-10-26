@@ -21,7 +21,6 @@ import { AnnotationAnalytics } from "@/components/annotation/AnnotationAnalytics
 import * as datasetsApi from "@/lib/api/datasets";
 import { useAnnotation } from "@/hooks/useAnnotation";
 import { useAnnotationSelection } from "@/hooks/useAnnotationSelection";
-import { useImageLoader } from "@/hooks/useImageLoader";
 import { useAnnotationShortcuts } from "@/hooks/useAnnotationShortcuts";
 import { useShortcutKeys, matchesShortcut } from "@/hooks/useShortcutKeys";
 import { supabase } from "@/integrations/supabase/client";
@@ -256,19 +255,13 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     resetToIdle: resetAugmentationToIdle,
   } = useAugmentationStatus(augmentingDatasetId);
 
-  // Track image loading state
-  const { loaded: imageLoaderLoaded, error: imageError } = useImageLoader(
-    currentImage?.url ?? null
-  );
-
-  // Update image loaded state
+  // A new image starts as "loading" with drawing off. ImageViewer fetches it with the sign-in
+  // headers and reports back through onImageLoad / onImageError (a plain image request can't
+  // send them, so the server would refuse it).
   useEffect(() => {
-    setImageLoaded(imageLoaderLoaded && !imageError);
-    // Disable drawing if image not loaded
-    if (!imageLoaderLoaded || imageError) {
-      setDrawing(false);
-    }
-  }, [imageLoaderLoaded, imageError, setDrawing]);
+    setImageLoaded(false);
+    setDrawing(false);
+  }, [currentImage?.url, setDrawing]);
 
   // Persist key for this dataset's annotation session
   const storageKey = useMemo(
