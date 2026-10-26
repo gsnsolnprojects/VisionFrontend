@@ -87,25 +87,22 @@ export const useRoutePersistence = (isSessionReady: boolean, user: any) => {
         // Check if current route is a valid app route
         const isCurrentRouteValid = isAppRoute(location.pathname);
         
-        // Restore if saved route is valid and different from current
-        // This handles all cases:
+        // Restore if saved route is valid and we landed on a default route:
         // - User refreshes on /dashboard/projects → stays on /dashboard/projects (routes match, no restore needed)
-        // - User refreshes but React Router redirects to /dashboard → restore to /dashboard/projects
-        // - User is on default route but has saved route → restore to saved route
+        // - User signs in and lands on /dashboard → restore to the page they were last on
+        // - User opens /dataset/123 from a link → stays on /dataset/123
         if (isSavedRouteValid) {
           console.log("[RoutePersistence] Checking route restore:", { 
             savedRoute, 
             currentRoute, 
             isDefaultRoute, 
             isCurrentRouteValid,
-            shouldRestore: isDefaultRoute || !isCurrentRouteValid || savedRoute !== currentRoute
+            shouldRestore: isDefaultRoute
           });
           
-          // Restore if:
-          // 1. We're on a default route (should always restore)
-          // 2. Current route is not valid (might have been redirected)
-          // 3. Saved route is different from current (user was on different route)
-          if (isDefaultRoute || !isCurrentRouteValid || savedRoute !== currentRoute) {
+          // Restore only on a plain landing page (e.g. /dashboard after signing in). Any other
+          // address (typed, bookmarked or a shared link) opens exactly what was asked for.
+          if (isDefaultRoute) {
             // Double-check route equality to prevent loops
             const normalizedSaved = savedRoute.split('?')[0];
             const normalizedCurrent = currentRoute.split('?')[0];
