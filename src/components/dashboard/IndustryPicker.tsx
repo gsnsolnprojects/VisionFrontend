@@ -9,6 +9,7 @@ import {
   Cpu,
   CupSoda,
   Hexagon,
+  Lock,
   Pill,
   Plug,
   Shirt,
@@ -132,7 +133,9 @@ type Samples = { datasets: SampleDataset[]; models: SampleModel[] };
 
 export const IndustryPicker: React.FC<{
   onStartMission: (industryName: string, mission: Mission, mode: MissionMode) => void;
-}> = ({ onStartMission }) => {
+  /** Before a plan is chosen: start buttons become "Unlocks with Playground" and lead here */
+  onChoosePlan?: () => void;
+}> = ({ onStartMission, onChoosePlan }) => {
   const { user } = useProfile();
   const [selected, setSelected] = useState<string | null>(null);
   const [samples, setSamples] = useState<Samples | null>(null);
@@ -189,6 +192,15 @@ export const IndustryPicker: React.FC<{
                 </li>
               ))}
             </ul>
+            {onChoosePlan && (
+              <div className="mt-7 flex flex-wrap items-center gap-3">
+                <Button onClick={onChoosePlan} className="gap-1.5 bg-[#e9ff65] text-[#171f1b] hover:bg-[#e9ff65]/90">
+                  Choose Playground · ₹999/month
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Button>
+                <span className="text-xs text-[#bec9b0]">Look around first: pick a world below to see its challenges.</span>
+              </div>
+            )}
           </div>
           <div className="hidden rounded-xl border border-[#485840] p-2 sm:block">
             <IndustryArt index={artIndex} />
@@ -247,7 +259,9 @@ export const IndustryPicker: React.FC<{
       </motion.section>
 
       {/* Challenges for the picked industry */}
-      {industry && <Challenges industry={industry} samples={samples} onStartMission={onStartMission} />}
+      {industry && (
+        <Challenges industry={industry} samples={samples} onStartMission={onStartMission} onChoosePlan={onChoosePlan} />
+      )}
     </>
   );
 };
@@ -260,7 +274,9 @@ const ChallengeCard: React.FC<{
   children: React.ReactNode;
   action?: { label: string; onClick: () => void; primary?: boolean; Icon: LucideIcon };
   soon?: string;
-}> = ({ kicker, picture, title, children, action, soon }) => (
+  /** Before a plan is chosen: the action is replaced by "Unlocks with Playground" */
+  onLocked?: () => void;
+}> = ({ kicker, picture, title, children, action, soon, onLocked }) => (
   <article className={cn("flex flex-col rounded-xl border bg-background/40 p-4", soon && "opacity-75")}>
     <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{kicker}</p>
     <div className="mt-3 aspect-[25/13] overflow-hidden rounded-lg bg-[#171f1b]">{picture}</div>
@@ -271,6 +287,11 @@ const ChallengeCard: React.FC<{
         <Button variant="outline" className="w-full gap-1.5" disabled>
           <Clock className="h-4 w-4" aria-hidden="true" />
           {soon}
+        </Button>
+      ) : onLocked ? (
+        <Button variant="outline" className="w-full gap-1.5" onClick={onLocked}>
+          <Lock className="h-4 w-4" aria-hidden="true" />
+          Unlocks with Playground
         </Button>
       ) : (
         action && (
@@ -288,7 +309,8 @@ const Challenges: React.FC<{
   industry: Industry;
   samples: Samples | null;
   onStartMission: (industryName: string, mission: Mission, mode: MissionMode) => void;
-}> = ({ industry, samples, onStartMission }) => {
+  onChoosePlan?: () => void;
+}> = ({ industry, samples, onStartMission, onChoosePlan }) => {
   const artIndex = Math.max(0, INDUSTRIES.findIndex((i) => i.id === industry.id));
   const guided = industry.guided;
   const loading = samples === null;
@@ -341,6 +363,7 @@ const Challenges: React.FC<{
             )
           }
           soon={!guided || (!loading && !sample) ? "Guided sample coming soon" : undefined}
+          onLocked={onChoosePlan}
           action={
             guidedMission
               ? {
@@ -377,6 +400,7 @@ const Challenges: React.FC<{
             </div>
           }
           soon={!guided || (!loading && !model) ? "Ready-made model coming soon" : undefined}
+          onLocked={onChoosePlan}
           action={
             guidedMission
               ? {
@@ -413,6 +437,7 @@ const Challenges: React.FC<{
               ))}
             </ol>
           }
+          onLocked={onChoosePlan}
           action={{
             label: "Upload my images",
             Icon: Upload,

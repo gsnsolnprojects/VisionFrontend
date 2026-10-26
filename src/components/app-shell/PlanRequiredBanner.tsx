@@ -3,14 +3,16 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePlanAccess, BILLING_ROUTE } from "@/contexts/plan-access-context";
+import { useWorkspaceKind } from "@/lib/workspaceKind";
 
 /** Shown across the app while the company has no active plan (view-only) */
 export const PlanRequiredBanner: React.FC = () => {
   const { isViewOnly, data } = usePlanAccess();
   const navigate = useNavigate();
   const location = useLocation();
+  const preview = useWorkspaceKind() === "preview";
 
-  if (!isViewOnly) return null;
+  if (!isViewOnly || preview) return null;
 
   const canManage = !!data?.billing?.canManage;
   const lapsed = data?.access?.reason && !["no_plan", "none"].includes(data.access.reason);

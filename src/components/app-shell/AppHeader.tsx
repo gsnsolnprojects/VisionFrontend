@@ -23,13 +23,14 @@ import { cn } from "@/lib/utils";
 import { isSuperadmin } from "@/lib/utils/superadmin";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
+import { useWorkspaceKind } from "@/lib/workspaceKind";
 
 export const AppHeader: React.FC = () => {
   const navigate = useNavigate();
   const { profile, isAdmin, company, loading, sessionReady, hasPermission, user, userRole } = useProfile();
   const planAccess = usePlanAccess();
-  const isPlaygroundWorkspace =
-    planAccess.data?.access?.plan === "playground" && (company?.name ?? "").trim().toLowerCase() !== "gsn";
+  // Playground workspaces, and companies previewing it before choosing a plan
+  const isPlaygroundWorkspace = useWorkspaceKind() !== "standard";
   const [hasPendingJoinRequest, setHasPendingJoinRequest] = useState(false);
   const { isOnline, isLoading: backendStatusLoading } = useBackendStatus();
   const { theme, toggleTheme } = useTheme();

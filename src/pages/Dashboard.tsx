@@ -50,6 +50,7 @@ import type { Mission, MissionMode } from "@/components/dashboard/IndustryPicker
 import { getSamples, importSampleDataset, importSampleModel } from "@/lib/api/samples";
 import { RoleBadge } from "@/components/RoleBadge";
 import { usePlanAccess, PLAN_REQUIRED_MESSAGE, BILLING_ROUTE } from "@/contexts/plan-access-context";
+import { useWorkspaceKind } from "@/lib/workspaceKind";
 
 type ViewMode = "overview" | "projects" | "simulation" | "members";
 
@@ -62,6 +63,7 @@ const Dashboard = () => {
   // Playground workspaces (never GSN itself) get the learning-path overview
   const isPlaygroundWorkspace =
     planAccess.data?.access?.plan === "playground" && (company?.name ?? "").trim().toLowerCase() !== "gsn";
+  const workspaceKind = useWorkspaceKind();
 
   const [projects, setProjects] = useState<any[]>([]);
   const [showCompanyDialog, setShowCompanyDialog] = useState(false);
@@ -1315,6 +1317,8 @@ const Dashboard = () => {
       {activeView === "overview" && profile?.company_id && (
         isPlaygroundWorkspace ? (
           <PlaygroundOverview projects={projects} onCreateProject={openCreateProject} onStartMission={startMission} />
+        ) : workspaceKind === "preview" ? (
+          <PlaygroundOverview projects={projects} preview />
         ) : (
           <DashboardOverview
             projects={projects}

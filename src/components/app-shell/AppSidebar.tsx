@@ -27,6 +27,7 @@ import { isSuperadmin } from "@/lib/utils/superadmin";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { usePlanAccess } from "@/contexts/plan-access-context";
+import { useWorkspaceKind } from "@/lib/workspaceKind";
 import { PlaygroundSidebar } from "./PlaygroundSidebar";
 import {
   Tooltip,
@@ -50,6 +51,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
   const planAccess = usePlanAccess();
   const isPlaygroundWorkspace =
     planAccess.data?.access?.plan === "playground" && (company?.name ?? "").trim().toLowerCase() !== "gsn";
+  const workspaceKind = useWorkspaceKind();
   
   // Debug admin status in development (only when profile loading is complete)
   useEffect(() => {
@@ -187,8 +189,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
   ];
 
 
-  // Playground workspaces (never GSN) get their own step-by-step menu
+  // Playground workspaces (never GSN) get their own step-by-step menu; before a plan, a short one
   if (isPlaygroundWorkspace) return <PlaygroundSidebar onNavigate={onNavigate} />;
+  if (workspaceKind === "preview") return <PlaygroundSidebar onNavigate={onNavigate} preview />;
 
   return (
     <>

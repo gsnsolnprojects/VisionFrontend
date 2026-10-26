@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { AppHeader } from "./AppHeader";
 import { AppSidebar } from "./AppSidebar";
@@ -13,6 +13,7 @@ import { useRoutePersistence } from "@/hooks/useRoutePersistence";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
+import { isPreviewPath, useWorkspaceKind } from "@/lib/workspaceKind";
 
 // Constants for inactivity tracking
 const INACTIVITY_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
@@ -55,6 +56,15 @@ const AppShellContent = () => {
 
   // Restore route after session is ready and user is authenticated
   useRoutePersistence(sessionReady, user);
+
+  // Before a plan is chosen (not GSN): only the overview, Learning centre and Settings open
+  const workspaceKind = useWorkspaceKind();
+  const location = useLocation();
+  useEffect(() => {
+    if (workspaceKind === "preview" && !isPreviewPath(location.pathname, location.search)) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [workspaceKind, location.pathname, location.search, navigate]);
 
   // Track actual user activity and perform a single controlled refresh after long inactivity
   useEffect(() => {

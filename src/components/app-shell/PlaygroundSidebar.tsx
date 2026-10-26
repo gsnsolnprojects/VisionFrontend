@@ -15,7 +15,8 @@ import { cn } from "@/lib/utils";
  * Sidebar for Playground workspaces: the overview, the three steps of the current mission
  * project (the one open now, else the last one opened, else the newest; switch projects in the
  * project page's mission bar), resources and the plan card. Other workspaces keep AppSidebar's
- * menu.
+ * menu. With `preview` (a company that hasn't chosen a plan yet): only Overview, Learning centre,
+ * Plan & billing and Settings, and the plan card asks them to choose Playground.
  */
 
 interface Project {
@@ -35,7 +36,7 @@ interface Item {
 
 const lastProjectKey = (userId?: string) => `visionm_playground_last_project_${userId ?? "anon"}`;
 
-export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void }> = ({ onNavigate }) => {
+export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void; preview?: boolean }> = ({ onNavigate, preview = false }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -107,8 +108,7 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void }> = ({ onNav
   };
 
   const onOverview = location.pathname === "/dashboard" && !searchParams.get("view");
-  const workspace: Item[] = [
-    { label: "Overview", Icon: LayoutDashboard, active: onOverview, onClick: () => go("/dashboard") },
+  const projectSteps: Item[] = [
     { label: "Dataset & labels", Icon: Images, active: step === "label", onClick: () => openStep("label") },
     { label: "Train a model", Icon: GraduationCap, active: step === "train", onClick: () => openStep("train") },
     { label: "Test & evaluate", Icon: FlaskConical, active: step === "test", onClick: () => openStep("test") },
@@ -119,6 +119,10 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void }> = ({ onNav
       onClick: () => go("/reports"),
     },
   ];
+  const workspace: Item[] = [
+    { label: "Overview", Icon: LayoutDashboard, active: onOverview, onClick: () => go("/dashboard") },
+    ...(preview ? [] : projectSteps),
+  ];
   const resources: Item[] = [
     {
       label: "Learning centre",
@@ -127,7 +131,7 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void }> = ({ onNav
       onClick: () => go("/learn"),
     },
     {
-      label: "Plan & usage",
+      label: preview ? "Plan & billing" : "Plan & usage",
       Icon: CreditCard,
       active: location.pathname.startsWith("/dashboard/settings/billing"),
       onClick: () => go("/dashboard/settings/billing"),
@@ -227,7 +231,7 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void }> = ({ onNav
 
           {isOpen && (
             <div className="mt-4 rounded-xl border bg-card p-4">
-              <p className="text-sm font-semibold text-foreground">Playground subscription</p>
+              <p className="text-sm font-semibold text-foreground">{preview ? "Unlock the Playground" : "Playground subscription"}</p>
               <p className="mt-1 text-2xl font-bold text-foreground">
                 ₹999 <span className="text-xs font-normal text-muted-foreground">/ month</span>
               </p>
@@ -237,7 +241,7 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void }> = ({ onNav
                 onClick={() => go("/dashboard/settings/billing")}
                 className="mt-3 text-sm font-medium text-foreground underline-offset-4 hover:underline"
               >
-                Explore your plan →
+                {preview ? "Choose Playground →" : "Explore your plan →"}
               </button>
             </div>
           )}
