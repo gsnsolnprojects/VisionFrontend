@@ -10,7 +10,6 @@ import { useProfile } from "@/hooks/useProfile";
 import { useBackendStatus } from "@/hooks/useBackendStatus";
 import { useTheme } from "@/hooks/useTheme";
 import { supabase } from "@/integrations/supabase/client";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
   Tooltip,
   TooltipContent,
@@ -18,7 +17,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { RoleBadge } from "@/components/RoleBadge";
-import { AppSidebar } from "./AppSidebar";
+import { useSidebar } from "./sidebar-context";
 import { usePlanAccess } from "@/contexts/plan-access-context";
 import { cn } from "@/lib/utils";
 import { isSuperadmin } from "@/lib/utils/superadmin";
@@ -37,7 +36,8 @@ export const AppHeader: React.FC = () => {
   const { toast } = useToast();
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
   const [showRequestsPanel, setShowRequestsPanel] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // Phones: the menu is the sidebar overlay in AppShell
+  const { isOpen: mobileMenuOpen, toggleSidebar: toggleMobileMenu } = useSidebar();
   const isMobile = useIsMobile();
   const lastInviteStatusRef = useRef<string | null>(null);
 
@@ -299,30 +299,17 @@ export const AppHeader: React.FC = () => {
         >
           {/* Left: Mobile Menu + Logo */}
           <div className="flex items-center gap-2">
-            {/* Mobile Menu Sheet */}
+            {/* Mobile menu button: opens / closes the sidebar overlay */}
             {isMobile && (
-              <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-                <SheetTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setMobileMenuOpen(true)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        setMobileMenuOpen(true);
-                      }
-                    }}
-                    aria-label="Open menu"
-                    aria-expanded={mobileMenuOpen}
-                  >
-                    <Menu className="h-5 w-5" />
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="left" className="w-64 p-0">
-                  <AppSidebar onNavigate={() => setMobileMenuOpen(false)} />
-                </SheetContent>
-              </Sheet>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleMobileMenu}
+                aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+                aria-expanded={mobileMenuOpen}
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
             )}
 
             <div

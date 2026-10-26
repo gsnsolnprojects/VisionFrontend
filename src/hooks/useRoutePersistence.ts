@@ -134,7 +134,8 @@ export const useRoutePersistence = (isSessionReady: boolean, user: any) => {
               isNavigatingRef.current = false;
             }, 0);
           } else {
-            // Already on the correct route
+            // Opened a specific address: stay, and remember it as the last page
+            if (isCurrentRouteValid) localStorage.setItem(ROUTE_STORAGE_KEY, currentRoute);
             hasRestored.current = true;
           }
         } else {
