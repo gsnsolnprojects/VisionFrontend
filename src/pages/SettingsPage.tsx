@@ -94,7 +94,7 @@ export const SettingsPage: React.FC = () => {
       <PageHeader title="Settings" description="Your account, your company and your plan, all in one place." />
 
       <div className="grid gap-6 md:grid-cols-[220px_1fr] md:gap-8">
-        <nav aria-label="Settings sections">
+        <nav aria-label="Settings sections" className="min-w-0">
           {/* Phones: one scrollable row */}
           <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 md:hidden">
             {sections.map((s) => (
