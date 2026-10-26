@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams, matchPath } from "react-router-dom";
-import { BookOpen, CreditCard, FileBarChart, FlaskConical, GraduationCap, Images, LayoutDashboard, Menu, type LucideIcon } from "lucide-react";
+import { BookOpen, CreditCard, FileBarChart, FlaskConical, GraduationCap, Images, LayoutDashboard, Menu, Settings, type LucideIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { liveProjectFilter } from "@/lib/liveProjects";
 import { useProfile } from "@/hooks/useProfile";
@@ -131,6 +131,14 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void }> = ({ onNav
       Icon: CreditCard,
       active: location.pathname.startsWith("/dashboard/settings/billing"),
       onClick: () => go("/dashboard/settings/billing"),
+    },
+    {
+      label: "Settings",
+      Icon: Settings,
+      active:
+        location.pathname.startsWith("/dashboard/settings") &&
+        !location.pathname.startsWith("/dashboard/settings/billing"),
+      onClick: () => go("/dashboard/settings"),
     },
   ];
 
