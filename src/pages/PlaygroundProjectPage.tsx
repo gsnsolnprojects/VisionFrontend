@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, Check, ChevronDown, Circle, Compass, ImagePlus, Loader2, Lock, PenLine, Plus, Upload, X } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Circle, Compass, ImagePlus, Loader2, Lock, PenLine, Plus, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -25,6 +25,7 @@ import { PlaygroundTestStep } from "@/components/playground/PlaygroundTestStep";
 import { PlaygroundReportStep } from "@/components/playground/PlaygroundReportStep";
 import { getSamples } from "@/lib/api/samples";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
+import { DeleteProjectModal } from "@/components/dashboard/DeleteProjectModal";
 
 /**
  * Playground project screen (/dataset/:id for Playground workspaces): the Upload & label →
@@ -153,7 +154,8 @@ export const PlaygroundProjectPage: React.FC = () => {
     window.scrollTo({ top: 0 });
   };
   const { toast } = useToast();
-  const { company, profile } = useProfile();
+  const { company, profile, user } = useProfile();
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const planAccess = usePlanAccess();
   const limits = planAccess.data?.access?.limits;
 
@@ -517,8 +519,37 @@ export const PlaygroundProjectPage: React.FC = () => {
             <DropdownMenuItem onSelect={() => navigate("/dashboard")} className="gap-2">
               <Plus className="h-4 w-4" /> Start a new mission
             </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => setConfirmDelete(true)}
+              className="gap-2 text-destructive focus:bg-destructive/10 focus:text-destructive"
+            >
+              <Trash2 className="h-4 w-4" /> Delete this project
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <DeleteProjectModal
+          open={confirmDelete}
+          onOpenChange={setConfirmDelete}
+          companyName={company?.name ?? ""}
+          projectName={project.name ?? ""}
+          note={
+            <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+              <li>GSN's ready-made samples and models aren't affected: only your copy in this project goes.</li>
+              <li>Deleting doesn't give back this month's training runs or predictions.</li>
+            </ul>
+          }
+          onDeleted={() => {
+            try {
+              const key = `visionm_playground_last_project_${user?.id ?? "anon"}`;
+              if (localStorage.getItem(key) === project.id) localStorage.removeItem(key);
+            } catch {
+              // a convenience only
+            }
+            toast({ title: "Project deleted", description: `"${missionName}" is gone, and its project slot is free again.` });
+            void planAccess.refresh();
+            navigate("/dashboard");
+          }}
+        />
 
         <div className="flex flex-wrap items-center gap-2">
           {versions.length > 1 && (

@@ -1074,7 +1074,7 @@ const Dashboard = () => {
     if (typeof projectLimit === "number" && projectCount >= projectLimit) {
       toast({
         title: "Project limit reached",
-        description: `Your plan includes ${projectLimit} project${projectLimit === 1 ? "" : "s"}. Upgrade in Settings → Billing for more.`,
+        description: `Your plan includes ${projectLimit} project${projectLimit === 1 ? "" : "s"}. Delete one to free a slot (open it, then choose Delete this project in its project menu), or upgrade in Settings → Billing.`,
         variant: "destructive",
       });
       return false;

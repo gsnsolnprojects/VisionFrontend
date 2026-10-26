@@ -22,6 +22,8 @@ export interface DeleteProjectModalProps {
   companyName: string;
   projectName: string;
   onDeleted?: () => void;
+  /** Extra lines shown above "This action cannot be undone" */
+  note?: React.ReactNode;
 }
 
 export function DeleteProjectModal({
@@ -30,6 +32,7 @@ export function DeleteProjectModal({
   companyName,
   projectName,
   onDeleted,
+  note,
 }: DeleteProjectModalProps) {
   const [summary, setSummary] = useState<ProjectSummaryResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -114,6 +117,7 @@ export function DeleteProjectModal({
                     {summary.trainingJobsCount} training job{summary.trainingJobsCount !== 1 ? "s" : ""},{" "}
                     {summary.inferenceJobsCount} inference run{summary.inferenceJobsCount !== 1 ? "s" : ""}.
                   </p>
+                  {note}
                   <p className="text-muted-foreground text-sm">This action cannot be undone.</p>
                 </>
               )}
