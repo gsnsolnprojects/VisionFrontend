@@ -3964,8 +3964,8 @@ const PredictionPage = () => {
                                     <Cell key={entry.key} fill={LIVE_ANALYTICS_PIE_COLORS[index % LIVE_ANALYTICS_PIE_COLORS.length]} />
                                   ))}
                                 </Pie>
-                                <ChartTooltip content={<ChartTooltipContent />} />
-                                <ChartLegend content={<ChartLegendContent />} />
+                                <ChartTooltip content={<ChartTooltipContent nameKey="key" />} />
+                                <ChartLegend content={<ChartLegendContent nameKey="key" />} />
                               </PieChart>
                             </ChartContainer>
                           </div>
