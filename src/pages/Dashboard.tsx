@@ -48,6 +48,7 @@ import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
 import { PlaygroundOverview } from "@/components/dashboard/PlaygroundOverview";
 import type { Mission, MissionMode } from "@/components/dashboard/IndustryPicker";
 import { getSamples, importSampleDataset, importSampleModel } from "@/lib/api/samples";
+import { apiRequest } from "@/lib/api/config";
 import { RoleBadge } from "@/components/RoleBadge";
 import { usePlanAccess, PLAN_REQUIRED_MESSAGE, BILLING_ROUTE } from "@/contexts/plan-access-context";
 import { useWorkspaceKind } from "@/lib/workspaceKind";
@@ -1086,14 +1087,17 @@ const Dashboard = () => {
 
   /**
    * Playground mission: open its project if it exists, otherwise create it (named after the
-   * mission, "Industry · Mission" as description). Guided and quick-try missions add the GSN
-   * sample; the quick try also adds GSN's trained model and opens Test & evaluate on the
-   * student's own photos.
+   * mission, "Industry · Mission" as description). Practice, guided and quick-try missions add
+   * the GSN sample; practice opens label practice on it; the quick try also adds GSN's trained
+   * model and opens Test & evaluate on the student's own photos.
    */
   const startMission = async (industryName: string, mission: Mission, mode: MissionMode) => {
     if (!user || !profile?.company_id) return;
     const useSample = mode !== "own" && !!mission.sample;
-    const openProject = (id: string) => navigate(mode === "try" ? `/dataset/${id}?step=test&try=1` : `/dataset/${id}`);
+    const openProject = (id: string) =>
+      navigate(
+        mode === "try" ? `/dataset/${id}?step=test&try=1` : mode === "practice" ? `/dataset/${id}?step=practice` : `/dataset/${id}`
+      );
 
     /** GSN's best trained model for the sample, added to the project (already added is fine) */
     const addReadyMadeModel = async (projectName: string) => {
@@ -1110,8 +1114,35 @@ const Dashboard = () => {
       }
     };
 
+    /** GSN's sample dataset for the mission, added to the project */
+    const addSample = async (projectName: string) => {
+      const { datasets } = await getSamples();
+      const wanted = mission.sample!.trim().toLowerCase();
+      const sample = datasets.find((d) => d.project.trim().toLowerCase() === wanted);
+      if (!sample) throw new Error("This sample isn't in the library right now.");
+      await importSampleDataset(sample.id, projectName);
+    };
+
+    /** An existing mission project made before its sample could be added: add it now */
+    const ensureSample = async (projectName: string) => {
+      const q = new URLSearchParams({ company: company?.name ?? "", project: projectName, includeInactive: "true" });
+      const json = await apiRequest<{ datasets?: { isLinkedSample?: boolean }[] } | { isLinkedSample?: boolean }[]>(`/datasets?${q}`);
+      const items = Array.isArray(json) ? json : json.datasets ?? [];
+      if (!items.some((d) => d.isLinkedSample)) await addSample(projectName);
+    };
+
     const existing = projects.find((p) => String(p.name).trim().toLowerCase() === mission.title.toLowerCase());
     if (existing) {
+      if (useSample && mode !== "try") {
+        setLoading(true);
+        try {
+          await ensureSample(existing.name);
+        } catch (err) {
+          toast({ title: "Couldn't add GSN's sample", description: (err as Error).message, variant: "destructive" });
+        } finally {
+          setLoading(false);
+        }
+      }
       if (mode === "try") {
         setLoading(true);
         try {
@@ -1145,11 +1176,7 @@ const Dashboard = () => {
 
       if (useSample) {
         try {
-          const { datasets } = await getSamples();
-          const wanted = mission.sample!.trim().toLowerCase();
-          const sample = datasets.find((d) => d.project.trim().toLowerCase() === wanted);
-          if (!sample) throw new Error("This sample isn't in the library right now.");
-          await importSampleDataset(sample.id, project.name);
+          await addSample(project.name);
           if (mode === "try") await addReadyMadeModel(project.name);
         } catch (sampleError) {
           toast({

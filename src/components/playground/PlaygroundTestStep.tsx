@@ -170,7 +170,9 @@ export const PlaygroundTestStep: React.FC<{
     )
       .then((json) => {
         if (cancelled) return;
-        const names = json.classes.length ? json.classes.map((c) => c.name) : classNames;
+        const names: string[] = [];
+        for (const c of json.classes) names[c.index] = c.name;
+        if (!json.classes.length) names.push(...classNames);
         const map: Record<string, Set<string>> = {};
         for (const f of testFiles) {
           const boxes = json.labels[f.id];

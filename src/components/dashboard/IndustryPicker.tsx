@@ -10,6 +10,7 @@ import {
   CupSoda,
   Hexagon,
   Lock,
+  PenLine,
   Pill,
   Plug,
   Shirt,
@@ -27,7 +28,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * Top of the Playground overview: "Pick a world" hero, the six industry cards and the picked
- * industry's three challenges (guided sample, quick try of GSN's trained model, own project).
+ * industry's four challenges (label practice and guided training on a GSN sample, quick try of GSN's
+ * trained model, own project).
  * The picked industry is remembered per user in this browser and drives the drawings (same
  * drawings as the landing page, in the same order).
  */
@@ -39,8 +41,11 @@ export interface Mission {
   sample?: string;
 }
 
-/** guided: labelled sample to explore and train on; try: GSN's trained model on your photos; own: your images */
-export type MissionMode = "guided" | "try" | "own";
+/**
+ * practice: label GSN's sample photos for practice (labels aren't kept); guided: the labelled sample to
+ * explore and train on; try: GSN's trained model on your photos; own: your images
+ */
+export type MissionMode = "practice" | "guided" | "try" | "own";
 
 interface Industry {
   id: string;
@@ -342,14 +347,62 @@ const Challenges: React.FC<{
         </span>
       </div>
       <p className="mt-3 text-sm text-muted-foreground">
-        Explore labelled examples, try a ready-made model, or build your own. Each path teaches the same inspection
-        ideas.
+        Practise labelling, train on labelled examples, try a ready-made model, or build your own. Each path teaches
+        the same inspection ideas.
       </p>
 
-      <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
-        {/* 1. Guided challenge on GSN's sample */}
+      <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+        {/* 1. Label practice on GSN's sample: the practice labels are never saved */}
         <ChallengeCard
-          kicker="01 · Guided challenge"
+          kicker="01 · Learn to label"
+          title="Learn to label"
+          picture={
+            <div className="relative h-full w-full">
+              {sample ? (
+                <AuthenticatedImage
+                  src={sampleDatasetThumbnailUrl(sample.id)}
+                  alt={`A ${guided?.photoNoun ?? "sample"} photo to practise labelling on`}
+                  className="h-full w-full object-cover opacity-80"
+                />
+              ) : (
+                <IndustryArt index={artIndex} />
+              )}
+              <span
+                className="absolute left-[38%] top-[30%] h-[38%] w-[26%] rounded-sm border-2 border-dashed border-[#e9ff65]"
+                aria-hidden="true"
+              />
+              <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded bg-[#e9ff65] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#171f1b]">
+                <PenLine className="h-3 w-3" aria-hidden="true" /> Practice
+              </span>
+            </div>
+          }
+          soon={!guided || (!loading && !sample) ? "Label practice coming soon" : undefined}
+          onLocked={onChoosePlan}
+          action={
+            guidedMission
+              ? {
+                  label: "Start practising",
+                  primary: true,
+                  Icon: PenLine,
+                  onClick: () => onStartMission(industry.name, guidedMission, "practice"),
+                }
+              : undefined
+          }
+        >
+          {guided && sample ? (
+            <>
+              Draw boxes around {guided.finds} on real {guided.photoNoun} photos. Stuck? Ask for a hint. Check each
+              photo against GSN&apos;s labels, then watch auto-label do the rest.
+              <span className="mt-1 block text-xs">Practice only: your labels aren&apos;t saved.</span>
+            </>
+          ) : (
+            "We're preparing a labelled GSN dataset for this industry. Start your own project meanwhile."
+          )}
+        </ChallengeCard>
+
+        {/* 2. Guided challenge on GSN's sample */}
+        <ChallengeCard
+          kicker="02 · Train & test"
           title={guided?.title ?? "Guided challenge"}
           picture={
             sample ? (
@@ -368,7 +421,6 @@ const Challenges: React.FC<{
             guidedMission
               ? {
                   label: "Start guided challenge",
-                  primary: true,
                   Icon: ArrowRight,
                   onClick: () => onStartMission(industry.name, guidedMission, "guided"),
                 }
@@ -378,18 +430,19 @@ const Challenges: React.FC<{
           {guided && sample ? (
             <>
               <strong className="font-medium text-foreground">
-                {sample.totalImages} labelled {guided.photoNoun} photos
+                {sample.totalImages} {guided.photoNoun} photos
               </strong>{" "}
-              from a real inspection line: find {guided.finds}. Explore the labels, train a model, then test it.
+              from a real inspection line, already labelled by GSN&apos;s team: {guided.finds}. Look through the labels,
+              train your own model on them, then test it on photos it has never seen.
             </>
           ) : (
             "We're preparing a labelled GSN dataset for this industry. Start your own project meanwhile."
           )}
         </ChallengeCard>
 
-        {/* 2. Quick try: GSN's trained model on the student's own photos */}
+        {/* 3. Quick try: GSN's trained model on the student's own photos */}
         <ChallengeCard
-          kicker="02 · Quick try"
+          kicker="03 · Quick try"
           title="Try a ready-made model"
           picture={
             <div className="relative h-full w-full">
@@ -421,9 +474,9 @@ const Challenges: React.FC<{
           )}
         </ChallengeCard>
 
-        {/* 3. The student's own project */}
+        {/* 4. The student's own project */}
         <ChallengeCard
-          kicker="03 · Your own project"
+          kicker="04 · Your own project"
           title={industry.own.title}
           picture={
             <ol className="flex h-full flex-col justify-center gap-2 px-5 text-xs text-[#f5f5ee]">

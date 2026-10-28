@@ -23,13 +23,15 @@ import { cn } from "@/lib/utils";
 import { PlaygroundTrainStep } from "@/components/playground/PlaygroundTrainStep";
 import { PlaygroundTestStep } from "@/components/playground/PlaygroundTestStep";
 import { PlaygroundReportStep } from "@/components/playground/PlaygroundReportStep";
+import { PlaygroundLabelPractice } from "@/components/playground/PlaygroundLabelPractice";
 import { getSamples } from "@/lib/api/samples";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { DeleteProjectModal } from "@/components/dashboard/DeleteProjectModal";
 
 /**
  * Playground project screen (/dataset/:id for Playground workspaces): the Upload & label →
- * Train → Test & evaluate → Report path (?step=train / test / report open steps 2 to 4). Shows the project's dataset as an
+ * Train → Test & evaluate → Report path (?step=train / test / report open steps 2 to 4; ?step=practice opens
+ * Learn to label on a GSN sample). Shows the project's dataset as an
  * image grid with each image's labelled boxes drawn on it. A GSN sample dataset is view-only;
  * the company's own dataset can take more images and each image opens the labelling tool.
  * Other plans keep DatasetManager.
@@ -148,8 +150,9 @@ export const PlaygroundProjectPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const stepParam = searchParams.get("step");
-  const step = stepParam === "train" || stepParam === "test" || stepParam === "report" ? stepParam : "label";
-  const goToStep = (next: "label" | "train" | "test" | "report") => {
+  const step =
+    stepParam === "train" || stepParam === "test" || stepParam === "report" || stepParam === "practice" ? stepParam : "label";
+  const goToStep = (next: "label" | "train" | "test" | "report" | "practice") => {
     setSearchParams(next === "label" ? {} : { step: next });
     window.scrollTo({ top: 0 });
   };
@@ -232,7 +235,7 @@ export const PlaygroundProjectPage: React.FC = () => {
   useEffect(() => {
     if (!project) return;
     const mission = (project.description ?? "").includes(" · ") ? (project.description ?? "").split(" · ")[1] : project.name;
-    const stepLabel = { label: "Upload & label", train: "Train", test: "Test & evaluate", report: "Report" }[step];
+    const stepLabel = { label: "Upload & label", train: "Train", test: "Test & evaluate", report: "Report", practice: "Learn to label" }[step];
     setBreadcrumbs([
       { label: "Dashboard", href: "/dashboard" },
       { label: mission, href: `/dataset/${project.id}` },
@@ -332,7 +335,10 @@ export const PlaygroundProjectPage: React.FC = () => {
     )
       .then((json) => {
         if (cancelled) return;
-        setClassNames(json.classes.map((c) => c.name));
+        // By index: a class hidden in the Playground (e.g. "product") leaves a gap
+        const names: string[] = [];
+        for (const c of json.classes) names[c.index] = c.name;
+        setClassNames(names);
         setBoxes((prev) => {
           const next = { ...prev };
           for (const id of missing) next[id] = json.labels[id] ?? [];
@@ -466,6 +472,13 @@ export const PlaygroundProjectPage: React.FC = () => {
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-foreground">Give your model good examples.</h1>
             <p className="mt-1 text-sm text-muted-foreground">Add images, check their labels and keep test images separate.</p>
+          </div>
+        ) : step === "practice" ? (
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">Learn to label.</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Practise on real inspection photos, with hints when you&apos;re stuck and feedback on every box.
+            </p>
           </div>
         ) : (
           <div />
@@ -639,6 +652,22 @@ export const PlaygroundProjectPage: React.FC = () => {
         ) : (
           <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">
             Add a dataset in step 1 first: the model needs labelled photos to learn from.
+          </p>
+        )
+      )}
+
+      {step === "practice" && (
+        dataset && selectedId && isSample ? (
+          loadingFiles ? (
+            <div className="flex justify-center rounded-2xl border bg-card py-16">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <PlaygroundLabelPractice datasetId={selectedId} files={files} onContinue={() => goToStep("label")} />
+          )
+        ) : (
+          <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">
+            Label practice works on GSN sample datasets. Start it from the overview with &ldquo;Learn to label&rdquo;.
           </p>
         )
       )}
