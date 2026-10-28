@@ -2,8 +2,13 @@ import React from "react";
 
 /**
  * Line drawings for the landing page's industry tabs: one product per industry with a
- * single highlighted defect. Same palette as the rest of the dark section.
+ * single highlighted defect. Same palette as the rest of the dark section. `highlight` changes
+ * how the defect is marked: "roi" (landing page), "labelled" (a finished label) or "drawing"
+ * (a box being drawn, for label practice).
  */
+
+type Highlight = "roi" | "labelled" | "drawing";
+const HighlightContext = React.createContext<Highlight>("roi");
 
 const GRID = "#485840";
 const PART = "#88987c";
@@ -12,7 +17,41 @@ const FILL = "#171f1b";
 const LIME = "#e9ff65";
 
 /** Lime box around the defect with a leader line to the "REGION OF INTEREST" label */
-const Callout: React.FC<{ x: number; y: number; w: number; h: number }> = ({ x, y, w, h }) => (
+const Callout: React.FC<{ x: number; y: number; w: number; h: number }> = ({ x, y, w, h }) => {
+  const highlight = React.useContext(HighlightContext);
+  if (highlight === "labelled") {
+    return (
+      <g>
+        <rect x={x} y={y} width={w} height={h} fill="none" stroke={LIME} strokeWidth="2.5" />
+        <rect x={x - 1.25} y={y - 17} width={66} height={16} fill={LIME} />
+        <text x={x + 4} y={y - 5} fontSize="10" fontWeight="bold" fontFamily="monospace" fill={FILL}>
+          LABELLED
+        </text>
+      </g>
+    );
+  }
+  if (highlight === "drawing") {
+    const cx = x + w + 4;
+    const cy = y + h + 4;
+    return (
+      <g>
+        <rect x={x - 6} y={y - 6} width={w + 12} height={h + 12} fill={LIME} fillOpacity="0.08" stroke={LIME} strokeWidth="2" strokeDasharray="7 5" />
+        {/* mouse pointer at the corner being dragged */}
+        <path
+          d={`M${cx} ${cy}l0 22l6-6l5 10l5-2.5l-5-10l8.5 0z`}
+          fill="#f5f5ee"
+          stroke={FILL}
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
+        <rect x={x - 6} y={y - 26} width={86} height={16} fill="#242f27" />
+        <text x={x - 2} y={y - 14} fontSize="10" fontFamily="monospace" fill={LIME}>
+          DRAW A BOX
+        </text>
+      </g>
+    );
+  }
+  return (
   <g>
     <rect x={x} y={y} width={w} height={h} fill="none" stroke={LIME} />
     <path d={`M${x + w} ${y}l30-30h120`} fill="none" stroke={LIME} />
@@ -22,7 +61,8 @@ const Callout: React.FC<{ x: number; y: number; w: number; h: number }> = ({ x, 
       REGION OF INTEREST
     </text>
   </g>
-);
+  );
+};
 
 const hexagon = (cx: number, cy: number, r: number) =>
   Array.from({ length: 6 }, (_, i) => {
@@ -207,9 +247,10 @@ const ART: { label: string; Drawing: React.FC }[] = [
   { label: "Woven fabric with a pulled thread and a hole highlighted", Drawing: Textiles },
 ];
 
-export const IndustryArt: React.FC<{ index: number }> = ({ index }) => {
+export const IndustryArt: React.FC<{ index: number; highlight?: Highlight }> = ({ index, highlight = "roi" }) => {
   const { label, Drawing } = ART[index] ?? ART[0];
   return (
+    <HighlightContext.Provider value={highlight}>
     <svg viewBox="0 0 500 260" role="img" aria-label={label}>
       <defs>
         <pattern id="vm2-g" width="25" height="25" patternUnits="userSpaceOnUse">
@@ -219,5 +260,6 @@ export const IndustryArt: React.FC<{ index: number }> = ({ index }) => {
       <rect width="500" height="260" fill="url(#vm2-g)" />
       <Drawing />
     </svg>
+    </HighlightContext.Provider>
   );
 };

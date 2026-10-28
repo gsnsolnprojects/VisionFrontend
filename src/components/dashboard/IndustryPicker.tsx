@@ -3,7 +3,6 @@ import { motion } from "framer-motion";
 import {
   ArrowRight,
   ArrowUpRight,
-  Camera,
   Check,
   Clock,
   Cpu,
@@ -15,21 +14,19 @@ import {
   Plug,
   Shirt,
   Sparkles,
-  Upload,
   type LucideIcon,
 } from "lucide-react";
 import { fadeInUpVariants } from "@/utils/animations";
 import { IndustryArt } from "@/components/landing/IndustryArt";
 import { Button } from "@/components/ui/button";
-import { AuthenticatedImage } from "@/components/AuthenticatedImage";
 import { useProfile } from "@/hooks/useProfile";
-import { getSamples, sampleDatasetThumbnailUrl, type SampleDataset, type SampleModel } from "@/lib/api/samples";
+import { getSamples, type SampleDataset, type SampleModel } from "@/lib/api/samples";
 import { cn } from "@/lib/utils";
 
 /**
  * Top of the Playground overview: "Pick a world" hero, the six industry cards and the picked
- * industry's four challenges (label practice and guided training on a GSN sample, quick try of GSN's
- * trained model, own project).
+ * industry's three challenges (guided challenge and label practice on a GSN sample; own project,
+ * not open yet).
  * The picked industry is remembered per user in this browser and drives the drawings (same
  * drawings as the landing page, in the same order).
  */
@@ -310,6 +307,13 @@ const ChallengeCard: React.FC<{
   </article>
 );
 
+/** Lime tag in a card picture's top-left corner */
+const Tag: React.FC<{ Icon: LucideIcon; children: React.ReactNode }> = ({ Icon, children }) => (
+  <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded bg-[#e9ff65] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#171f1b]">
+    <Icon className="h-3 w-3" aria-hidden="true" /> {children}
+  </span>
+);
+
 const Challenges: React.FC<{
   industry: Industry;
   samples: Samples | null;
@@ -320,9 +324,6 @@ const Challenges: React.FC<{
   const guided = industry.guided;
   const loading = samples === null;
   const sample = guided ? samples?.datasets.find((d) => sameProject(d.project, guided.sample)) : undefined;
-  const model = guided
-    ? samples?.models.find((m) => sameProject(m.project, guided.sample) && m.modelType !== "RF_DETR")
-    : undefined;
   const guidedMission: Mission | null = guided ? { title: guided.title, sample: guided.sample } : null;
 
   return (
@@ -347,73 +348,20 @@ const Challenges: React.FC<{
         </span>
       </div>
       <p className="mt-3 text-sm text-muted-foreground">
-        Practise labelling, train on labelled examples, try a ready-made model, or build your own. Each path teaches
-        the same inspection ideas.
+        Start with a guided challenge, practise labelling, and soon build your own. Each path teaches the same
+        inspection ideas.
       </p>
 
-      <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
-        {/* 1. Label practice on GSN's sample: the practice labels are never saved */}
+      <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+        {/* 1. Guided challenge on GSN's labelled sample */}
         <ChallengeCard
-          kicker="01 · Learn to label"
-          title="Learn to label"
-          picture={
-            <div className="relative h-full w-full">
-              {sample ? (
-                <AuthenticatedImage
-                  src={sampleDatasetThumbnailUrl(sample.id)}
-                  alt={`A ${guided?.photoNoun ?? "sample"} photo to practise labelling on`}
-                  className="h-full w-full object-cover opacity-80"
-                />
-              ) : (
-                <IndustryArt index={artIndex} />
-              )}
-              <span
-                className="absolute left-[38%] top-[30%] h-[38%] w-[26%] rounded-sm border-2 border-dashed border-[#e9ff65]"
-                aria-hidden="true"
-              />
-              <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded bg-[#e9ff65] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#171f1b]">
-                <PenLine className="h-3 w-3" aria-hidden="true" /> Practice
-              </span>
-            </div>
-          }
-          soon={!guided || (!loading && !sample) ? "Label practice coming soon" : undefined}
-          onLocked={onChoosePlan}
-          action={
-            guidedMission
-              ? {
-                  label: "Start practising",
-                  primary: true,
-                  Icon: PenLine,
-                  onClick: () => onStartMission(industry.name, guidedMission, "practice"),
-                }
-              : undefined
-          }
-        >
-          {guided && sample ? (
-            <>
-              Draw boxes around {guided.finds} on real {guided.photoNoun} photos. Stuck? Ask for a hint. Check each
-              photo against GSN&apos;s labels, then watch auto-label do the rest.
-              <span className="mt-1 block text-xs">Practice only: your labels aren&apos;t saved.</span>
-            </>
-          ) : (
-            "We're preparing a labelled GSN dataset for this industry. Start your own project meanwhile."
-          )}
-        </ChallengeCard>
-
-        {/* 2. Guided challenge on GSN's sample */}
-        <ChallengeCard
-          kicker="02 · Train & test"
+          kicker="01 · Guided challenge"
           title={guided?.title ?? "Guided challenge"}
           picture={
-            sample ? (
-              <AuthenticatedImage
-                src={sampleDatasetThumbnailUrl(sample.id)}
-                alt={`A labelled ${guided?.photoNoun ?? "sample"} photo from GSN's dataset`}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <IndustryArt index={artIndex} />
-            )
+            <div className="relative h-full w-full">
+              <IndustryArt index={artIndex} highlight="labelled" />
+              <Tag Icon={Sparkles}>Labelled by GSN</Tag>
+            </div>
           }
           soon={!guided || (!loading && !sample) ? "Guided sample coming soon" : undefined}
           onLocked={onChoosePlan}
@@ -421,6 +369,7 @@ const Challenges: React.FC<{
             guidedMission
               ? {
                   label: "Start guided challenge",
+                  primary: true,
                   Icon: ArrowRight,
                   onClick: () => onStartMission(industry.name, guidedMission, "guided"),
                 }
@@ -436,51 +385,50 @@ const Challenges: React.FC<{
               train your own model on them, then test it on photos it has never seen.
             </>
           ) : (
-            "We're preparing a labelled GSN dataset for this industry. Start your own project meanwhile."
+            "We're preparing a labelled GSN dataset for this industry."
           )}
         </ChallengeCard>
 
-        {/* 3. Quick try: GSN's trained model on the student's own photos */}
+        {/* 2. Label practice on the same sample: the practice labels are never saved */}
         <ChallengeCard
-          kicker="03 · Quick try"
-          title="Try a ready-made model"
+          kicker="02 · Learn to label"
+          title="Learn to label"
           picture={
             <div className="relative h-full w-full">
-              <IndustryArt index={artIndex} />
-              <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded bg-[#e9ff65] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#171f1b]">
-                <Sparkles className="h-3 w-3" aria-hidden="true" /> Trained by GSN
-              </span>
+              <IndustryArt index={artIndex} highlight="drawing" />
+              <Tag Icon={PenLine}>Practice</Tag>
             </div>
           }
-          soon={!guided || (!loading && !model) ? "Ready-made model coming soon" : undefined}
+          soon={!guided || (!loading && !sample) ? "Label practice coming soon" : undefined}
           onLocked={onChoosePlan}
           action={
             guidedMission
               ? {
-                  label: "Try the ready-made model",
-                  Icon: Camera,
-                  onClick: () => onStartMission(industry.name, guidedMission, "try"),
+                  label: "Start practising",
+                  Icon: PenLine,
+                  onClick: () => onStartMission(industry.name, guidedMission, "practice"),
                 }
               : undefined
           }
         >
-          {guided && model ? (
+          {guided && sample ? (
             <>
-              Already trained by GSN to spot {guided.finds}. Upload up to 30 photos of {guided.photoNoun}s and see what
-              it finds in seconds. No labelling or training needed.
+              Draw boxes around {guided.finds} on real {guided.photoNoun} photos. Stuck? Ask for a hint. Check each
+              photo against GSN&apos;s labels, then watch auto-label do the rest.
+              <span className="mt-1 block text-xs">Practice only: your labels aren&apos;t saved.</span>
             </>
           ) : (
-            "A model trained by GSN will let you test your own photos straight away. Not available for this industry yet."
+            "Label practice needs a labelled GSN dataset, which we're preparing for this industry."
           )}
         </ChallengeCard>
 
-        {/* 4. The student's own project */}
+        {/* 3. The student's own project: not open yet */}
         <ChallengeCard
-          kicker="04 · Your own project"
+          kicker="03 · Your own project"
           title={industry.own.title}
           picture={
-            <ol className="flex h-full flex-col justify-center gap-2 px-5 text-xs text-[#f5f5ee]">
-              {["Pick one defect", "Take 30–100 photos", "Upload & draw boxes", "Train and test"].map((step, i) => (
+            <ol className="flex h-full flex-col justify-center gap-1.5 px-5 text-xs text-[#f5f5ee]">
+              {["Pick one defect", "Upload your photos", "Label them yourself", "Train and test"].map((step, i) => (
                 <li key={step} className="flex items-center gap-2.5">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#e9ff65] text-[10px] text-[#e9ff65]">
                     {i + 1}
@@ -490,16 +438,10 @@ const Challenges: React.FC<{
               ))}
             </ol>
           }
-          onLocked={onChoosePlan}
-          action={{
-            label: "Upload my images",
-            Icon: Upload,
-            onClick: () => onStartMission(industry.name, { title: industry.own.title }, "own"),
-          }}
+          soon="Coming soon"
         >
-          Pick one defect, e.g. {industry.own.example}. Take 30–100 photos, about half good and half with the defect, at
-          the same angle and light. Then draw a box around each defect.
-          <span className="mt-1 block text-xs">Up to 500 images, 5 MB each.</span>
+          Coming later: upload your own photos, label them yourself, train your own model and test it. Start with one
+          defect, e.g. {industry.own.example}.
         </ChallengeCard>
       </div>
     </motion.section>
