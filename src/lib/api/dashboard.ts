@@ -59,8 +59,9 @@ export async function deleteProject(
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
+    // The message says why (e.g. what is still running); error is only a short title
     const msg =
-      data?.error ?? data?.message ?? (res.status === 403 ? "You don't have permission to delete this project." : `Request failed: ${res.status}`);
+      data?.message ?? data?.error ?? (res.status === 403 ? "You don't have permission to delete this project." : `Request failed: ${res.status}`);
     throw new Error(msg);
   }
   return data as DeleteProjectResponse;
