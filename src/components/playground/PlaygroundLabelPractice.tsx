@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { apiRequest, apiUrl, getAuthHeaders } from "@/lib/api/config";
 import { markPracticeDone } from "@/lib/api/dashboard";
+import { useProfile } from "@/hooks/useProfile";
 import { cn } from "@/lib/utils";
 
 /**
@@ -104,6 +105,32 @@ const LABEL_HINTS: Record<string, string> = {
 const hintOf = (name: string) => LABEL_HINTS[name.toLowerCase().replace(/[^a-z]/g, "")];
 const colorOf = (c: number) => BOX_COLORS[c % BOX_COLORS.length];
 const emptyPhoto = (): PhotoState => ({ boxes: [], hinted: false, checked: false, score: null, feedback: [] });
+
+/**
+ * Practice progress kept in this browser only (never sent to the server), so a reload carries on
+ * where the student was. Kept for SAVED_DAYS; dropped if the practice photos have changed.
+ */
+interface SavedPractice {
+  savedAt: number;
+  photoIds: string[];
+  states: Record<string, PhotoState>;
+  index: number;
+  phase: "practice" | "autolabel" | "done";
+  autoRunId: string | null;
+}
+const SAVED_DAYS = 14;
+const savedKey = (userId: string, datasetId: string) => `vm.labelPractice.v1.${userId}.${datasetId}`;
+
+function loadSaved(key: string, photoIds: string[]): SavedPractice | null {
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) ?? "null") as SavedPractice | null;
+    if (!saved || Date.now() - saved.savedAt > SAVED_DAYS * 24 * 60 * 60 * 1000) return null;
+    if (saved.photoIds.join(",") !== photoIds.join(",")) return null;
+    return saved;
+  } catch {
+    return null;
+  }
+}
 
 function iou(a: Box, b: Box) {
   const x1 = Math.max(a.x, b.x);
@@ -650,6 +677,8 @@ export const PlaygroundLabelPractice: React.FC<{
   /** Practice finished: go on to training on GSN's labels */
   onContinue: () => void;
 }> = ({ datasetId, files, onContinue }) => {
+  const { user } = useProfile();
+  const storageKey = user?.id ? savedKey(user.id, datasetId) : null;
   const [phase, setPhase] = useState<"loading" | "practice" | "autolabel" | "done">("loading");
   const [classNames, setClassNames] = useState<string[]>([]);
   /** Labels the student can draw (class indexes; a class hidden in the Playground is left out) */
@@ -699,9 +728,15 @@ export const PlaygroundLabelPractice: React.FC<{
         setTruth(json.labels);
         setPractice(picked);
         setPool(rest);
-        setStates(Object.fromEntries(picked.map((f) => [f.id, emptyPhoto()])));
-        setIndex(0);
-        setPhase("practice");
+        // Carry on from this browser's saved progress, if any
+        const saved = storageKey ? loadSaved(storageKey, picked.map((f) => f.id)) : null;
+        setStates({ ...Object.fromEntries(picked.map((f) => [f.id, emptyPhoto()])), ...saved?.states });
+        setIndex(Math.min(saved?.index ?? 0, picked.length - 1));
+        setAutoRun(saved?.autoRunId ? { id: saved.autoRunId, processed: 0, total: rest.length } : null);
+        setAutoResults(null);
+        setAutoError(null);
+        // Auto-label only comes back with its run (its results stay on the server for an hour)
+        setPhase(saved?.phase === "autolabel" && !saved.autoRunId ? "practice" : saved?.phase ?? "practice");
       } catch (err) {
         if (!cancelled) setLoadError((err as Error).message);
       }
@@ -709,7 +744,25 @@ export const PlaygroundLabelPractice: React.FC<{
     return () => {
       cancelled = true;
     };
-  }, [datasetId, files]);
+  }, [datasetId, files, storageKey]);
+
+  // Save progress after every change (the selected label, hint and zoom are not kept)
+  useEffect(() => {
+    if (!storageKey || phase === "loading" || !practice.length) return;
+    const saved: SavedPractice = {
+      savedAt: Date.now(),
+      photoIds: practice.map((f) => f.id),
+      states,
+      index,
+      phase,
+      autoRunId: autoRun?.id ?? null,
+    };
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(saved));
+    } catch {
+      // Storage full or blocked: practice still works, it just won't survive a reload
+    }
+  }, [storageKey, phase, practice, states, index, autoRun?.id]);
 
   const current = practice[index] ?? null;
   const state = current ? states[current.id] ?? emptyPhoto() : emptyPhoto();
