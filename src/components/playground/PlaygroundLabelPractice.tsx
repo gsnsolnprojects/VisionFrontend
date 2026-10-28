@@ -5,8 +5,12 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
+  Hand,
   Lightbulb,
   Loader2,
+  Minus,
+  PenLine,
+  Plus,
   RotateCcw,
   Sparkles,
   Trash2,
@@ -34,6 +38,9 @@ const CANDIDATES = 150;
 /** Boxes overlapping at least this much (intersection over union) count as the same box */
 const GOOD_IOU = 0.5;
 const MIN_OVERLAP = 0.1;
+/** Photo zoom: up to 8x, in steps of 1.25x (a wheel click or a +/- press) */
+const MAX_ZOOM = 8;
+const ZOOM_STEP = 1.25;
 // Same colours as the project grid and the labelling tool, by class index
 const BOX_COLORS = ["#ef4444", "#10b981", "#3b82f6", "#f59e0b", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"];
 
@@ -255,9 +262,11 @@ const BoxLayer: React.FC<{
   onSelect?: (i: number) => void;
   /** Write each box's label name above it */
   named?: boolean;
-}> = ({ boxes, w, h, classNames, dashed, colors, selected, onSelect, named }) => {
-  const stroke = Math.max(w, h) / 260;
-  const fontSize = Math.max(w, h) / 55;
+  /** 1 / zoom, so lines and names keep the same size on screen when zoomed in */
+  scale?: number;
+}> = ({ boxes, w, h, classNames, dashed, colors, selected, onSelect, named, scale = 1 }) => {
+  const stroke = (Math.max(w, h) / 260) * scale;
+  const fontSize = (Math.max(w, h) / 55) * scale;
   return (
     <>
       {named &&
@@ -303,7 +312,25 @@ const BoxLayer: React.FC<{
   );
 };
 
-/** The photo being labelled: drag on it to draw a box in the chosen defect's colour */
+interface View {
+  zoom: number;
+  x: number;
+  y: number;
+}
+
+/** A view kept inside the photo, with the zoom between 1 and MAX_ZOOM */
+function clampView(zoom: number, x: number, y: number): View {
+  const z = Math.min(MAX_ZOOM, Math.max(1, zoom));
+  return { zoom: z, x: Math.min(1 - 1 / z, Math.max(0, x)), y: Math.min(1 - 1 / z, Math.max(0, y)) };
+}
+
+/** `v` zoomed to `zoom`, keeping the photo point at (fx, fy) of the frame (0-1) in place */
+function zoomView(v: View, zoom: number, fx: number, fy: number): View {
+  const z = Math.min(MAX_ZOOM, Math.max(1, zoom));
+  return clampView(z, v.x + fx / v.zoom - fx / z, v.y + fy / v.zoom - fy / z);
+}
+
+/** The photo being labelled: drag on it to draw a box in the chosen defect's colour; zoom and move to find small ones */
 const DrawingCanvas: React.FC<{
   datasetId: string;
   fileId: string;
@@ -323,13 +350,62 @@ const DrawingCanvas: React.FC<{
   const { photo, failed } = usePhoto(datasetId, fileId);
   const surface = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  // Zoom: the part of the photo in view, in 0-1 units (x/y = top-left corner, size = 1 / zoom)
+  const [view, setView] = useState<View>({ zoom: 1, x: 0, y: 0 });
+  const [mode, setMode] = useState<"draw" | "move">("draw");
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const [pan, setPan] = useState<{ cx: number; cy: number; x: number; y: number } | null>(null);
+  const hovering = useRef(false);
+  const moving = mode === "move" || spaceHeld;
 
+  // Each photo starts zoomed out to fit
+  useEffect(() => setView({ zoom: 1, x: 0, y: 0 }), [fileId]);
+
+  /** Zoom by `factor`, keeping the photo point at (fx, fy) of the frame (0-1) in place */
+  const zoomBy = (factor: number, fx = 0.5, fy = 0.5) => setView((v) => zoomView(v, v.zoom * factor, fx, fy));
+
+  // The mouse wheel zooms on the spot under the cursor (a non-passive listener, so the page doesn't scroll)
+  useEffect(() => {
+    const el = surface.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      const fx = (e.clientX - r.left) / r.width;
+      const fy = (e.clientY - r.top) / r.height;
+      setView((v) => zoomView(v, v.zoom * (e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP), fx, fy));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [photo]);
+
+  // Hold Space over the photo to move it, as in most labelling tools
+  useEffect(() => {
+    const isTyping = (e: KeyboardEvent) => /^(INPUT|TEXTAREA|SELECT)$/.test((e.target as HTMLElement | null)?.tagName ?? "");
+    const down = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || !hovering.current || isTyping(e)) return;
+      e.preventDefault();
+      setSpaceHeld(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code !== "Space") return;
+      if (hovering.current && !isTyping(e)) e.preventDefault();
+      setSpaceHeld(false);
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+  }, []);
+
+  /** Where the pointer is on the photo, in 0-1 units of the whole photo */
   const point = (e: React.PointerEvent) => {
     const r = surface.current!.getBoundingClientRect();
-    return {
-      x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)),
-      y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)),
-    };
+    const fx = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    const fy = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+    return { x: view.x + fx / view.zoom, y: view.y + fy / view.zoom };
   };
 
   if (failed) {
@@ -348,58 +424,145 @@ const DrawingCanvas: React.FC<{
         }
       : null;
 
+  const scale = 1 / view.zoom;
+  const cursor = moving ? (pan ? "grabbing" : "grab") : drawClass === null ? "not-allowed" : "crosshair";
+
   return (
-    <div className="flex justify-center rounded-xl bg-[#171f1b] p-2">
-      <div
-        ref={surface}
-        className="relative touch-none select-none"
-        style={{ width: `min(100%, calc(62vh * ${photo.w / photo.h}))`, aspectRatio: `${photo.w} / ${photo.h}`, cursor: drawClass === null ? "not-allowed" : "crosshair" }}
-        onPointerDown={(e) => {
-          if (e.button !== 0) return;
-          if (drawClass === null) {
-            onNeedLabel();
-            return;
-          }
-          const p = point(e);
-          e.currentTarget.setPointerCapture(e.pointerId);
-          onSelect(null);
-          setDraft({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
-        }}
-        onPointerMove={(e) => {
-          if (!draft) return;
-          const p = point(e);
-          setDraft((d) => (d ? { ...d, x1: p.x, y1: p.y } : d));
-        }}
-        onPointerUp={() => {
-          if (draftBox && draftBox.w > 0.01 && draftBox.h > 0.01) onDraw(draftBox);
-          setDraft(null);
-        }}
-        onPointerCancel={() => setDraft(null)}
-      >
-        <svg viewBox={`0 0 ${photo.w} ${photo.h}`} className="absolute inset-0 h-full w-full" role="img" aria-label="Photo to label">
-          <image href={photo.src} width={photo.w} height={photo.h} />
-          {showTruth !== "none" && (
+    <div className="rounded-xl bg-[#171f1b] p-2">
+      <div className="flex justify-center">
+        <div
+          ref={surface}
+          className="relative touch-none select-none overflow-hidden"
+          style={{ width: `min(100%, calc(62vh * ${photo.w / photo.h}))`, aspectRatio: `${photo.w} / ${photo.h}`, cursor }}
+          onPointerEnter={() => (hovering.current = true)}
+          onPointerLeave={() => (hovering.current = false)}
+          onPointerDown={(e) => {
+            if (e.button !== 0) return;
+            e.currentTarget.setPointerCapture(e.pointerId);
+            if (moving) {
+              setPan({ cx: e.clientX, cy: e.clientY, x: view.x, y: view.y });
+              return;
+            }
+            if (drawClass === null) {
+              onNeedLabel();
+              return;
+            }
+            const p = point(e);
+            onSelect(null);
+            setDraft({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
+          }}
+          onPointerMove={(e) => {
+            if (pan) {
+              const r = surface.current!.getBoundingClientRect();
+              setView((v) =>
+                clampView(v.zoom, pan.x - (e.clientX - pan.cx) / r.width / v.zoom, pan.y - (e.clientY - pan.cy) / r.height / v.zoom)
+              );
+              return;
+            }
+            if (!draft) return;
+            const p = point(e);
+            setDraft((d) => (d ? { ...d, x1: p.x, y1: p.y } : d));
+          }}
+          onPointerUp={() => {
+            setPan(null);
+            // Smallest box: about 1% of the frame, so tiny defects can still be boxed when zoomed in
+            if (draftBox && draftBox.w > 0.01 * scale && draftBox.h > 0.01 * scale) onDraw(draftBox);
+            setDraft(null);
+          }}
+          onPointerCancel={() => {
+            setPan(null);
+            setDraft(null);
+          }}
+        >
+          <svg
+            viewBox={`${view.x * photo.w} ${view.y * photo.h} ${photo.w * scale} ${photo.h * scale}`}
+            className="absolute inset-0 h-full w-full"
+            role="img"
+            aria-label="Photo to label"
+          >
+            <image href={photo.src} width={photo.w} height={photo.h} />
+            {showTruth !== "none" && (
+              <BoxLayer
+                boxes={truth}
+                w={photo.w}
+                h={photo.h}
+                classNames={classNames}
+                dashed
+                named
+                scale={scale}
+                colors={showTruth === "hint" ? truth.map(() => "#e9ff65") : undefined}
+              />
+            )}
             <BoxLayer
-              boxes={truth}
+              boxes={boxes}
               w={photo.w}
               h={photo.h}
               classNames={classNames}
-              dashed
-              named
-              colors={showTruth === "hint" ? truth.map(() => "#e9ff65") : undefined}
+              scale={scale}
+              colors={verdictColors ?? undefined}
+              selected={selected}
+              onSelect={moving ? undefined : (i) => onSelect(i)}
             />
-          )}
-          <BoxLayer
-            boxes={boxes}
-            w={photo.w}
-            h={photo.h}
-            classNames={classNames}
-            colors={verdictColors ?? undefined}
-            selected={selected}
-            onSelect={(i) => onSelect(i)}
-          />
-          {draftBox && <BoxLayer boxes={[draftBox]} w={photo.w} h={photo.h} classNames={classNames} />}
-        </svg>
+            {draftBox && <BoxLayer boxes={[draftBox]} w={photo.w} h={photo.h} classNames={classNames} scale={scale} />}
+          </svg>
+        </div>
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-white/70">
+        <div className="flex items-center gap-1" role="radiogroup" aria-label="What dragging does">
+          {(
+            [
+              ["draw", "Draw", PenLine],
+              ["move", "Move", Hand],
+            ] as const
+          ).map(([m, label, Icon]) => (
+            <button
+              key={m}
+              type="button"
+              role="radio"
+              aria-checked={mode === m}
+              onClick={() => setMode(m)}
+              className={cn(
+                "flex items-center gap-1 rounded-md px-2 py-1 transition-colors",
+                mode === m ? "bg-white/15 text-white" : "hover:bg-white/10 hover:text-white"
+              )}
+            >
+              <Icon className="h-3.5 w-3.5" aria-hidden="true" /> {label}
+            </button>
+          ))}
+        </div>
+        <p className="hidden text-white/50 md:block">Scroll on the photo to zoom · hold Space and drag to move</p>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            aria-label="Zoom out"
+            disabled={view.zoom <= 1}
+            onClick={() => zoomBy(1 / ZOOM_STEP)}
+            className="rounded-md p-1 hover:bg-white/10 hover:text-white disabled:opacity-40"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          <span className="w-11 text-center tabular-nums text-white" aria-live="polite">
+            {Math.round(view.zoom * 100)}%
+          </span>
+          <button
+            type="button"
+            aria-label="Zoom in"
+            disabled={view.zoom >= MAX_ZOOM}
+            onClick={() => zoomBy(ZOOM_STEP)}
+            className="rounded-md p-1 hover:bg-white/10 hover:text-white disabled:opacity-40"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            disabled={view.zoom === 1}
+            onClick={() => setView({ zoom: 1, x: 0, y: 0 })}
+            className="rounded-md px-2 py-1 hover:bg-white/10 hover:text-white disabled:opacity-40"
+          >
+            Fit
+          </button>
+        </div>
       </div>
     </div>
   );
