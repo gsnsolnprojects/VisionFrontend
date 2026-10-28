@@ -123,6 +123,14 @@ const INDUSTRIES: Industry[] = [
 
 const sameProject = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
+/** The guided challenge that uses a GSN sample (by its project name), to start it from elsewhere */
+export const guidedMissionForSample = (sampleProject: string): { industryName: string; mission: Mission } | null => {
+  const industry = INDUSTRIES.find((i) => i.guided && sameProject(i.guided.sample, sampleProject));
+  return industry?.guided
+    ? { industryName: industry.name, mission: { title: industry.guided.title, sample: industry.guided.sample } }
+    : null;
+};
+
 const storageKey = (userId?: string) => `visionm_playground_industry_${userId ?? "anon"}`;
 
 const readIndustry = (userId?: string): string | null => {

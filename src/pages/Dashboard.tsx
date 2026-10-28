@@ -57,6 +57,7 @@ type ViewMode = "overview" | "projects" | "simulation" | "members";
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const routerLocation = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const { sessionReady, profile, user, isAdmin: contextIsAdmin, company, reloadProfile, loading: profileLoading, userRole } = useProfile();
@@ -67,6 +68,7 @@ const Dashboard = () => {
   const workspaceKind = useWorkspaceKind();
 
   const [projects, setProjects] = useState<any[]>([]);
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [showCompanyDialog, setShowCompanyDialog] = useState(false);
   const [showCompanyChoiceDialog, setShowCompanyChoiceDialog] = useState(false);
   const [showProjectDialog, setShowProjectDialog] = useState(false);
@@ -482,6 +484,7 @@ const Dashboard = () => {
       }
 
       if (data) setProjects(data);
+      setProjectsLoaded(true);
     } catch (error) {
       console.error("Error loading projects:", error);
     }
@@ -1087,12 +1090,24 @@ const Dashboard = () => {
 
   /**
    * Playground mission: open its project if it exists, otherwise create it (named after the
-   * mission, "Industry · Mission" as description). Practice, guided and quick-try missions add
-   * the GSN sample; practice opens label practice on it; the quick try also adds GSN's trained
-   * model and opens Test & evaluate on the student's own photos.
+   * mission, "Industry · Mission" as description). Guided and quick-try missions add the GSN
+   * sample; the quick try also adds GSN's trained model and opens Test & evaluate on the
+   * student's own photos. Practice needs no project: it opens /practice on the GSN sample.
    */
   const startMission = async (industryName: string, mission: Mission, mode: MissionMode) => {
     if (!user || !profile?.company_id) return;
+    if (mode === "practice" && mission.sample) {
+      try {
+        const { datasets } = await getSamples();
+        const wanted = mission.sample.trim().toLowerCase();
+        const sample = datasets.find((d) => d.project.trim().toLowerCase() === wanted);
+        if (!sample) throw new Error("This sample isn't in the library right now.");
+        navigate(`/practice/${sample.id}`);
+      } catch (err) {
+        toast({ title: "Couldn't open label practice", description: (err as Error).message, variant: "destructive" });
+      }
+      return;
+    }
     const useSample = mode !== "own" && !!mission.sample;
     const openProject = (id: string) =>
       navigate(
@@ -1199,6 +1214,16 @@ const Dashboard = () => {
       setLoading(false);
     }
   };
+
+  // A mission handed over by another page (e.g. "Continue: train & test" after label practice)
+  const handedMission = (routerLocation.state as { startMission?: { industryName: string; mission: Mission; mode: MissionMode } } | null)
+    ?.startMission;
+  useEffect(() => {
+    if (!handedMission || !projectsLoaded) return;
+    navigate(routerLocation.pathname + routerLocation.search, { replace: true, state: null });
+    void startMission(handedMission.industryName, handedMission.mission, handedMission.mode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handedMission, projectsLoaded]);
 
   const handleCreateProject = async () => {
     if (!projectForm.validateForm()) {

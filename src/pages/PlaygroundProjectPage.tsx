@@ -185,6 +185,11 @@ export const PlaygroundProjectPage: React.FC = () => {
   const isSample = !!dataset?.isLinkedSample;
   const ownDataset = versions?.find((v) => !v.isLinkedSample) ?? null;
 
+  // Label practice now has its own page (/practice/:sampleId); old ?step=practice links go there
+  useEffect(() => {
+    if (step === "practice" && dataset?.linkedFrom) navigate(`/practice/${dataset.linkedFrom}`, { replace: true });
+  }, [step, dataset?.linkedFrom, navigate]);
+
   // Which GSN sample this dataset links to (Test offers that sample's ready-made model)
   useEffect(() => {
     setSampleProject(null);
