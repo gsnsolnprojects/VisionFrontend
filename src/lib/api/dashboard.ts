@@ -81,8 +81,20 @@ export interface LearningProgress {
   trainingRunsThisMonth?: number;
   /** finished predictions this month (India time) */
   predictionsThisMonth?: number;
+  /** challenge-path steps the company finished; missing on older backends */
+  path?: PathProgress;
+}
+
+/** Playground challenge path: 1 guided challenge -> 2 learn to label -> 3 own project */
+export interface PathProgress {
+  guidedDone: boolean;
+  practiceDone: boolean;
 }
 
 /** GET /api/dashboard/learning-progress - counts behind the Playground learning path */
 export const getLearningProgress = () =>
   apiRequest<LearningProgress>("/dashboard/learning-progress", { maxRetries: 1 });
+
+/** POST /api/playground/practice/done - label practice finished (unlocks the next challenge) */
+export const markPracticeDone = () =>
+  apiRequest<{ path: PathProgress }>("/playground/practice/done", { method: "POST", maxRetries: 1 });

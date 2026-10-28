@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiRequest, apiUrl, getAuthHeaders } from "@/lib/api/config";
+import { markPracticeDone } from "@/lib/api/dashboard";
 import { cn } from "@/lib/utils";
 
 /**
@@ -649,6 +650,11 @@ export const PlaygroundLabelPractice: React.FC<{
     }
     return { agree, total };
   }, [autoResults, truth]);
+
+  // Finishing practice unlocks the next challenge on the overview
+  useEffect(() => {
+    if (phase === "done") markPracticeDone().catch(() => undefined);
+  }, [phase]);
 
   const restart = () => {
     setStates(Object.fromEntries(practice.map((f) => [f.id, emptyPhoto()])));

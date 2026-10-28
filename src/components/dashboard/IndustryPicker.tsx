@@ -21,12 +21,14 @@ import { IndustryArt } from "@/components/landing/IndustryArt";
 import { Button } from "@/components/ui/button";
 import { useProfile } from "@/hooks/useProfile";
 import { getSamples, type SampleDataset, type SampleModel } from "@/lib/api/samples";
+import type { PathProgress } from "@/lib/api/dashboard";
 import { cn } from "@/lib/utils";
 
 /**
  * Top of the Playground overview: "Pick a world" hero, the six industry cards and the picked
  * industry's three challenges (guided challenge and label practice on a GSN sample; own project,
- * not open yet).
+ * not open yet). The challenges form a path: a card is soft-locked (dimmed, but "start anyway"
+ * still works) until the ones before it are done.
  * The picked industry is remembered per user in this browser and drives the drawings (same
  * drawings as the landing page, in the same order).
  */
@@ -137,7 +139,9 @@ export const IndustryPicker: React.FC<{
   onStartMission: (industryName: string, mission: Mission, mode: MissionMode) => void;
   /** Before a plan is chosen: start buttons become "Unlocks with Playground" and lead here */
   onChoosePlan?: () => void;
-}> = ({ onStartMission, onChoosePlan }) => {
+  /** Challenge-path progress; null while loading (or before a plan): no locks shown */
+  path?: PathProgress | null;
+}> = ({ onStartMission, onChoosePlan, path = null }) => {
   const { user } = useProfile();
   const [selected, setSelected] = useState<string | null>(null);
   const [samples, setSamples] = useState<Samples | null>(null);
@@ -262,11 +266,37 @@ export const IndustryPicker: React.FC<{
 
       {/* Challenges for the picked industry */}
       {industry && (
-        <Challenges industry={industry} samples={samples} onStartMission={onStartMission} onChoosePlan={onChoosePlan} />
+        <Challenges
+          industry={industry}
+          samples={samples}
+          onStartMission={onStartMission}
+          onChoosePlan={onChoosePlan}
+          path={path}
+        />
       )}
     </>
   );
 };
+
+/** Where a card is on the challenge path; a locked card points to the step before it but can still start */
+type PathStep =
+  | { state: "done" | "next" }
+  | { state: "locked"; note: string; first: { label: string; onClick: () => void }; anyway: string };
+
+const PathBadge: React.FC<{ state: PathStep["state"] }> = ({ state }) =>
+  state === "done" ? (
+    <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success">
+      <Check className="h-3 w-3" aria-hidden="true" /> Done
+    </span>
+  ) : state === "next" ? (
+    <span className="rounded-full bg-[#e9ff65] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#171f1b]">
+      Next
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+      <Lock className="h-3 w-3" aria-hidden="true" /> Locked
+    </span>
+  );
 
 /** A challenge card's frame: label, picture, title, text and the action (or "coming soon") */
 const ChallengeCard: React.FC<{
@@ -278,9 +308,15 @@ const ChallengeCard: React.FC<{
   soon?: string;
   /** Before a plan is chosen: the action is replaced by "Unlocks with Playground" */
   onLocked?: () => void;
-}> = ({ kicker, picture, title, children, action, soon, onLocked }) => (
-  <article className={cn("flex flex-col rounded-xl border bg-background/40 p-4", soon && "opacity-75")}>
-    <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{kicker}</p>
+  step?: PathStep | null;
+}> = ({ kicker, picture, title, children, action, soon, onLocked, step }) => {
+  const pathLocked = !soon && !onLocked && step?.state === "locked" ? step : null;
+  return (
+  <article className={cn("flex flex-col rounded-xl border bg-background/40 p-4", (soon || pathLocked) && "opacity-75")}>
+    <div className="flex min-h-5 items-center justify-between gap-2">
+      <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{kicker}</p>
+      {step && !soon && !onLocked && <PathBadge state={step.state} />}
+    </div>
     <div className="mt-3 aspect-[25/13] overflow-hidden rounded-lg bg-[#171f1b]">{picture}</div>
     <h4 className="mt-4 font-semibold text-foreground">{title}</h4>
     <div className="mt-1 text-sm leading-relaxed text-muted-foreground">{children}</div>
@@ -295,6 +331,26 @@ const ChallengeCard: React.FC<{
           <Lock className="h-4 w-4" aria-hidden="true" />
           Unlocks with Playground
         </Button>
+      ) : pathLocked ? (
+        <div className="space-y-2">
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            {pathLocked.note}
+          </p>
+          <Button variant="outline" className="w-full gap-1.5" onClick={pathLocked.first.onClick}>
+            {pathLocked.first.label}
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Button>
+          {action && (
+            <button
+              type="button"
+              onClick={action.onClick}
+              className="w-full text-center text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            >
+              {pathLocked.anyway}
+            </button>
+          )}
+        </div>
       ) : (
         action && (
           <Button variant={action.primary ? "default" : "outline"} className="w-full gap-1.5" onClick={action.onClick}>
@@ -305,7 +361,8 @@ const ChallengeCard: React.FC<{
       )}
     </div>
   </article>
-);
+  );
+};
 
 /** Lime tag in a card picture's top-left corner */
 const Tag: React.FC<{ Icon: LucideIcon; children: React.ReactNode }> = ({ Icon, children }) => (
@@ -319,12 +376,42 @@ const Challenges: React.FC<{
   samples: Samples | null;
   onStartMission: (industryName: string, mission: Mission, mode: MissionMode) => void;
   onChoosePlan?: () => void;
-}> = ({ industry, samples, onStartMission, onChoosePlan }) => {
+  path: PathProgress | null;
+}> = ({ industry, samples, onStartMission, onChoosePlan, path }) => {
   const artIndex = Math.max(0, INDUSTRIES.findIndex((i) => i.id === industry.id));
   const guided = industry.guided;
   const loading = samples === null;
   const sample = guided ? samples?.datasets.find((d) => sameProject(d.project, guided.sample)) : undefined;
   const guidedMission: Mission | null = guided ? { title: guided.title, sample: guided.sample } : null;
+  const startGuided = () => {
+    if (guidedMission) onStartMission(industry.name, guidedMission, "guided");
+  };
+
+  // Path: 1 guided challenge -> 2 learn to label -> 3 own project (steps are company-wide)
+  const guidedStep: PathStep | null = path ? { state: path.guidedDone ? "done" : "next" } : null;
+  const practiceStep: PathStep | null = !path
+    ? null
+    : path.practiceDone
+      ? { state: "done" }
+      : path.guidedDone
+        ? { state: "next" }
+        : {
+            state: "locked",
+            note: "Finish the guided challenge first: run a test on its held-out photos.",
+            first: { label: "Start the guided challenge", onClick: startGuided },
+            anyway: "or start practising anyway",
+          };
+  // Card 3 isn't open yet ("Coming soon" hides this); when it opens it follows the same path
+  const ownStep: PathStep | null = !path
+    ? null
+    : path.guidedDone && path.practiceDone
+      ? { state: "next" }
+      : {
+          state: "locked",
+          note: "Finish the guided challenge and Learn to label first.",
+          first: { label: "Start the guided challenge", onClick: startGuided },
+          anyway: "or start your own project anyway",
+        };
 
   return (
     <motion.section
@@ -365,13 +452,14 @@ const Challenges: React.FC<{
           }
           soon={!guided || (!loading && !sample) ? "Guided sample coming soon" : undefined}
           onLocked={onChoosePlan}
+          step={guidedStep}
           action={
             guidedMission
               ? {
                   label: "Start guided challenge",
                   primary: true,
                   Icon: ArrowRight,
-                  onClick: () => onStartMission(industry.name, guidedMission, "guided"),
+                  onClick: startGuided,
                 }
               : undefined
           }
@@ -401,6 +489,7 @@ const Challenges: React.FC<{
           }
           soon={!guided || (!loading && !sample) ? "Label practice coming soon" : undefined}
           onLocked={onChoosePlan}
+          step={practiceStep}
           action={
             guidedMission
               ? {
@@ -425,7 +514,7 @@ const Challenges: React.FC<{
         {/* 3. The student's own project: not open yet */}
         <ChallengeCard
           kicker="03 · Your own project"
-          title={industry.own.title}
+          title="Your own inspection"
           picture={
             <ol className="flex h-full flex-col justify-center gap-1.5 px-5 text-xs text-[#f5f5ee]">
               {["Pick one defect", "Upload your photos", "Label them yourself", "Train and test"].map((step, i) => (
@@ -439,9 +528,10 @@ const Challenges: React.FC<{
             </ol>
           }
           soon="Coming soon"
+          step={ownStep}
         >
-          Coming later: upload your own photos, label them yourself, train your own model and test it. Start with one
-          defect, e.g. {industry.own.example}.
+          Coming later: inspect anything you like. Upload your own photos, label them yourself, train your own model and
+          test it.
         </ChallengeCard>
       </div>
     </motion.section>

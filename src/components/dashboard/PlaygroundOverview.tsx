@@ -49,6 +49,7 @@ export const PlaygroundOverview: React.FC<PlaygroundOverviewProps> = ({ projects
     <motion.div className="space-y-8" variants={staggerContainerVariants} initial="hidden" animate="visible">
       <IndustryPicker
         onChoosePlan={preview ? choosePlan : undefined}
+        path={preview ? null : progress?.path ?? null}
         onStartMission={(industryName, mission, mode) =>
           onStartMission
             ? onStartMission(industryName, mission, mode)
