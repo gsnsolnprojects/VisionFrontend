@@ -77,6 +77,24 @@ interface AutoLabelResult {
 }
 
 const nice = (name: string) => name.replace(/_/g, " ");
+
+/** One line on what each label in the GSN samples marks, keyed by the name in lower case with letters only */
+const LABEL_HINTS: Record<string, string> = {
+  missinghole: "A drill hole that should be there is missing.",
+  mousebite: "Small bite-shaped notches in the edge of a copper track.",
+  opencircuit: "A copper track that is broken, so the connection is cut.",
+  short: "Copper joining two tracks or pads that should stay apart.",
+  spur: "A thin spike of copper sticking out from a track.",
+  spuriouscopper: "A stray patch of copper where the board should be bare.",
+  fullblackish: "The whole terminal looks dark or blackened instead of bright metal.",
+  bothblackish: "Both sides of the terminal look dark or blackened.",
+  missingbar: "The metal bar that should sit across the terminal isn't there.",
+  missingonescrew: "One of the terminal's screws is missing.",
+  packetissue: "A blister packet that is damaged or badly formed.",
+  crack: "A crack or split in the pack.",
+  defect: "Any fault on the pack, such as an empty, broken or crushed pocket.",
+};
+const hintOf = (name: string) => LABEL_HINTS[name.toLowerCase().replace(/[^a-z]/g, "")];
 const colorOf = (c: number) => BOX_COLORS[c % BOX_COLORS.length];
 const emptyPhoto = (): PhotoState => ({ boxes: [], hinted: false, checked: false, score: null, feedback: [] });
 
@@ -294,11 +312,14 @@ const DrawingCanvas: React.FC<{
   showTruth: "none" | "hint" | "answer";
   verdictColors: (string | null)[] | null;
   classNames: string[];
-  drawClass: number;
+  /** null until the student picks a label; drawing waits for it */
+  drawClass: number | null;
   selected: number | null;
   onSelect: (i: number | null) => void;
   onDraw: (box: Box) => void;
-}> = ({ datasetId, fileId, boxes, truth, showTruth, verdictColors, classNames, drawClass, selected, onSelect, onDraw }) => {
+  /** Tried to draw before picking a label */
+  onNeedLabel: () => void;
+}> = ({ datasetId, fileId, boxes, truth, showTruth, verdictColors, classNames, drawClass, selected, onSelect, onDraw, onNeedLabel }) => {
   const { photo, failed } = usePhoto(datasetId, fileId);
   const surface = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
@@ -316,24 +337,29 @@ const DrawingCanvas: React.FC<{
   }
   if (!photo) return <div className="aspect-video w-full animate-pulse rounded-xl bg-muted" />;
 
-  const draftBox: Box | null = draft
-    ? {
-        c: drawClass,
-        x: Math.min(draft.x0, draft.x1),
-        y: Math.min(draft.y0, draft.y1),
-        w: Math.abs(draft.x1 - draft.x0),
-        h: Math.abs(draft.y1 - draft.y0),
-      }
-    : null;
+  const draftBox: Box | null =
+    draft && drawClass !== null
+      ? {
+          c: drawClass,
+          x: Math.min(draft.x0, draft.x1),
+          y: Math.min(draft.y0, draft.y1),
+          w: Math.abs(draft.x1 - draft.x0),
+          h: Math.abs(draft.y1 - draft.y0),
+        }
+      : null;
 
   return (
     <div className="flex justify-center rounded-xl bg-[#171f1b] p-2">
       <div
         ref={surface}
         className="relative touch-none select-none"
-        style={{ width: `min(100%, calc(62vh * ${photo.w / photo.h}))`, aspectRatio: `${photo.w} / ${photo.h}`, cursor: "crosshair" }}
+        style={{ width: `min(100%, calc(62vh * ${photo.w / photo.h}))`, aspectRatio: `${photo.w} / ${photo.h}`, cursor: drawClass === null ? "not-allowed" : "crosshair" }}
         onPointerDown={(e) => {
           if (e.button !== 0) return;
+          if (drawClass === null) {
+            onNeedLabel();
+            return;
+          }
           const p = point(e);
           e.currentTarget.setPointerCapture(e.pointerId);
           onSelect(null);
@@ -470,7 +496,9 @@ export const PlaygroundLabelPractice: React.FC<{
   const [pool, setPool] = useState<PracticeFile[]>([]);
   const [states, setStates] = useState<Record<string, PhotoState>>({});
   const [index, setIndex] = useState(0);
-  const [drawClass, setDrawClass] = useState(0);
+  const [drawClass, setDrawClass] = useState<number | null>(null);
+  /** Bumped when the student tries to draw without a label, to flash the prompt */
+  const [nudge, setNudge] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [showHint, setShowHint] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -504,7 +532,7 @@ export const PlaygroundLabelPractice: React.FC<{
         if (!picked.length) throw new Error("This sample has no labelled photos to practise on.");
         setClassNames(Array.from(names, (n, i) => n ?? `class ${i}`));
         setLabelOptions(json.classes.map((c) => c.index).sort((a, b) => a - b));
-        setDrawClass(Math.min(...json.classes.map((c) => c.index)));
+        setDrawClass(null);
         setTruth(json.labels);
         setPractice(picked);
         setPool(rest);
@@ -539,6 +567,8 @@ export const PlaygroundLabelPractice: React.FC<{
     setIndex(Math.max(0, Math.min(practice.length - 1, i)));
     setSelected(null);
     setShowHint(false);
+    // Each photo starts with no label picked, so the student chooses what they're marking
+    setDrawClass(null);
   };
 
   // Delete / Backspace removes the selected box
@@ -798,7 +828,7 @@ export const PlaygroundLabelPractice: React.FC<{
             Photo {index + 1} of {practice.length}
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Pick a label, then drag on the photo to draw a box around each thing it marks. Keep every box tight around what
+            First pick the defect you&apos;re marking, then drag on the photo to draw a box around each one. Keep every box tight around what
             you&apos;re marking. Your labels are for practice only and aren&apos;t saved.
           </p>
         </div>
@@ -815,43 +845,89 @@ export const PlaygroundLabelPractice: React.FC<{
       </div>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <DrawingCanvas
-          datasetId={datasetId}
-          fileId={current.id}
-          boxes={state.boxes}
-          truth={currentTruth}
-          showTruth={state.checked ? "answer" : showHint ? "hint" : "none"}
-          verdictColors={verdictColors}
-          classNames={classNames}
-          drawClass={drawClass}
-          selected={selected}
-          onSelect={setSelected}
-          onDraw={(box) => {
-            setBoxes([...state.boxes, box]);
-            setSelected(null);
-          }}
-        />
+        <div className="min-w-0 space-y-3">
+          <p
+            key={nudge}
+            aria-live="polite"
+            className={cn(
+              "rounded-lg border px-3 py-2 text-sm text-foreground",
+              drawClass === null ? "border-ring bg-secondary" : "border-success/40 bg-success/10",
+              nudge > 0 && drawClass === null && "animate-[pulse_0.4s_ease-in-out_3]"
+            )}
+          >
+            {drawClass === null ? (
+              <>
+                <strong>Step 1:</strong> pick which defect you&apos;re marking from the labels on the right.
+              </>
+            ) : (
+              <>
+                <strong>Step 2:</strong> drag on the photo to draw a box around each{" "}
+                <strong>{nice(classNames[drawClass] ?? "")}</strong>. Pick another label for a different defect.
+              </>
+            )}
+          </p>
+          <DrawingCanvas
+            datasetId={datasetId}
+            fileId={current.id}
+            boxes={state.boxes}
+            truth={currentTruth}
+            showTruth={state.checked ? "answer" : showHint ? "hint" : "none"}
+            verdictColors={verdictColors}
+            classNames={classNames}
+            drawClass={drawClass}
+            selected={selected}
+            onSelect={setSelected}
+            onDraw={(box) => {
+              setBoxes([...state.boxes, box]);
+              setSelected(null);
+            }}
+            onNeedLabel={() => setNudge((n) => n + 1)}
+          />
+        </div>
 
         <div className="space-y-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Label to draw</p>
-            <div className="mt-2 flex flex-col gap-1.5" role="radiogroup" aria-label="Label to draw">
-              {labelOptions.map((i) => (
-                <button
-                  key={i}
-                  type="button"
-                  role="radio"
-                  aria-checked={drawClass === i}
-                  onClick={() => setDrawClass(i)}
-                  className={cn(
-                    "flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors",
-                    drawClass === i ? "border-ring bg-secondary font-medium text-foreground" : "text-muted-foreground hover:border-ring/60"
-                  )}
-                >
-                  <span className="h-3 w-3 shrink-0 rounded-sm" style={{ background: colorOf(i) }} />
-                  {nice(classNames[i] ?? "")}
-                </button>
-              ))}
+            {selected !== null && (
+              <p className="mt-1 text-xs text-muted-foreground">Click a label to change the selected box to it.</p>
+            )}
+            <div
+              key={nudge}
+              className={cn(
+                "mt-2 flex flex-col gap-1.5 rounded-lg",
+                nudge > 0 && drawClass === null && "animate-[pulse_0.4s_ease-in-out_3] ring-2 ring-ring ring-offset-2 ring-offset-card"
+              )}
+              role="radiogroup"
+              aria-label="Label to draw"
+            >
+              {labelOptions.map((i) => {
+                const hint = hintOf(classNames[i] ?? "");
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    role="radio"
+                    aria-checked={drawClass === i}
+                    onClick={() => {
+                      setDrawClass(i);
+                      // A selected box takes the new label (fixes a wrong pick without redrawing)
+                      if (selected !== null && state.boxes[selected] && state.boxes[selected].c !== i) {
+                        setBoxes(state.boxes.map((b, bi) => (bi === selected ? { ...b, c: i } : b)));
+                      }
+                    }}
+                    className={cn(
+                      "flex items-start gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors",
+                      drawClass === i ? "border-ring bg-secondary text-foreground" : "text-muted-foreground hover:border-ring/60"
+                    )}
+                  >
+                    <span className="mt-1 h-3 w-3 shrink-0 rounded-sm" style={{ background: colorOf(i) }} />
+                    <span className="min-w-0">
+                      <span className={cn("block", drawClass === i && "font-medium")}>{nice(classNames[i] ?? "")}</span>
+                      {hint && <span className="block text-xs font-normal text-muted-foreground">{hint}</span>}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
