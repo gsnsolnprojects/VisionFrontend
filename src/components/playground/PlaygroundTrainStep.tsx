@@ -53,11 +53,13 @@ const SIZES = [
 ];
 
 /**
- * Off until the GPU training server is set up on AWS: the button shows "Training opens soon"
- * instead of queuing jobs nothing would run (they'd use up runs and model slots). Set to true
- * once training workers are live.
+ * Set to false to show "Training opens soon" instead of queuing jobs (e.g. while the training
+ * servers are down), so runs and model slots aren't used up for nothing.
  */
-const TRAINING_AVAILABLE = false;
+const TRAINING_AVAILABLE = true;
+
+/** Labelled photos needed before training (the server checks the same number) */
+const MIN_LABELLED = 20;
 
 const jobKey = (projectId: string) => `visionm_playground_training_${projectId}`;
 
@@ -202,8 +204,10 @@ export const PlaygroundTrainStep: React.FC<{
 
   const blockedReason = !TRAINING_AVAILABLE
     ? null
-    : counts.labelled === 0
-      ? "Label some images first: the model learns only from labelled photos."
+    : isSample
+      ? "GSN's labelled samples are for viewing and testing. To train, choose \"Label this sample myself\" in step 1, or upload your own photos."
+      : counts.labelled < MIN_LABELLED
+      ? `Label at least ${MIN_LABELLED} photos first (${counts.labelled} so far): the model learns only from labelled photos.`
       : runsLeft === 0
         ? "You've used this month's training runs. They reset on the 1st."
         : modelsFull

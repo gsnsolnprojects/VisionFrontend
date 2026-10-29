@@ -44,6 +44,8 @@ interface DatasetVersion {
   isLinkedSample?: boolean;
   /** the GSN sample dataset it links to */
   linkedFrom?: string | null;
+  /** a GSN sample's photos the company labels itself (its own folder, its own labels) */
+  labelledSampleOf?: string | null;
   totalImages?: number;
   trainCount?: number;
   valCount?: number;
@@ -165,6 +167,7 @@ export const PlaygroundProjectPage: React.FC = () => {
   const [project, setProject] = useState<{ id: string; name: string; description: string | null } | null>(null);
   const [allProjects, setAllProjects] = useState<{ id: string; name: string; description: string | null }[]>([]);
   const [versions, setVersions] = useState<DatasetVersion[] | null>(null);
+  const [labelling, setLabelling] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [files, setFiles] = useState<ImageFile[]>([]);
   const [labelled, setLabelled] = useState<Set<string>>(new Set());
@@ -447,7 +450,37 @@ export const PlaygroundProjectPage: React.FC = () => {
   const [industryName, missionName] = (project.description ?? "").includes(" · ")
     ? (project.description ?? "").split(" · ")
     : [null, project.name];
-  const canUpload = !isSample && (planAccess.data?.access?.features?.trainOnOwnDatasets ?? false);
+  const ownDatasetsAllowed = planAccess.data?.access?.features?.trainOnOwnDatasets ?? false;
+  // A sample you label yourself keeps GSN's photos: label them, but don't add your own to it
+  const canUpload = !isSample && !dataset?.labelledSampleOf && ownDatasetsAllowed;
+
+  // "Label this sample myself": GSN's photos without GSN's labels, in this project
+  const labelSampleYourself = async () => {
+    if (!dataset?.linkedFrom || !project) return;
+    setLabelling(true);
+    try {
+      const res = await fetch(apiUrl(`/samples/datasets/${encodeURIComponent(dataset.linkedFrom)}/label-yourself`), {
+        method: "POST",
+        headers: { ...(await getAuthHeaders()), "Content-Type": "application/json" },
+        body: JSON.stringify({ project: project.name }),
+      });
+      const json = await res.json().catch(() => ({}));
+      // Already labelling it: open that one
+      if (!res.ok && !(res.status === 409 && json.datasetId)) {
+        throw new Error(json.message || json.error || `Request failed: ${res.status}`);
+      }
+      await loadVersions(project.name);
+      setSelectedId(String(json.datasetId));
+      toast({
+        title: res.ok ? "Sample added for you to label" : "You're already labelling this sample",
+        description: "Its photos are being prepared. Then label at least 20 of them and train.",
+      });
+    } catch (err) {
+      toast({ title: "Couldn't add the sample", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setLabelling(false);
+    }
+  };
   const showDropZone = canUpload && (!!dataset || !ownDataset);
 
   const badges = [
@@ -579,7 +612,11 @@ export const PlaygroundProjectPage: React.FC = () => {
             >
               {versions.map((v) => (
                 <option key={v.datasetId} value={v.datasetId}>
-                  {v.isLinkedSample ? `GSN sample · ${v.version}` : `My images · ${v.version}`}
+                  {v.isLinkedSample
+                    ? `GSN sample · ${v.version}`
+                    : v.labelledSampleOf
+                      ? `GSN photos, my labels · ${v.version}`
+                      : `My images · ${v.version}`}
                 </option>
               ))}
             </select>
@@ -765,7 +802,17 @@ export const PlaygroundProjectPage: React.FC = () => {
         {isSample && (
           <p className="mt-5 border-l-2 border-ring bg-secondary/40 px-4 py-3 text-sm text-muted-foreground">
             This is a ready-made GSN sample: real inspection photos, already labelled. The coloured boxes show what each
-            label marks. Samples can&apos;t be changed{canUpload ? "; upload your own images to practise labelling" : ""}.
+            label marks. Samples can&apos;t be changed, and GSN&apos;s labels can&apos;t be used for training.
+            {ownDatasetsAllowed && (
+              <>
+                {" "}
+                To train your own model, label these photos yourself.
+                <Button size="sm" className="mt-3 flex gap-1.5" disabled={labelling} onClick={() => void labelSampleYourself()}>
+                  {labelling ? <Loader2 className="h-4 w-4 animate-spin" /> : <PenLine className="h-4 w-4" />}
+                  Label this sample myself
+                </Button>
+              </>
+            )}
           </p>
         )}
 

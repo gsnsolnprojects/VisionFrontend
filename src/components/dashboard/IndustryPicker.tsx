@@ -409,7 +409,7 @@ const Challenges: React.FC<{
             first: { label: "Start the guided challenge", onClick: startGuided },
             anyway: "or start practising anyway",
           };
-  // Card 3 isn't open yet ("Coming soon" hides this); when it opens it follows the same path
+  // Card 3 follows the same path: open once the guided challenge and Learn to label are done
   const ownStep: PathStep | null = !path
     ? null
     : path.guidedDone && path.practiceDone
@@ -443,7 +443,7 @@ const Challenges: React.FC<{
         </span>
       </div>
       <p className="mt-3 text-sm text-muted-foreground">
-        Start with a guided challenge, practise labelling, and soon build your own. Each path teaches the same
+        Start with a guided challenge, practise labelling, then build your own. Each path teaches the same
         inspection ideas.
       </p>
 
@@ -477,8 +477,8 @@ const Challenges: React.FC<{
               <strong className="font-medium text-foreground">
                 {sample.totalImages} {guided.photoNoun} photos
               </strong>{" "}
-              from a real inspection line, already labelled by GSN&apos;s team: {guided.finds}. Look through the labels,
-              train your own model on them, then test it on photos it has never seen.
+              from a real inspection line, already labelled by GSN&apos;s team: {guided.finds}. Look through the labels
+              and test GSN&apos;s model on photos it has never seen. To train your own, label the photos yourself.
             </>
           ) : (
             "We're preparing a labelled GSN dataset for this industry."
@@ -519,7 +519,7 @@ const Challenges: React.FC<{
           )}
         </ChallengeCard>
 
-        {/* 3. The student's own project: not open yet */}
+        {/* 3. The student's own project: their photos, their labels, their model */}
         <ChallengeCard
           kicker="03 · Your own project"
           title="Your own inspection"
@@ -535,11 +535,16 @@ const Challenges: React.FC<{
               ))}
             </ol>
           }
-          soon="Coming soon"
+          onLocked={onChoosePlan}
           step={ownStep}
+          action={{
+            label: "Start your own project",
+            Icon: ArrowRight,
+            onClick: () => onStartMission(industry.name, { title: industry.own.title }, "own"),
+          }}
         >
-          Coming later: inspect anything you like. Upload your own photos, label them yourself, train your own model and
-          test it.
+          Inspect anything you like, for example {industry.own.example}. Upload your own photos, label them yourself,
+          train your own model and test it.
         </ChallengeCard>
       </div>
     </motion.section>
