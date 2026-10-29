@@ -46,6 +46,10 @@ interface DatasetVersion {
   linkedFrom?: string | null;
   /** a GSN sample's photos the company labels itself (its own folder, its own labels) */
   labelledSampleOf?: string | null;
+  /** extra training photos made from another version (augmentedFromVersion) */
+  isAugmented?: boolean;
+  augmentedFromVersion?: string | null;
+  augmentationStatus?: string | null;
   totalImages?: number;
   trainCount?: number;
   valCount?: number;
@@ -168,6 +172,8 @@ export const PlaygroundProjectPage: React.FC = () => {
   const [allProjects, setAllProjects] = useState<{ id: string; name: string; description: string | null }[]>([]);
   const [versions, setVersions] = useState<DatasetVersion[] | null>(null);
   const [labelling, setLabelling] = useState(false);
+  /** The version more training photos are being made from, while they are */
+  const [augmentingFrom, setAugmentingFrom] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [files, setFiles] = useState<ImageFile[]>([]);
   const [labelled, setLabelled] = useState<Set<string>>(new Set());
@@ -237,6 +243,25 @@ export const PlaygroundProjectPage: React.FC = () => {
   useEffect(() => {
     if (project) void loadVersions(project.name).catch(() => setVersions([]));
   }, [project, loadVersions]);
+
+  // While more training photos are being made: check every 5 s, then open the new version
+  useEffect(() => {
+    if (!augmentingFrom || !project) return;
+    const made = versions?.find((v) => v.isAugmented && v.augmentedFromVersion === augmentingFrom);
+    if (made?.status === "ready") {
+      setAugmentingFrom(null);
+      setSelectedId(made.datasetId);
+      toast({ title: "More training photos ready", description: `${made.version} is selected: train on it in step 2.` });
+      return;
+    }
+    if (made?.status === "failed" || made?.augmentationStatus === "failed") {
+      setAugmentingFrom(null);
+      toast({ title: "Couldn't make more photos", description: "Please try again.", variant: "destructive" });
+      return;
+    }
+    const timer = window.setTimeout(() => void loadVersions(project.name).catch(() => undefined), 5000);
+    return () => window.clearTimeout(timer);
+  }, [augmentingFrom, versions, project, loadVersions, toast]);
 
   // Top trail: Dashboard > mission > step (instead of the project id from the address)
   const { setItems: setBreadcrumbs } = useBreadcrumbs();
@@ -454,6 +479,25 @@ export const PlaygroundProjectPage: React.FC = () => {
   // A sample you label yourself keeps GSN's photos: label them, but don't add your own to it
   const canUpload = !isSample && !dataset?.labelledSampleOf && ownDatasetsAllowed;
 
+  // "Make more training photos": augment the company's own labelled dataset, up to 500 photos
+  const augmentedChild = versions?.find((v) => v.isAugmented && v.augmentedFromVersion === dataset?.version) ?? null;
+  const makeMorePhotos = async (target: number) => {
+    if (!dataset) return;
+    try {
+      await apiRequest(`/dataset/${encodeURIComponent(dataset.datasetId)}/augment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ versionName: `${dataset.version}-more-photos`.slice(0, 50), options: { targetTrainTotal: target } }),
+        maxRetries: 1,
+      });
+      setAugmentingFrom(dataset.version);
+      toast({ title: "Making more training photos", description: "This takes a few minutes. You can stay on this page." });
+      if (project) void loadVersions(project.name);
+    } catch (err) {
+      toast({ title: "Couldn't make more photos", description: (err as Error).message, variant: "destructive" });
+    }
+  };
+
   // "Label this sample myself": GSN's photos without GSN's labels, in this project
   const labelSampleYourself = async () => {
     if (!dataset?.linkedFrom || !project) return;
@@ -616,7 +660,9 @@ export const PlaygroundProjectPage: React.FC = () => {
                     ? `GSN sample · ${v.version}`
                     : v.labelledSampleOf
                       ? `GSN photos, my labels · ${v.version}`
-                      : `My images · ${v.version}`}
+                      : v.isAugmented
+                        ? `Extra training photos · ${v.version}`
+                        : `My images · ${v.version}`}
                 </option>
               ))}
             </select>
@@ -814,6 +860,40 @@ export const PlaygroundProjectPage: React.FC = () => {
               </>
             )}
           </p>
+        )}
+
+        {dataset && !isSample && !dataset.isAugmented && ownDatasetsAllowed && (
+          <div className="mt-5 rounded-xl border bg-secondary/30 p-4">
+            <p className="text-sm font-medium text-foreground">Make more training photos</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              A few photos rarely train a good model. Make varied copies of your labelled photos (flipped, rotated,
+              brighter or darker), with the labels moved to match. Held-out test photos stay real, so scores stay honest.
+            </p>
+            {augmentingFrom === dataset.version || augmentedChild?.status === "processing" ? (
+              <p className="mt-3 flex items-center gap-2 text-sm text-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Making photos... this takes a few minutes.
+              </p>
+            ) : counts.labelled < 20 ? (
+              <p className="mt-3 text-sm text-muted-foreground">Label at least 20 photos first ({counts.labelled} so far).</p>
+            ) : (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {[100, 250, 500]
+                  // Copies are made of labelled photos only
+                  .filter((n) => n > counts.labelled)
+                  .map((n) => (
+                    <Button key={n} size="sm" variant="outline" onClick={() => void makeMorePhotos(n)}>
+                      Up to {n} photos
+                    </Button>
+                  ))}
+                {augmentedChild?.status === "ready" && (
+                  <Button size="sm" variant="ghost" onClick={() => setSelectedId(augmentedChild.datasetId)}>
+                    Open {augmentedChild.version}
+                  </Button>
+                )}
+                <span className="text-xs text-muted-foreground">Making a new set replaces the previous one.</span>
+              </div>
+            )}
+          </div>
         )}
 
         {dataset && (
