@@ -890,7 +890,9 @@ export const PlaygroundProjectPage: React.FC = () => {
                     Open {augmentedChild.version}
                   </Button>
                 )}
-                <span className="text-xs text-muted-foreground">Making a new set replaces the previous one.</span>
+                <span className="text-xs text-muted-foreground">
+                  Extra photos count towards your 500 photos per dataset. Making a new set replaces the previous one.
+                </span>
               </div>
             )}
           </div>
