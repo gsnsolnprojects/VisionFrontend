@@ -68,6 +68,7 @@ const TYPE_LABEL: Record<Session["type"], string> = {
 /** 95 -> "1 h 35 min", 0.4 -> "under 1 min" */
 const duration = (minutes: number | null | undefined) => {
   if (minutes == null) return "—";
+  if (minutes === 0) return "0 min";
   if (minutes < 1) return "under 1 min";
   const h = Math.floor(minutes / 60);
   const m = Math.round(minutes % 60);
