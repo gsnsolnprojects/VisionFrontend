@@ -1,7 +1,17 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, Check, Clock, Gauge, GraduationCap, Layers, Loader2, Play, Rabbit, Sparkles, Target, Turtle } from "lucide-react";
+import { ArrowRight, Check, Clock, Gauge, GraduationCap, Layers, Loader2, Play, Rabbit, Sparkles, Target, Trash2, Turtle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, apiUrl, getAuthHeaders } from "@/lib/api/config";
 import { getLearningProgress } from "@/lib/api/dashboard";
@@ -92,6 +102,8 @@ export const PlaygroundTrainStep: React.FC<{
   const [runsUsed, setRunsUsed] = useState<number | null>(null);
   const [quota, setQuota] = useState<ModelQuota | null>(null);
   const [models, setModels] = useState<TrainedModel[] | null>(null);
+  const [modelToDelete, setModelToDelete] = useState<TrainedModel | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const pollTimer = useRef<number | null>(null);
 
   const runLimit = typeof limits?.trainingRunsPerMonth === "number" ? limits.trainingRunsPerMonth : null;
@@ -122,6 +134,22 @@ export const PlaygroundTrainStep: React.FC<{
     void loadModels();
     loadAllowance();
   }, [loadModels, loadAllowance]);
+
+  // Deleting a model frees a slot (customers keep a limited number)
+  const deleteModel = async (m: TrainedModel) => {
+    setModelToDelete(null);
+    setDeletingId(m.modelId);
+    try {
+      await apiRequest(`/models/${encodeURIComponent(m.modelId)}`, { method: "DELETE", maxRetries: 1 });
+      toast({ title: `${m.modelVersion} deleted`, description: "You can train a new model now." });
+      void loadModels();
+      loadAllowance();
+    } catch (err) {
+      toast({ title: "Couldn't delete the model", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   // ---- Follow a training job ----
   const poll = useCallback(
@@ -455,14 +483,46 @@ export const PlaygroundTrainStep: React.FC<{
                     {percent(m.metrics?.mAP50)} · {scoreWords(m.metrics?.mAP50)}
                   </p>
                 </div>
-                <Button variant="outline" size="sm" className="shrink-0" onClick={onTestModel}>
-                  Test
-                </Button>
+                <div className="flex shrink-0 gap-2">
+                  <Button variant="outline" size="sm" onClick={onTestModel}>
+                    Test
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => setModelToDelete(m)}
+                    disabled={deletingId === m.modelId}
+                    aria-label={`Delete ${m.modelVersion}`}
+                  >
+                    {deletingId === m.modelId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>
         )}
       </section>
+
+      <AlertDialog open={!!modelToDelete} onOpenChange={(open) => !open && setModelToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {modelToDelete?.modelVersion}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The model and its test results are removed for good. This frees one of your trained-model slots.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => modelToDelete && void deleteModel(modelToDelete)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Tips */}
       <section className="grid gap-4 md:grid-cols-3" aria-label="Good to know">
