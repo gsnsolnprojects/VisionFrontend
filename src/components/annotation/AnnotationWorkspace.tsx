@@ -23,6 +23,7 @@ import { useAnnotation } from "@/hooks/useAnnotation";
 import { useAnnotationSelection } from "@/hooks/useAnnotationSelection";
 import { useAnnotationShortcuts } from "@/hooks/useAnnotationShortcuts";
 import { useShortcutKeys, matchesShortcut } from "@/hooks/useShortcutKeys";
+import { useProfile } from "@/hooks/useProfile";
 import { supabase } from "@/integrations/supabase/client";
 import * as annotationsApi from "@/lib/api/annotations";
 import * as categoriesApi from "@/lib/api/categories";
@@ -113,6 +114,10 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   initialImageFilename,
   batchId,
 }) => {
+  // Playground (customer) companies train detection models only, so they get a simpler tool:
+  // boxes only, no click-to-mask/polygons, no label-file import/export
+  const { company } = useProfile();
+  const simpleTools = !!company && (company.name ?? "").trim().toLowerCase() !== "gsn";
   const [annotationShapeMode, setAnnotationShapeMode] = useState<AnnotationShapeMode>("BBOX");
   const [shapeModeLocked, setShapeModeLocked] = useState(false);
   const shapePrefStorageKey = useMemo(() => `annotationShapePref:${datasetId}`, [datasetId]);
@@ -351,7 +356,8 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         } else {
           try {
             const pref = window.localStorage.getItem(shapePrefStorageKey) as AnnotationShapeMode | null;
-            if (pref === "POLYGON" || pref === "BBOX") setAnnotationShapeMode(pref);
+            if (simpleTools) setAnnotationShapeMode("BBOX");
+            else if (pref === "POLYGON" || pref === "BBOX") setAnnotationShapeMode(pref);
           } catch {
             /* ignore */
           }
@@ -363,7 +369,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [datasetId, shapePrefStorageKey]);
+  }, [datasetId, shapePrefStorageKey, simpleTools]);
 
   // Fetch images and categories on mount
   useEffect(() => {
@@ -1892,8 +1898,8 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         return;
       }
 
-      // M → click-to-mask (customisable)
-      if (matchesShortcut(e, shortcutKeys.clickToMask)) {
+      // M → click-to-mask (customisable; not in the Playground's simpler tool)
+      if (!simpleTools && matchesShortcut(e, shortcutKeys.clickToMask)) {
         e.preventDefault();
         handleToggleClickToMask();
         return;
@@ -1985,6 +1991,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     shortcutKeys,
+    simpleTools,
     selectedAnnotationId,
     categories,
     setDrawing,
@@ -2132,11 +2139,16 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         <div>
           <h3 className="text-lg font-semibold">Annotation Workspace</h3>
           <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
-            Edit any image in this dataset. Pre-labeled images may load boxes from label files when you
-            open them; check toasts if something could not be imported.
+            {simpleTools
+              ? "Draw a box around each defect and pick its type. Photos with no defect can be saved as good."
+              : "Edit any image in this dataset. Pre-labeled images may load boxes from label files when you open them; check toasts if something could not be imported."}
           </p>
           <p className="text-xs text-muted-foreground">
-            Dataset: <span className="font-mono">{datasetId}</span>
+            {!simpleTools && (
+              <>
+                Dataset: <span className="font-mono">{datasetId}</span>
+              </>
+            )}
             {unsavedChanges && (
               <span className="ml-2 text-amber-500">• Unsaved changes</span>
             )}
@@ -2190,11 +2202,13 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           >
             {saveStatus === "saving" ? "Saving..." : "Save Annotations"}
           </Button>
-          <AnnotationExportButton
-            datasetId={datasetId}
-            imageIds={currentImage ? [currentImage.id] : undefined}
-          />
-          <AnnotationImportButton
+          {!simpleTools && (
+            <AnnotationExportButton
+              datasetId={datasetId}
+              imageIds={currentImage ? [currentImage.id] : undefined}
+            />
+          )}
+          {!simpleTools && <AnnotationImportButton
             datasetId={datasetId}
             onImportComplete={(result) => {
               // Reload annotations after import
@@ -2208,7 +2222,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
                 });
               }
             }}
-          />
+          />}
           {/* ConvertToYOLOButton removed - Save Annotations button now handles conversion */}
           {hasConflicts && (
             <Button variant="destructive" size="sm" onClick={handleReloadAnnotations}>
@@ -2320,12 +2334,14 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           {selectedCategoryId && imageLoaded && hasCategories && (
             <div className="text-xs text-muted-foreground space-y-1">
               <div>Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">W</kbd> to draw</div>
-              <div>
-                Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                  {shortcutKeys.clickToMask.toUpperCase()}
-                </kbd>{" "}
-                to click-to-mask
-              </div>
+              {!simpleTools && (
+                <div>
+                  Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
+                    {shortcutKeys.clickToMask.toUpperCase()}
+                  </kbd>{" "}
+                  to click-to-mask
+                </div>
+              )}
               <div>
                 <kbd className="px-1 py-0.5 bg-muted rounded text-xs">A</kbd> prev ·{" "}
                 <kbd className="px-1 py-0.5 bg-muted rounded text-xs">D</kbd> next
@@ -2532,11 +2548,11 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           <h4 className="text-sm font-medium">Tools</h4>
           <AnnotationToolbar
             annotationShapeMode={annotationShapeMode}
-            onAnnotationShapeModeChange={handleAnnotationShapeModeChange}
+            onAnnotationShapeModeChange={simpleTools ? undefined : handleAnnotationShapeModeChange}
             shapeModeLocked={shapeModeLocked}
             isDrawing={isDrawing}
             isClickToMask={isClickToMask}
-            onClickToMask={handleToggleClickToMask}
+            onClickToMask={simpleTools ? undefined : handleToggleClickToMask}
             clickToMaskShortcut={shortcutKeys.clickToMask}
             onDraw={() => {
               if (isDrawing) {
@@ -2567,7 +2583,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
               }
             }}
           />
-          {currentImage?.hasLabels && (
+          {currentImage?.hasLabels && !simpleTools && (
             <Button
               type="button"
               variant="outline"
@@ -2580,7 +2596,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           )}
 
           {/* Phase 6: Annotation Metadata */}
-          {selectedAnnotationId && (
+          {selectedAnnotationId && !simpleTools && (
             <div className="pt-3 border-t">
               <AnnotationMetadata
                 annotation={annotations.find((a) => a.id === selectedAnnotationId) || null}
