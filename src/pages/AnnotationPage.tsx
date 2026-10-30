@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { AnnotationWorkspace } from "@/components/annotation/AnnotationWorkspace";
 import { useProfile } from "@/hooks/useProfile";
+import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { useToast } from "@/hooks/use-toast";
 import { EmptyState } from "@/components/pages/EmptyState";
 import { Lock } from "lucide-react";
@@ -12,8 +13,17 @@ export const AnnotationPage: React.FC = () => {
   const initialImageFilename = searchParams.get("image") || undefined;
   const batchId = searchParams.get("batch") || undefined;
   const navigate = useNavigate();
-  const { hasPermission, loading: profileLoading, userRole, error } = useProfile();
+  const { hasPermission, loading: profileLoading, userRole, error, company } = useProfile();
   const { toast } = useToast();
+  const { setItems: setBreadcrumbs } = useBreadcrumbs();
+
+  // Playground (customer) accounts: plain words instead of the dataset id in the breadcrumb
+  const isCustomer = !!company && (company.name ?? "").trim().toLowerCase() !== "gsn";
+  useEffect(() => {
+    if (!isCustomer) return;
+    setBreadcrumbs([{ label: "Dashboard", href: "/dashboard" }, { label: "Label photos" }]);
+    return () => setBreadcrumbs(null);
+  }, [isCustomer, setBreadcrumbs]);
 
   // Check permission on mount
   useEffect(() => {
