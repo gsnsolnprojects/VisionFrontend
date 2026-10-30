@@ -150,7 +150,6 @@ const ProtectedRoutes = () => {
         <Route path="/dashboard/settings" element={<SettingsPage />} />
         {/* Old addresses open the matching section */}
         <Route path="/dashboard/settings/workspace" element={<Navigate to="/dashboard/settings/company" replace />} />
-        <Route path="/dashboard/settings/usage" element={<Navigate to="/dashboard/settings/billing" replace />} />
         <Route path="/dashboard/settings/:section" element={<SettingsPage />} />
         
         {/* Account */}

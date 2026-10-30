@@ -1,7 +1,7 @@
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Building2, CreditCard, KeyRound, Keyboard, Palette, Smartphone, User, type LucideIcon } from "lucide-react";
+import { Activity, Building2, CreditCard, KeyRound, Keyboard, Palette, Smartphone, User, type LucideIcon } from "lucide-react";
 import { useProfile } from "@/hooks/useProfile";
 import { PageHeader } from "@/components/pages/PageHeader";
 import { LoadingState } from "@/components/pages/LoadingState";
@@ -13,6 +13,7 @@ import { CompanySettings } from "@/components/settings/CompanySettings";
 import { ShortcutSettings } from "@/components/settings/ShortcutSettings";
 import { SettingsBillingPage } from "@/pages/SettingsBillingPage";
 import { SettingsMobileInspectPage } from "@/pages/SettingsMobileInspectPage";
+import { UsageActivitySettings } from "@/components/settings/UsageActivitySettings";
 import { fadeInUpVariants } from "@/utils/animations";
 import { cn } from "@/lib/utils";
 
@@ -39,6 +40,7 @@ const SECTIONS: SectionDef[] = [
   { path: `${BASE}/shortcuts`, label: "Shortcut keys", Icon: Keyboard, group: "You", gsnOnly: true },
   { path: `${BASE}/company`, label: "Company", Icon: Building2, group: "Company" },
   { path: `${BASE}/billing`, label: "Plan & billing", Icon: CreditCard, group: "Company" },
+  { path: `${BASE}/usage`, label: "Usage", Icon: Activity, group: "Company" },
   { path: `${BASE}/mobile-inspect`, label: "Mobile Inspect", Icon: Smartphone, group: "Company", gsnOnly: true },
 ];
 
@@ -59,6 +61,15 @@ function SectionBody({ path }: { path: string }) {
           intro="Your company's plan, what it includes and how much of it you're using. Everyone in the company shares one plan."
         >
           <SettingsBillingPage />
+        </SettingsSection>
+      );
+    case `${BASE}/usage`:
+      return (
+        <SettingsSection
+          title="Usage"
+          intro="Who did what and when: GPU training time per person, and every training, test, upload and set of extra photos with its start, end and duration."
+        >
+          <UsageActivitySettings />
         </SettingsSection>
       );
     case `${BASE}/mobile-inspect`:
