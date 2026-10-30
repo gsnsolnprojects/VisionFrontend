@@ -31,6 +31,31 @@ All colors MUST be HSL.
   }
 }
 
+/* Playground hero: a lime scanner line sweeping up and down over the industry picture */
+.scan-line {
+  top: 6%;
+  height: 2px;
+  background: #e2f562;
+  box-shadow: 0 0 12px 2px rgba(226, 245, 98, 0.55);
+  animation: scan-sweep 3.2s ease-in-out infinite alternate;
+}
+
+@keyframes scan-sweep {
+  from {
+    top: 6%;
+  }
+  to {
+    top: 94%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-line {
+    animation: none;
+    top: 50%;
+  }
+}
+
 /* Based on https://makc3d.wordpress.com/2015/03/07/animated-bootstrap-progress-bar/ */
 @keyframes progress-bar-stripes {
   from {

@@ -216,8 +216,10 @@ export const IndustryPicker: React.FC<{
               </div>
             )}
           </div>
-          <div className="hidden rounded-xl border border-[#485840] p-2 sm:block">
+          <div className="relative hidden overflow-hidden rounded-xl border border-[#485840] p-2 sm:block">
             <IndustryArt index={artIndex} />
+            {/* Scanner line sweeping over the picture, like an inspection camera */}
+            <div aria-hidden className="scan-line pointer-events-none absolute inset-x-2" />
           </div>
         </div>
       </motion.section>
