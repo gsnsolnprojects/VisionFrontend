@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
-import { ArrowRight, Check, Clock, Gauge, Layers, Loader2, Play, Rabbit, Sparkles, Trash2, Turtle } from "lucide-react";
+import { ArrowRight, Check, Gauge, Layers, Loader2, Play, Rabbit, Sparkles, Trash2, Turtle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -380,6 +380,29 @@ export const PlaygroundTrainStep: React.FC<{
               ? "A run that fails because of a problem on our side doesn't use up your allowance."
               : "We're setting up the training computers. Meanwhile, read how training works and test a ready-made model in step 3."}
           </p>
+
+          {busy && job && (
+            <div className="mt-4 rounded-xl border bg-secondary/40 p-4" role="status">
+              <div className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="font-medium text-foreground">
+                  {job.status === "queued"
+                    ? "Waiting for a training computer"
+                    : job.totalEpochs
+                      ? `Epoch ${job.currentEpoch} of ${job.totalEpochs}`
+                      : "Getting started"}
+                </span>
+                <span className="font-semibold tabular-nums text-foreground">{Math.round(job.percent)}%</span>
+              </div>
+              <Progress value={job.percent} className="mt-2 h-3 bg-background" indicatorClassName="bg-ring" aria-label="Training progress" />
+              <p className="mt-2 text-xs text-muted-foreground">
+                {job.status === "queued"
+                  ? "It starts by itself as soon as one is free. This can take a while; you can leave this page and come back."
+                  : job.mAP50 !== null
+                    ? `Current score ${percent(job.mAP50)}: ${scoreWords(job.mAP50).toLowerCase()}. You can leave this page and come back.`
+                    : "You can leave this page and come back: training keeps going."}
+              </p>
+            </div>
+          )}
         </section>
 
         {/* Journey */}
@@ -388,33 +411,8 @@ export const PlaygroundTrainStep: React.FC<{
             What happens while it trains
           </h3>
 
-          {job && (
+          {job && !busy && (
             <div className="mt-4 rounded-xl border bg-secondary/40 p-4" role="status">
-              {job.status === "queued" && (
-                <p className="flex items-start gap-2 text-sm text-foreground">
-                  <Clock className="mt-0.5 h-4 w-4 shrink-0" />
-                  Waiting for a training computer to become free. This can take a while; you can leave this page and come
-                  back.
-                </p>
-              )}
-              {job.status === "running" && (
-                <>
-                  <div className="flex items-baseline justify-between text-sm">
-                    <span className="font-medium text-foreground">
-                      {job.totalEpochs ? `Epoch ${job.currentEpoch} of ${job.totalEpochs}` : "Getting started"}
-                    </span>
-                    <span className="tabular-nums text-muted-foreground">{Math.round(job.percent)}%</span>
-                  </div>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-background">
-                    <motion.div className="h-full bg-ring" animate={{ width: `${job.percent}%` }} />
-                  </div>
-                  {job.mAP50 !== null && (
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Current score {percent(job.mAP50)}: {scoreWords(job.mAP50).toLowerCase()}.
-                    </p>
-                  )}
-                </>
-              )}
               {job.status === "completed" && (
                 <div className="space-y-3">
                   <p className="text-sm text-foreground">
