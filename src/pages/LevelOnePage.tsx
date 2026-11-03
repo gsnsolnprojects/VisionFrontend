@@ -383,7 +383,7 @@ const LevelOnePage: React.FC = () => {
         <div className="space-y-4">
           <StepGuide
             what="Now try it yourself: draw a box around each defect, then check it against GSN's labels."
-            why={`This is how you learn what a model needs to see. Score at least ${Math.round(PASS_MARK * 100)}% to go on, with as many tries as you like. Your practice labels aren't saved.`}
+            why={`This is how you learn what a model needs to see. Label as many photos as you like, or skip this step. If you check photos, an average of ${Math.round(PASS_MARK * 100)}% takes you on, with as many tries as you like. Your practice labels aren't saved.`}
           />
           <PlaygroundLabelPractice
             datasetId={sampleId}
@@ -392,7 +392,7 @@ const LevelOnePage: React.FC = () => {
             continueLabel="Next: how training works"
             onContinue={() => goTo("training")}
             onFinished={(score) => {
-              const passed = (score ?? 0) >= PASS_MARK;
+              const passed = score === null || score >= PASS_MARK;
               if (passed) markDone("practice");
               saveLevelProgress({ mission, step: passed ? "practice" : undefined, practiceScore: score ?? undefined });
             }}

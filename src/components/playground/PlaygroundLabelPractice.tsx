@@ -26,13 +26,12 @@ import { cn } from "@/lib/utils";
 /**
  * Learn to label (?step=practice on a GSN sample): the student draws boxes on a few of GSN's
  * labelled photos, can ask for a hint (GSN's box, dotted) and checks each photo against GSN's
- * labels. After PRACTICE_UNLOCK checked photos, auto-label runs GSN's ready-made model on more
- * photos and shows its boxes next to GSN's. Practice labels live in this component only: they
+ * labels. No number of photos is required: the student can finish at any point. Auto-label runs
+ * GSN's ready-made model on more photos and shows its boxes next to GSN's. Practice labels live in this component only: they
  * are never sent to the server, and training keeps using GSN's labels.
  */
 
 const PRACTICE_PHOTOS = 20;
-const PRACTICE_UNLOCK = 10;
 const AUTO_LABEL_PHOTOS = 30;
 /** Photos whose labels are read to pick the practice set from */
 const CANDIDATES = 150;
@@ -817,7 +816,6 @@ export const PlaygroundLabelPractice: React.FC<{
   const checkedCount = checkedStates.length;
   const averageScore = checkedCount ? checkedStates.reduce((sum, s) => sum + (s.score ?? 0), 0) / checkedCount : null;
   const hintsUsed = practice.filter((f) => states[f.id]?.hinted).length;
-  const unlocked = checkedCount >= Math.min(PRACTICE_UNLOCK, practice.length);
 
   const verdictColors = useMemo(() => {
     if (!state.checked) return null;
@@ -938,11 +936,12 @@ export const PlaygroundLabelPractice: React.FC<{
 
   // ---- Finished ----
   if (phase === "done") {
-    const passed = passMark === undefined || (averageScore ?? 0) >= passMark;
+    // The pass mark is on the photos checked; nothing checked means the practice was skipped
+    const passed = passMark === undefined || averageScore === null || averageScore >= passMark;
     return (
       <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border bg-card p-6 md:p-8">
         {passed && <CheckCircle2 className="h-10 w-10 text-success" aria-hidden="true" />}
-        <h2 className="mt-3 text-2xl font-bold tracking-tight text-foreground">{passed ? "Practice complete" : "Almost there"}</h2>
+        <h2 className="mt-3 text-2xl font-bold tracking-tight text-foreground">{averageScore === null ? "Practice skipped" : passed ? "Practice complete" : "Almost there"}</h2>
         <dl className="mt-5 grid max-w-xl grid-cols-1 gap-3 sm:grid-cols-3">
           {[
             ["Photos checked", `${checkedCount} of ${practice.length}`],
@@ -956,7 +955,9 @@ export const PlaygroundLabelPractice: React.FC<{
           ))}
         </dl>
         <p className="mt-6 max-w-2xl border-l-2 border-ring bg-secondary/40 px-4 py-3 text-sm text-muted-foreground">
-          {passed
+          {averageScore === null
+            ? "You skipped the practice. You can come back to it any time: drawing a few boxes yourself shows what a model needs to see."
+            : passed
             ? "This was practice, so your labels aren't saved. A model learns from labels like these, so careful labelling makes a better model."
             : `You need an average match of ${Math.round((passMark ?? 0) * 100)}% to go on. Practise again as many times as you like: use the hints, and keep each box tight around the defect.`}
         </p>
@@ -1280,32 +1281,23 @@ export const PlaygroundLabelPractice: React.FC<{
       </div>
 
       {/* Auto-label */}
-      <div
-        className={cn(
-          "mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3",
-          unlocked ? "border-ring bg-secondary/60" : "bg-background/40"
-        )}
-      >
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ring bg-secondary/60 px-4 py-3">
         <div className="flex items-start gap-3">
-          <Wand2 className={cn("mt-0.5 h-5 w-5 shrink-0", unlocked ? "text-ring" : "text-muted-foreground")} aria-hidden="true" />
+          <Wand2 className="mt-0.5 h-5 w-5 shrink-0 text-ring" aria-hidden="true" />
           <div>
             <p className="font-medium text-foreground">Auto-label the rest</p>
             <p className="text-sm text-muted-foreground">
-              {unlocked
-                ? `You've got the idea. Let GSN's model label ${pool.length} more photos and compare its boxes with GSN's.`
-                : `Check ${Math.min(PRACTICE_UNLOCK, practice.length)} photos to unlock (${checkedCount} of ${Math.min(PRACTICE_UNLOCK, practice.length)} so far).`}
+              Let GSN&apos;s model label {pool.length} more photos and compare its boxes with GSN&apos;s.
             </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {unlocked && (
-            <Button variant="ghost" size="sm" onClick={() => setPhase("done")}>
-              Skip to finish
-            </Button>
-          )}
+          <Button variant="ghost" size="sm" onClick={() => setPhase("done")}>
+            {checkedCount === 0 ? "Skip practice" : "Finish practice"}
+          </Button>
           <Button
             className="gap-1.5"
-            disabled={!unlocked || pool.length === 0}
+            disabled={pool.length === 0}
             onClick={() => (autoRun && !autoError ? setPhase("autolabel") : void startAutoLabel())}
           >
             <Wand2 className="h-4 w-4" /> {autoRun && !autoError ? "See auto-label results" : "Auto-label the rest"}

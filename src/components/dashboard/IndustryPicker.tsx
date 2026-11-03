@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
+  ArrowDown,
   ArrowRight,
   ArrowUpRight,
   Check,
@@ -186,6 +187,10 @@ export const IndustryPicker: React.FC<{
   const artIndex = Math.max(0, INDUSTRIES.findIndex((i) => i.id === selected));
   const industry = INDUSTRIES.find((i) => i.id === selected);
 
+  /** Down to the picked industry's levels, or to the industries while none is picked */
+  const goToLevels = () =>
+    document.getElementById(industry ? "pick-level" : "pick-industry")?.scrollIntoView({ behavior: "smooth", block: "start" });
+
   return (
     <>
       {/* Hero */}
@@ -224,6 +229,12 @@ export const IndustryPicker: React.FC<{
                 <span className="text-xs text-[#bec9b0]">Look around first: pick a world below to see its challenges.</span>
               </div>
             )}
+            {!onChoosePlan && (
+              <Button onClick={goToLevels} className="mt-7 gap-1.5 bg-[#e9ff65] text-[#171f1b] hover:bg-[#e9ff65]/90">
+                Start guided mission
+                <ArrowDown className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            )}
           </div>
           <div className="relative hidden overflow-hidden rounded-xl border border-[#485840] p-2 sm:block">
             <IndustryArt index={artIndex} />
@@ -234,7 +245,7 @@ export const IndustryPicker: React.FC<{
       </motion.section>
 
       {/* Industry cards */}
-      <motion.section variants={fadeInUpVariants} aria-labelledby="industry-heading">
+      <motion.section id="pick-industry" variants={fadeInUpVariants} aria-labelledby="industry-heading" className="scroll-mt-4">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -357,6 +368,20 @@ const ChallengeCard: React.FC<{
   );
 };
 
+/** What the student will do in a level, in order */
+const LevelSteps: React.FC<{ steps: string[] }> = ({ steps }) => (
+  <ol className="mt-3 space-y-1.5">
+    {steps.map((step, i) => (
+      <li key={step} className="flex gap-2">
+        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-medium text-foreground">
+          {i + 1}
+        </span>
+        <span>{step}</span>
+      </li>
+    ))}
+  </ol>
+);
+
 /** Lime tag in a card picture's top-left corner */
 const Tag: React.FC<{ Icon: LucideIcon; children: React.ReactNode }> = ({ Icon, children }) => (
   <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded bg-[#e9ff65] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#171f1b]">
@@ -392,10 +417,11 @@ const Challenges: React.FC<{
   return (
     <motion.section
       key={industry.id}
+      id="pick-level"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       aria-labelledby="challenge-heading"
-      className="rounded-2xl border bg-card p-5 md:p-7"
+      className="scroll-mt-4 rounded-2xl border bg-card p-5 md:p-7"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -441,12 +467,16 @@ const Challenges: React.FC<{
         >
           {guided && sample ? (
             <>
-              <strong className="font-medium text-foreground">
-                {sample.totalImages} {guided.photoNoun} photos
-              </strong>{" "}
-              from a real inspection line, already labelled by GSN&apos;s team: {guided.finds}. See the data, practise
-              labelling, learn how training works, then test GSN&apos;s model on photos it has never seen.
-              <span className="mt-1 block text-xs">Learning only: it doesn&apos;t use your project.</span>
+              Learn how AI inspection works on {sample.totalImages} real {guided.photoNoun} photos that GSN has already
+              labelled.
+              <LevelSteps
+                steps={[
+                  `See the photos and how defects like ${guided.finds} are marked`,
+                  "Try marking defects yourself and get a score",
+                  "Learn how a model is trained",
+                  "Test GSN's ready-made model and make a report",
+                ]}
+              />
             </>
           ) : (
             "We're preparing a labelled GSN dataset for this industry."
@@ -458,16 +488,10 @@ const Challenges: React.FC<{
           kicker="Level 2 · Your own model"
           title="Your own inspection"
           picture={
-            <ol className="flex h-full flex-col justify-center gap-1.5 px-5 text-xs text-[#f5f5ee]">
-              {["Pick one defect", "Upload your photos", "Label them yourself", "Train and test"].map((step, i) => (
-                <li key={step} className="flex items-center gap-2.5">
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#e9ff65] text-[10px] text-[#e9ff65]">
-                    {i + 1}
-                  </span>
-                  {step}
-                </li>
-              ))}
-            </ol>
+            <div className="relative h-full w-full">
+              <IndustryArt index={artIndex} />
+              <Tag Icon={Sparkles}>Your photos</Tag>
+            </div>
           }
           onLocked={onChoosePlan}
           step={ownStep}
@@ -477,10 +501,16 @@ const Challenges: React.FC<{
             onClick: () => onStartMission(industry.name, { title: industry.own.title }, "own"),
           }}
         >
-          Inspect anything you like, for example {industry.own.example}. Upload your own photos, label them yourself,
-          train your own model and test it.
-          <span className="mt-1 block text-xs">Your first upload makes this your project.</span>
-          {showLevelOneTip && <span className="mt-1 block text-xs">New to this? Level 1 is a helpful place to start.</span>}
+          Build a model that finds a defect you choose, for example {industry.own.example}, using your own photos.
+          <LevelSteps
+            steps={[
+              "Upload your photos of the part",
+              "Mark the defect on at least 20 of them",
+              "Train your own model",
+              "Test it on new photos and make a report",
+            ]}
+          />
+          {showLevelOneTip && <span className="mt-2 block text-xs">New to this? Level 1 is a helpful place to start.</span>}
         </ChallengeCard>
       </div>
     </motion.section>
