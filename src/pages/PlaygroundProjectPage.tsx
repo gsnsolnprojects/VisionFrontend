@@ -1,8 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, Check, ChevronDown, Circle, Compass, Loader2, Lock, PenLine, Plus, Trash2, X } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Circle, Compass, Loader2, Lock, PenLine, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -116,6 +126,9 @@ export const PlaygroundProjectPage: React.FC = () => {
   const { toast } = useToast();
   const { company, profile, user } = useProfile();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  /** The photo, or the whole selected dataset, waiting for "Delete" in the dialog */
+  const [toDelete, setToDelete] = useState<ImageFile | "dataset" | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const planAccess = usePlanAccess();
   const limits = planAccess.data?.access?.limits;
 
@@ -382,13 +395,31 @@ export const PlaygroundProjectPage: React.FC = () => {
     }
   };
 
-  const removeImage = async (file: ImageFile) => {
-    if (!selectedId) return;
+  const confirmDeletion = async () => {
+    if (!selectedId || !project || !toDelete) return;
+    const target = toDelete;
+    setToDelete(null);
+    setDeleting(true);
     try {
-      await deleteDatasetFile(selectedId, file.id);
-      setFiles((prev) => prev.filter((f) => f.id !== file.id));
+      if (target === "dataset") {
+        await apiRequest(`/dataset/${encodeURIComponent(selectedId)}`, { method: "DELETE", maxRetries: 1 });
+        setFiles([]);
+        setLabelled(new Set());
+        setJustDone([]);
+        setSelectedId(null);
+        await loadVersions(project.name);
+        const { levels } = await getLevels();
+        setLevel(levels.find((l) => l.level === 2 && l.projectId === project.id) ?? null);
+        toast({ title: "Dataset deleted", description: "Your project is still here. Add new photos to carry on." });
+      } else {
+        await deleteDatasetFile(selectedId, target.id);
+        await Promise.all([loadVersions(project.name), loadFiles(selectedId)]);
+        toast({ title: "Photo deleted", description: target.originalName });
+      }
     } catch (err) {
-      toast({ title: "Couldn't remove image", description: (err as Error).message, variant: "destructive" });
+      toast({ title: "Couldn't delete", description: (err as Error).message, variant: "destructive" });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -502,6 +533,8 @@ export const PlaygroundProjectPage: React.FC = () => {
     }
   };
   const showDropZone = canUpload && (!!dataset || !ownDataset);
+  // Labelling comes before training: while there aren't enough labelled photos, Next opens the next photo to label
+  const firstToLabel = !isSample && !dataset?.isAugmented && counts.labelled < MIN_LABELLED ? files.find((f) => !isLabelled(f)) : undefined;
 
   const badges = [
     { label: "Industry explorer", done: true },
@@ -826,6 +859,17 @@ export const PlaygroundProjectPage: React.FC = () => {
                 : "No images yet. Add your own to get started."}
             </p>
           </div>
+          {dataset && !isSample && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-destructive hover:text-destructive"
+              disabled={deleting}
+              onClick={() => setToDelete("dataset")}
+            >
+              <Trash2 className="h-4 w-4" /> Delete this dataset
+            </Button>
+          )}
         </div>
 
         {showDropZone && (
@@ -910,10 +954,17 @@ export const PlaygroundProjectPage: React.FC = () => {
                   </button>
                 ))}
               </div>
-              <Button className="gap-1.5" onClick={() => goToStep("train")} disabled={level ? !labelDone : counts.labelled === 0}>
-                Next: train a model
-                <ArrowRight className="h-4 w-4" />
-              </Button>
+              {firstToLabel ? (
+                <Button className="gap-1.5" onClick={() => openLabelling(firstToLabel)}>
+                  Next: label your photos
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button className="gap-1.5" onClick={() => goToStep("train")} disabled={level ? !labelDone : counts.labelled === 0}>
+                  Next: train a model
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              )}
             </div>
 
             {classNames.length > 0 && (
@@ -951,16 +1002,6 @@ export const PlaygroundProjectPage: React.FC = () => {
                         >
                           {split.label}
                         </span>
-                        {!isSample && (
-                          <button
-                            type="button"
-                            onClick={() => void removeImage(f)}
-                            className="absolute right-2 top-2 rounded bg-black/60 p-1 text-white hover:bg-black/80"
-                            aria-label={`Remove ${f.originalName}`}
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        )}
                       </div>
                       <div className="space-y-2 p-3">
                         <p className="truncate text-xs text-foreground" title={f.originalName}>
@@ -971,15 +1012,28 @@ export const PlaygroundProjectPage: React.FC = () => {
                             {done ? `${boxes[f.id]?.length ?? "…"} label${boxes[f.id]?.length === 1 ? "" : "s"}` : "No label"}
                           </p>
                         ) : (
-                          <Button
-                            variant={done ? "outline" : "default"}
-                            size="sm"
-                            className="h-8 w-full gap-1.5 text-xs"
-                            onClick={() => openLabelling(f)}
-                          >
-                            <PenLine className="h-3.5 w-3.5" />
-                            {done ? "Edit labels" : "Label"}
-                          </Button>
+                          <div className="flex gap-1.5">
+                            <Button
+                              variant={done ? "outline" : "default"}
+                              size="sm"
+                              className="h-8 min-w-0 flex-1 gap-1.5 text-xs"
+                              onClick={() => openLabelling(f)}
+                            >
+                              <PenLine className="h-3.5 w-3.5" />
+                              {done ? "Edit labels" : "Label"}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 w-8 shrink-0 p-0 text-destructive hover:text-destructive"
+                              disabled={deleting}
+                              onClick={() => setToDelete(f)}
+                              aria-label={`Delete ${f.originalName}`}
+                              title="Delete this photo"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         )}
                       </div>
                     </article>
@@ -1005,6 +1059,30 @@ export const PlaygroundProjectPage: React.FC = () => {
         )}
       </section>
       )}
+
+      <AlertDialog open={!!toDelete} onOpenChange={(open) => !open && setToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{toDelete === "dataset" ? "Delete this dataset?" : "Delete this photo?"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {toDelete === "dataset"
+                ? dataset?.isAugmented
+                  ? `All ${counts.all} photos in this set of extra training photos go. Your own photos and labels stay.`
+                  : `All ${counts.all} photos and their labels go, with any extra training photos made from them. Your project and trained models stay${level ? ", and Level 2 starts again from upload" : ""}. This can't be undone.`
+                : `${toDelete?.originalName ?? "This photo"} and its labels go. This can't be undone.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => void confirmDeletion()}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </motion.div>
   );
 };
