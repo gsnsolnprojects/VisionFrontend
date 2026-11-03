@@ -900,7 +900,7 @@ export const PlaygroundProjectPage: React.FC = () => {
             <p className="text-sm font-medium text-foreground">Make more training photos</p>
             <p className="mt-1 text-sm text-muted-foreground">
               A few photos rarely train a good model. Make varied copies of your labelled photos (flipped, rotated,
-              brighter or darker), with the labels moved to match. Held-out test photos stay real, so scores stay honest.
+              brighter or darker), with the labels moved to match. Each copy stays in the same set as its photo, so the model is never tested on a photo it learned from.
             </p>
             {augmentingFrom === dataset.version || augmentedChild?.status === "processing" ? (
               <p className="mt-3 flex items-center gap-2 text-sm text-foreground">
@@ -924,7 +924,7 @@ export const PlaygroundProjectPage: React.FC = () => {
                   </Button>
                 )}
                 <span className="text-xs text-muted-foreground">
-                  Extra photos count towards your 500 photos per dataset. Making a new set replaces the previous one.
+                  The number is the total in the new set, your photos included. Making a new set replaces the previous one.
                 </span>
               </div>
             )}

@@ -13,7 +13,7 @@ export const AnnotationPage: React.FC = () => {
   const initialImageFilename = searchParams.get("image") || undefined;
   const batchId = searchParams.get("batch") || undefined;
   const navigate = useNavigate();
-  const { hasPermission, loading: profileLoading, userRole, error, company } = useProfile();
+  const { hasPermission, loading: profileLoading, userRole, error, company, user } = useProfile();
   const { toast } = useToast();
   const { setItems: setBreadcrumbs } = useBreadcrumbs();
 
@@ -83,6 +83,17 @@ export const AnnotationPage: React.FC = () => {
   }
 
   const handleClose = () => {
+    // Playground: back to the project these photos belong to
+    if (isCustomer) {
+      let lastProject: string | null = null;
+      try {
+        lastProject = localStorage.getItem(`visionm_playground_last_project_${user?.id ?? "anon"}`);
+      } catch {
+        // a convenience only
+      }
+      navigate(lastProject ? `/dataset/${lastProject}` : "/dashboard");
+      return;
+    }
     // Navigate back to simulation page
     navigate("/dashboard?view=simulation");
   };

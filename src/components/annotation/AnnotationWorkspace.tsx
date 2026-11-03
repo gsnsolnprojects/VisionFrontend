@@ -500,6 +500,8 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         description: "The dataset has been successfully augmented and replaced.",
         variant: "default",
       });
+      // Playground: nothing more to do here, so back to the project, which opens the new photos
+      if (simpleTools) onClose();
     } else if (isFailed) {
       if (augmentationHandledRef.current === key) return;
       augmentationHandledRef.current = key;
@@ -511,7 +513,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       });
     }
     prevAugmentationStatusRef.current = augmentationStatus;
-  }, [augmentationStatus, augmentingDatasetId, toast]);
+  }, [augmentationStatus, augmentingDatasetId, toast, simpleTools, onClose]);
 
   // Cleanup when dataset changes
   useEffect(() => {
