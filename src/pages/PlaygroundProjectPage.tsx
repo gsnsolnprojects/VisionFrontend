@@ -537,7 +537,7 @@ export const PlaygroundProjectPage: React.FC = () => {
           <div>
             {level && (
               <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Level 2{industryName ? ` · ${industryName}` : ""}
+                Level 2
               </p>
             )}
             <h1 className="text-3xl font-bold tracking-tight text-foreground">Give your model good examples.</h1>
@@ -569,7 +569,7 @@ export const PlaygroundProjectPage: React.FC = () => {
               </span>
               <span className="min-w-0">
                 <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  {industryName ?? "Project"}
+                  {level ? "Project" : industryName ?? "Project"}
                 </span>
                 <span className="flex items-center gap-1.5 font-semibold text-foreground">
                   <span className="truncate">{missionName}</span>
@@ -787,7 +787,7 @@ export const PlaygroundProjectPage: React.FC = () => {
             datasetId={selectedId}
             sampleProject={sampleProject}
             missionName={missionName}
-            industryName={industryName}
+            industryName={level ? null : industryName}
             onTestFinished={() => markLevelStep("test")}
             onReportCreated={() => {
               markLevelStep("report");

@@ -60,7 +60,8 @@ export const ContinueLevelCard: React.FC<{
   onStartMission: (industryName: string, mission: Mission, mode: MissionMode) => void;
 }> = ({ levels, projectIds, onStartMission }) => {
   const navigate = useNavigate();
-  const level = levels.find((l) => !l.finishedAt && l.nextStep);
+  // A Level 2 whose project was deleted has nothing to continue
+  const level = levels.find((l) => !l.finishedAt && l.nextStep && (l.level === 1 || projectIds.includes(l.projectId ?? "")));
 
   if (!level) return null;
 
@@ -69,11 +70,6 @@ export const ContinueLevelCard: React.FC<{
     const industry = level.industry ?? "";
     if (level.level === 1) {
       onStartMission(industry, mission, "guided");
-      return;
-    }
-    // Its project was deleted: opening the mission makes it again
-    if (!level.projectId || !projectIds.includes(level.projectId)) {
-      onStartMission(industry, mission, "own");
       return;
     }
     const pageStep = PAGE_STEP[level.nextStep ?? ""];

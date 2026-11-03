@@ -63,6 +63,7 @@ const APP_PATHS = [
   "/reports",
   "/practice/:sampleId",
   "/level-1/:sampleId",
+  "/level-2",
   "/level-2/:industryId",
   "/datasets",
   "/dataset/:id",
@@ -168,6 +169,7 @@ const ProtectedRoutes = () => {
         <Route path="/reports" element={<PlaygroundReportsPage />} />
         <Route path="/practice/:sampleId" element={<LabelPracticePage />} />
         <Route path="/level-1/:sampleId" element={<LevelOnePage />} />
+        <Route path="/level-2" element={<LevelTwoPage />} />
         <Route path="/level-2/:industryId" element={<LevelTwoPage />} />
 
         {/* Dataset Manager - keep existing routes for backward compatibility */}

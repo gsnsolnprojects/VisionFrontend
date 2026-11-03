@@ -46,7 +46,7 @@ import { SimulationView } from "@/components/SimulationView";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
 import { PlaygroundOverview } from "@/components/dashboard/PlaygroundOverview";
-import { levelTwoMission, type Mission, type MissionMode } from "@/components/dashboard/IndustryPicker";
+import type { Mission, MissionMode } from "@/components/dashboard/IndustryPicker";
 import { getSamples, importSampleDataset, importSampleModel } from "@/lib/api/samples";
 import { apiRequest } from "@/lib/api/config";
 import { RoleBadge } from "@/components/RoleBadge";
@@ -1110,12 +1110,7 @@ const Dashboard = () => {
       return;
     }
     if (mode === "own") {
-      const levelTwo = levelTwoMission(industryName);
-      if (levelTwo) {
-        navigate(`/level-2/${levelTwo.industryId}`);
-        return;
-      }
-      toast({ title: "Couldn't open Level 2", description: "Pick an industry on the overview and start it there.", variant: "destructive" });
+      navigate("/level-2");
       return;
     }
     const useSample = mode === "try" && !!mission.sample;

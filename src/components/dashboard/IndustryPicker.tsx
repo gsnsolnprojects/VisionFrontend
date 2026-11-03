@@ -27,8 +27,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * Top of the Playground overview: "Pick a world" hero, the six industry cards and the picked
- * industry's levels (Level 1 on a GSN sample, Level 2 on the student's own photos). Either can be
- * started first; Level 2 only suggests Level 1 to someone who hasn't done one.
+ * industry's levels (Level 1 on a GSN sample, Level 2 on the student's own photos, in a project they
+ * name themselves). Either can be started first; Level 2 only suggests Level 1 to someone who hasn't done one.
  * The picked industry is remembered per user in this browser and drives the drawings (same
  * drawings as the landing page, in the same order).
  */
@@ -53,8 +53,8 @@ interface Industry {
   Icon: LucideIcon;
   /** Guided challenge on a GSN sample (the quick try uses the same project and sample) */
   guided?: { title: string; sample: string; finds: string; photoNoun: string };
-  /** The student's own project: its name and an example defect to start with */
-  own: { title: string; example: string };
+  /** An example defect, for the student's own project */
+  own: { example: string };
 }
 
 const INDUSTRIES: Industry[] = [
@@ -70,7 +70,7 @@ const INDUSTRIES: Industry[] = [
       finds: "missing screws, missing bars and blackened parts",
       photoNoun: "terminal",
     },
-    own: { title: "My electrical inspection", example: "a missing screw or a cracked housing" },
+    own: { example: "a missing screw or a cracked housing" },
   },
   {
     id: "electronics",
@@ -83,7 +83,7 @@ const INDUSTRIES: Industry[] = [
       finds: "missing holes, shorts, open circuits, spurs and more",
       photoNoun: "circuit board",
     },
-    own: { title: "My circuit board inspection", example: "a missing component or a solder bridge" },
+    own: { example: "a missing component or a solder bridge" },
   },
   {
     id: "pharma",
@@ -96,28 +96,28 @@ const INDUSTRIES: Industry[] = [
       finds: "empty and damaged pockets",
       photoNoun: "blister pack",
     },
-    own: { title: "My packaging inspection", example: "an empty pocket or a torn foil" },
+    own: { example: "an empty pocket or a torn foil" },
   },
   {
     id: "food",
     name: "Food & Beverages",
     tagline: "Explore the details behind everyday packs.",
     Icon: CupSoda,
-    own: { title: "My food & beverage inspection", example: "a crooked label or a dented can" },
+    own: { example: "a crooked label or a dented can" },
   },
   {
     id: "plastics",
     name: "Plastics & Precision Parts",
     tagline: "Investigate shape, finish and consistency.",
     Icon: Hexagon,
-    own: { title: "My plastic parts inspection", example: "an incomplete moulding or a surface scratch" },
+    own: { example: "an incomplete moulding or a surface scratch" },
   },
   {
     id: "textiles",
     name: "Textiles",
     tagline: "Look closer at patterns, stains and fabric.",
     Icon: Shirt,
-    own: { title: "My fabric inspection", example: "a stain or a pulled thread" },
+    own: { example: "a stain or a pulled thread" },
   },
 ];
 
@@ -128,14 +128,6 @@ export const guidedMissionForSample = (sampleProject: string): { industryName: s
   const industry = INDUSTRIES.find((i) => i.guided && sameProject(i.guided.sample, sampleProject));
   return industry?.guided
     ? { industryName: industry.name, mission: { title: industry.guided.title, sample: industry.guided.sample } }
-    : null;
-};
-
-/** An industry's Level 2 (by the industry's id or name): its mission, and GSN's sample for students without photos */
-export const levelTwoMission = (industry: string) => {
-  const found = INDUSTRIES.find((i) => i.id === industry || i.name === industry);
-  return found
-    ? { industryId: found.id, industryName: found.name, title: found.own.title, example: found.own.example, sample: found.guided?.sample ?? null }
     : null;
 };
 
@@ -159,7 +151,9 @@ export const IndustryPicker: React.FC<{
   path?: PathProgress | null;
   /** The student's levels; null while loading (or before a plan) */
   levels?: LevelProgress[] | null;
-}> = ({ onStartMission, onChoosePlan, path = null, levels = null }) => {
+  /** The company's projects: a Level 2 whose project was deleted starts afresh */
+  projectIds?: string[];
+}> = ({ onStartMission, onChoosePlan, path = null, levels = null, projectIds = [] }) => {
   const { user } = useProfile();
   const [selected, setSelected] = useState<string | null>(null);
   const [samples, setSamples] = useState<Samples | null>(null);
@@ -303,6 +297,7 @@ export const IndustryPicker: React.FC<{
           onChoosePlan={onChoosePlan}
           path={path}
           levels={levels}
+          projectIds={projectIds}
         />
       )}
     </>
@@ -396,7 +391,8 @@ const Challenges: React.FC<{
   onChoosePlan?: () => void;
   path: PathProgress | null;
   levels: LevelProgress[] | null;
-}> = ({ industry, samples, onStartMission, onChoosePlan, path, levels }) => {
+  projectIds: string[];
+}> = ({ industry, samples, onStartMission, onChoosePlan, path, levels, projectIds }) => {
   const artIndex = Math.max(0, INDUSTRIES.findIndex((i) => i.id === industry.id));
   const guided = industry.guided;
   const loading = samples === null;
@@ -409,7 +405,7 @@ const Challenges: React.FC<{
   // Level 1 of this industry, and whether any Level 1 is done (older accounts: the old guided path)
   const levelOne = guided ? levels?.find((l) => l.level === 1 && l.mission === guided.title) : undefined;
   const anyLevelOneDone = !!levels?.some((l) => l.level === 1 && l.finishedAt) || !!(path?.guidedDone && path.practiceDone);
-  const levelTwo = levels?.find((l) => l.level === 2 && l.mission === industry.own.title);
+  const levelTwo = levels?.find((l) => l.level === 2 && projectIds.includes(l.projectId ?? ""));
   const guidedStep: PathStep | null = levels ? { state: levelOne?.finishedAt ? "done" : "next" } : null;
   const ownStep: PathStep | null = !levels ? null : { state: levelTwo?.finishedAt ? "done" : "next" };
   const showLevelOneTip = !!guidedMission && !levelTwo?.finishedAt && !levelTwo?.completedSteps.length && !anyLevelOneDone;
@@ -498,13 +494,13 @@ const Challenges: React.FC<{
           action={{
             label: levelTwo?.finishedAt ? "Open Level 2 again" : levelTwo?.completedSteps.length ? "Continue Level 2" : "Start Level 2",
             Icon: ArrowRight,
-            onClick: () => onStartMission(industry.name, { title: industry.own.title }, "own"),
+            onClick: () => onStartMission(industry.name, { title: "Level 2" }, "own"),
           }}
         >
           Build a model that finds a defect you choose, for example {industry.own.example}, using your own photos.
           <LevelSteps
             steps={[
-              "Upload your photos of the part",
+              "Name your project and upload your photos",
               "Mark the defect on at least 20 of them",
               "Train your own model",
               "Test it on new photos and make a report",

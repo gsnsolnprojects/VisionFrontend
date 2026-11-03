@@ -24,7 +24,7 @@ export interface LevelProgress {
 export const getLevels = () => apiRequest<{ levels: LevelProgress[] }>("/playground/levels", { maxRetries: 1 });
 
 /** POST /api/playground/levels/start - starts a level, or re-opens it; a changed projectId (null: none now) starts it over */
-export const startLevel = (body: { level: number; mission: string; industry: string; sample?: string; projectId?: string | null }) =>
+export const startLevel = (body: { level: number; mission: string; industry?: string; sample?: string; projectId?: string | null }) =>
   apiRequest<{ level: LevelProgress }>("/playground/levels/start", { method: "POST", body: JSON.stringify(body), maxRetries: 1 });
 
 /** POST /api/playground/levels/progress - a convenience for the student, so a failed save never interrupts them */

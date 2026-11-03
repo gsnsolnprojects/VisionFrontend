@@ -67,6 +67,7 @@ export const PlaygroundOverview: React.FC<PlaygroundOverviewProps> = ({ projects
         onChoosePlan={preview ? choosePlan : undefined}
         path={preview ? null : progress?.path ?? null}
         levels={preview ? null : levels}
+        projectIds={(projects as { id: string }[]).map((p) => p.id)}
         onStartMission={(industryName, mission, mode) =>
           onStartMission
             ? onStartMission(industryName, mission, mode)
