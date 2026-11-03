@@ -39,6 +39,8 @@ interface BoundingBoxCanvasProps {
   /** "bbox" = drag rectangle (default). "polygon" = click vertices / edit vertices. */
   shapeMode?: "bbox" | "polygon";
   onBboxDraw?: (bbox: [number, number, number, number]) => void;
+  /** A box was dragged out, but too small to keep */
+  onBoxTooSmall?: () => void;
   /** Called when user closes a polygon (>=3 normalized points). */
   onPolygonDrawComplete?: (polygon: PolygonPoint[]) => void;
   onAnnotationClick?: (annotationId: string, multiSelect?: boolean) => void;
@@ -77,6 +79,7 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
       selectedAnnotationIds = [],
       shapeMode = "bbox",
       onBboxDraw,
+      onBoxTooSmall,
       onPolygonDrawComplete,
       onAnnotationClick,
       onAnnotationUpdate,
@@ -401,6 +404,8 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
       const bbox = calculateBbox(startX, startY, currentX, currentY);
       const MIN_SIZE = 10;
       if (!validateBbox(bbox, MIN_SIZE)) {
+        // A plain click has no size and isn't an attempt at a box
+        if (bbox.width > 2 || bbox.height > 2) onBoxTooSmall?.();
         setDrawingState(null);
         return;
       }
@@ -420,6 +425,7 @@ export const BoundingBoxCanvas = forwardRef<BoundingBoxCanvasHandle, BoundingBox
     imageWidth,
     imageHeight,
     onBboxDraw,
+    onBoxTooSmall,
     editingState,
   ]);
 

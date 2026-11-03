@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowRight, Check, ChevronDown, Circle, Compass, Loader2, Lock, PenLine, Plus, Trash2, X } from "lucide-react";
@@ -200,7 +200,13 @@ export const PlaygroundProjectPage: React.FC = () => {
 
   // While more training photos are being made: check every 5 s, then open the new version
   useEffect(() => {
-    if (!augmentingFrom || !project) return;
+    if (!project) return;
+    if (!augmentingFrom) {
+      // Started before this page loaded: follow it too
+      const running = versions?.find((v) => v.isAugmented && v.status === "processing");
+      if (running?.augmentedFromVersion) setAugmentingFrom(running.augmentedFromVersion);
+      return;
+    }
     const made = versions?.find((v) => v.isAugmented && v.augmentedFromVersion === augmentingFrom);
     if (made?.status === "ready") {
       setAugmentingFrom(null);
@@ -391,6 +397,36 @@ export const PlaygroundProjectPage: React.FC = () => {
     navigate(`/annotation/${encodeURIComponent(selectedId)}?image=${encodeURIComponent(file.storedName || file.originalName)}`);
   };
 
+  // Boxes are saved as they're drawn, but training and extra photos read the label files:
+  // write them on the way in, so the student doesn't have to press Save Annotations first
+  const writeLabels = useCallback(async () => {
+    if (!dataset || isSample || dataset.isAugmented || !project) return;
+    await apiRequest(`/dataset/${encodeURIComponent(dataset.datasetId)}/convert-annotations-to-labels`, {
+      method: "POST",
+      body: JSON.stringify({ modelType: "YOLO" }),
+      maxRetries: 1,
+    });
+    await loadVersions(project.name);
+    await loadFiles(dataset.datasetId);
+  }, [dataset, isSample, project, loadVersions, loadFiles]);
+
+  const [preparing, setPreparing] = useState(false);
+  const preparedFor = useRef<string | null>(null);
+  const hasLabelsToWrite = !loadingFiles && !isSample && !dataset?.isAugmented && counts.labelled > 0;
+  useEffect(() => {
+    if (step !== "train") {
+      preparedFor.current = null;
+      return;
+    }
+    if (!selectedId || !hasLabelsToWrite || preparedFor.current === selectedId) return;
+    preparedFor.current = selectedId;
+    setPreparing(true);
+    // A training still running keeps the labels it has (the server refuses): the page stays usable
+    writeLabels()
+      .catch(() => undefined)
+      .finally(() => setPreparing(false));
+  }, [step, selectedId, hasLabelsToWrite, writeLabels]);
+
   // Level 2 steps this screen shows are done (the server ignores them for any other mission)
   const levelMission = project ? ((project.description ?? "").includes(" · ") ? (project.description ?? "").split(" · ")[1] : project.name) : null;
   const doneSteps = !dataset || loadingFiles
@@ -421,12 +457,15 @@ export const PlaygroundProjectPage: React.FC = () => {
   const makeMorePhotos = async (target: number) => {
     if (!dataset) return;
     try {
+      await writeLabels();
       await apiRequest(`/dataset/${encodeURIComponent(dataset.datasetId)}/augment`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ versionName: `${dataset.version}-more-photos`.slice(0, 50), options: { targetTrainTotal: target } }),
         maxRetries: 1,
       });
+      // The server has just removed any earlier set: forget it, or it would count as the new one
+      setVersions((prev) => prev?.filter((v) => !(v.isAugmented && v.augmentedFromVersion === dataset.version)) ?? prev);
       setAugmentingFrom(dataset.version);
       toast({ title: "Making more training photos", description: "This takes a few minutes. You can stay on this page." });
       if (project) void loadVersions(project.name);
@@ -687,7 +726,11 @@ export const PlaygroundProjectPage: React.FC = () => {
       )}
 
       {step === "train" && (
-        dataset && selectedId ? (
+        preparing ? (
+          <div className="flex justify-center rounded-2xl border bg-card py-16">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : dataset && selectedId ? (
           <PlaygroundTrainStep
             projectId={project.id}
             companyName={companyName}

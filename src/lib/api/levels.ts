@@ -28,6 +28,13 @@ export const startLevel = (body: { level: number; mission: string; industry: str
   apiRequest<{ level: LevelProgress }>("/playground/levels/start", { method: "POST", body: JSON.stringify(body), maxRetries: 1 });
 
 /** POST /api/playground/levels/progress - a convenience for the student, so a failed save never interrupts them */
+/** Saves steps one after another and resolves when they're saved, so the last one can finish the level */
+export const saveLevelSteps = async (mission: string, steps: string[]) => {
+  for (const step of steps) {
+    await apiRequest("/playground/levels/progress", { method: "POST", body: JSON.stringify({ mission, step }), maxRetries: 1 }).catch(() => undefined);
+  }
+};
+
 export const saveLevelProgress = (body: { mission: string; step?: string; practiceScore?: number; trainingJobId?: string }) => {
   apiRequest("/playground/levels/progress", { method: "POST", body: JSON.stringify(body), maxRetries: 1 }).catch(() => undefined);
 };

@@ -351,7 +351,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         );
         if (list.length > 0) {
           const anyPoly = list.some((a) => a.polygon && a.polygon.length >= 3);
-          setAnnotationShapeMode(anyPoly ? "POLYGON" : "BBOX");
+          setAnnotationShapeMode(anyPoly && !simpleTools ? "POLYGON" : "BBOX");
           setShapeModeLocked(true);
         } else {
           try {
@@ -844,6 +844,21 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     }
   }, [annotations, datasetId, markSaved, toast, annotationShapeMode]);
 
+  // Only the open photo's boxes are in memory: the others go by what the server said when the list
+  // loaded (a photo marked good counts too), plus the photos given a box since then
+  const [boxedSinceLoad, setBoxedSinceLoad] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const ids = annotations.map((ann) => ann.imageId);
+    setBoxedSinceLoad((prev) => (ids.every((id) => prev.has(id)) ? prev : new Set([...prev, ...ids])));
+  }, [annotations]);
+  const photosWithoutLabels = useMemo(
+    () =>
+      images.filter(
+        (img) => !boxedSinceLoad.has(img.id) && !img.hasAnnotations && !img.hasLabels && img.annotationStatus !== "annotated"
+      ),
+    [images, boxedSinceLoad]
+  );
+
   // Phase 5 & 6: Save annotations and convert to YOLO
   const handleSaveAndConvert = useCallback(async (unannotatedImageIds: string[] = []) => {
     if (!hasCategories) {
@@ -861,10 +876,12 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       // Prepare annotations for batch save
       const annotationsToSave = annotations.map((ann) => annotationToWritePayload(ann, annotationShapeMode));
 
-      // Save annotations
-      const batchResult = await annotationsApi.batchSaveAnnotations(datasetId, annotationsToSave);
-      if (batchResult.saved > 0) {
-        setShapeModeLocked(true);
+      // Save annotations (the open photo may have none: the others are already saved)
+      if (annotationsToSave.length > 0) {
+        const batchResult = await annotationsApi.batchSaveAnnotations(datasetId, annotationsToSave);
+        if (batchResult.saved > 0) {
+          setShapeModeLocked(true);
+        }
       }
 
       // Phase 6: Prepare categories for YOLO conversion (include names)
@@ -2189,16 +2206,18 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
             size="sm"
             onClick={async () => {
               // Phase 5: Check for unannotated images
-              const annotatedImageIds = new Set(annotations.map((ann) => ann.imageId));
-              const imagesWithoutAnnotations = images.filter((img) => !annotatedImageIds.has(img.id));
-              
-              if (imagesWithoutAnnotations.length > 0) {
+              if (photosWithoutLabels.length > 0) {
                 setShowUnannotatedDialog(true);
               } else {
                 await handleSaveAndConvert();
               }
             }}
-            disabled={!hasCategories || annotations.length === 0 || saveStatus === "saving" || isSaveComplete}
+            disabled={
+              !hasCategories ||
+              photosWithoutLabels.length === images.length ||
+              saveStatus === "saving" ||
+              (isSaveComplete && !simpleTools)
+            }
           >
             {saveStatus === "saving" ? "Saving..." : "Save Annotations"}
           </Button>
@@ -2496,6 +2515,13 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
                   selectedAnnotationIds={selection.selectedAnnotationIds}
                   shapeMode={annotationShapeMode === "POLYGON" ? "polygon" : "bbox"}
                   onBboxDraw={handleBboxDraw}
+                  onBoxTooSmall={() =>
+                    toast({
+                      title: "That box is too small to keep",
+                      description: "Zoom in on the photo and draw it again.",
+                      variant: "destructive",
+                    })
+                  }
                   onPolygonDrawComplete={handlePolygonDrawComplete}
                   onPolygonUpdate={handlePolygonUpdate}
                   onAnnotationClick={handleAnnotationClick}
@@ -2662,40 +2688,40 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           <DialogHeader>
             <DialogTitle>Confirm Save</DialogTitle>
             <DialogDescription>
-              The images which don't have annotations are good images?
+              {simpleTools
+                ? `${photosWithoutLabels.length} photo${photosWithoutLabels.length === 1 ? " has" : "s have"} no boxes. Are they good photos, with no defect in them?`
+                : "The images which don't have annotations are good images?"}
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-3 justify-end mt-4">
             <Button
               variant="outline"
-              onClick={() => {
+              onClick={async () => {
                 setShowUnannotatedDialog(false);
+                // Playground: only the labelled photos are needed to go on; the rest stay as they are
+                if (simpleTools) {
+                  await handleSaveAndConvert();
+                  return;
+                }
                 // Phase 5: Display the list/grid of images without annotations
                 setShowOnlyUnannotatedImages(true);
-                const imagesWithoutAnnotations = images.filter(
-                  (img) => !img.hasAnnotations && img.annotationStatus !== "annotated"
-                );
                 toast({
                   title: "Unannotated images",
-                  description: `${imagesWithoutAnnotations.length} image(s) without annotations. Please annotate them or mark as good.`,
+                  description: `${photosWithoutLabels.length} image(s) without annotations. Please annotate them or mark as good.`,
                   variant: "info",
                 });
               }}
             >
-              No
+              {simpleTools ? "No, leave them unlabelled" : "No"}
             </Button>
             <Button
               variant="default"
               onClick={async () => {
                 setShowUnannotatedDialog(false);
-                const imagesWithoutAnnotations = images.filter(
-                  (img) => !img.hasAnnotations && img.annotationStatus !== "annotated"
-                );
-                const unannotatedImageIds = imagesWithoutAnnotations.map((img) => img.id);
-                await handleSaveAndConvert(unannotatedImageIds);
+                await handleSaveAndConvert(photosWithoutLabels.map((img) => img.id));
               }}
             >
-              Yes
+              {simpleTools ? "Yes, they're good" : "Yes"}
             </Button>
           </div>
         </DialogContent>

@@ -332,14 +332,17 @@ export const PlaygroundTestStep: React.FC<{
   // ---- What the model found, next to the dataset's labels for held-out photos ----
   const shown = useMemo(() => {
     if (!results) return [];
+    // Held-out photos are stored under another name than the one the student knows
+    const uploadedName: Record<string, string> = {};
+    if (run?.source === "test") for (const f of testFiles) uploadedName[baseOf(f.storedName)] = f.originalName;
     return results.map((r) => {
       const found = new Set(
         (r.byClass ?? []).filter((c) => (c.count ?? 1) > 0).map((c) => c.class ?? c.className ?? `class ${c.classId}`)
       );
       const labelled = run?.source === "test" ? truth[baseOf(r.originalName ?? r.filename)] : undefined;
-      return { ...r, found, labelled };
+      return { ...r, found, labelled, shownName: uploadedName[baseOf(r.originalName ?? r.filename)] ?? r.originalName ?? r.filename };
     });
-  }, [results, truth, run?.source]);
+  }, [results, truth, run?.source, testFiles]);
 
   const closeTest = async () => {
     if (!run) return;
@@ -360,10 +363,14 @@ export const PlaygroundTestStep: React.FC<{
     setFinishing("report");
     try {
       const labelled: Record<string, string[]> = {};
-      for (const r of shown) if (r.labelled) labelled[r.originalName ?? r.filename] = [...r.labelled];
+      const names: Record<string, string> = {};
+      for (const r of shown) {
+        if (r.labelled) labelled[r.originalName ?? r.filename] = [...r.labelled];
+        names[r.originalName ?? r.filename] = r.shownName;
+      }
       await apiRequest(`/playground/runs/${encodeURIComponent(run.id)}/report`, {
         method: "POST",
-        body: JSON.stringify({ projectId, title: missionName, industry: industryName, labelled }),
+        body: JSON.stringify({ projectId, title: missionName, industry: industryName, labelled, names }),
         maxRetries: 1,
       });
       forgetRun();
@@ -652,11 +659,11 @@ export const PlaygroundTestStep: React.FC<{
                   {shown.map((r) => (
                     <article key={r.filename} className="overflow-hidden rounded-xl border bg-background/40">
                       <div className="relative aspect-[4/3] bg-[#171f1b]">
-                        <ResultPhoto url={r.url} alt={`Model result for ${r.filename}`} />
+                        <ResultPhoto url={r.url} alt={`Model result for ${r.shownName}`} />
                       </div>
                       <div className="space-y-1 p-3 text-xs">
-                        <p className="truncate font-medium text-foreground" title={r.filename}>
-                          {r.filename}
+                        <p className="truncate font-medium text-foreground" title={r.shownName}>
+                          {r.shownName}
                         </p>
                         <p className="text-foreground">
                           <span className="text-muted-foreground">Model found: </span>

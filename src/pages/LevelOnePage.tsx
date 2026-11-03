@@ -13,7 +13,7 @@ import { PlaygroundTestStep } from "@/components/playground/PlaygroundTestStep";
 import { StepGuide } from "@/components/playground/StepGuide";
 import { TRAINING_JOURNEY } from "@/components/playground/trainingJourney";
 import { apiRequest } from "@/lib/api/config";
-import { saveLevelProgress, startLevel } from "@/lib/api/levels";
+import { saveLevelProgress, saveLevelSteps, startLevel } from "@/lib/api/levels";
 import { getSamples, type SampleDataset, type SampleModel } from "@/lib/api/samples";
 import { cn } from "@/lib/utils";
 
@@ -192,7 +192,11 @@ const DatasetStep: React.FC<{ sampleId: string; files: SampleFile[]; onNext: () 
   );
 };
 
-const TrainingStep: React.FC<{ model: SampleModel | null; onNext: () => void }> = ({ model, onNext }) => (
+const TrainingStep: React.FC<{ model: SampleModel | null; onNext: () => void; onFinishWithoutTest: () => void }> = ({
+  model,
+  onNext,
+  onFinishWithoutTest,
+}) => (
   <section className="space-y-5 rounded-2xl border bg-card p-5 md:p-6" aria-labelledby="training-heading">
     <div>
       <h2 id="training-heading" className="text-xl font-semibold text-foreground">
@@ -257,13 +261,20 @@ const TrainingStep: React.FC<{ model: SampleModel | null; onNext: () => void }> 
       </div>
     ) : (
       <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-        GSN doesn&apos;t have a ready-made model for this sample yet, so its test isn&apos;t open.
+        GSN&apos;s ready-made model for this sample isn&apos;t ready yet, so this sample has no test or report. You can
+        finish here, or try another sample to see the full level.
       </p>
     )}
     <div className="flex justify-end">
-      <Button className="gap-1.5" onClick={onNext} disabled={!model}>
-        Next: test this model <ArrowRight className="h-4 w-4" />
-      </Button>
+      {model ? (
+        <Button className="gap-1.5" onClick={onNext}>
+          Next: test this model <ArrowRight className="h-4 w-4" />
+        </Button>
+      ) : (
+        <Button className="gap-1.5" onClick={onFinishWithoutTest}>
+          Finish this sample <ArrowRight className="h-4 w-4" />
+        </Button>
+      )}
     </div>
   </section>
 );
@@ -352,6 +363,13 @@ const LevelOnePage: React.FC = () => {
 
   /** A step finished, as the page sees it (a step the server was already told about stays as it is) */
   const markDone = (id: StepId) => setCompleted((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  /** No ready-made model: nothing to test, so the level ends after training */
+  const finishWithoutTest = () => {
+    const rest: StepId[] = ["training", "test", "report"];
+    setCompleted((prev) => [...new Set([...prev, ...rest])]);
+    void saveLevelSteps(mission, rest);
+    goTo("report");
+  };
   const finishAndGo = (id: StepId, next: StepId) => {
     markDone(id);
     saveLevelProgress({ mission, step: id });
@@ -443,7 +461,9 @@ const LevelOnePage: React.FC = () => {
         </div>
       )}
 
-      {step === "training" && <TrainingStep model={model} onNext={() => finishAndGo("training", "test")} />}
+      {step === "training" && (
+        <TrainingStep model={model} onNext={() => finishAndGo("training", "test")} onFinishWithoutTest={finishWithoutTest} />
+      )}
 
       {step === "test" && (
         <div className="space-y-4">
@@ -479,10 +499,12 @@ const LevelOnePage: React.FC = () => {
 
       {step === "report" && (
         <div className="space-y-4">
-          <StepGuide
-            what="Turn your test into a report. In a factory, this is how results get shared with the team."
-            why="Each report is kept for 24 hours, so download the ones you want to keep. You can always run the test again and make a new one."
-          />
+          {model && (
+            <StepGuide
+              what="Turn your test into a report. In a factory, this is how results get shared with the team."
+              why="Each report is kept for 24 hours, so download the ones you want to keep. You can always run the test again and make a new one."
+            />
+          )}
           {levelDone && (
             <section className="flex flex-col gap-3 rounded-2xl border bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -496,7 +518,7 @@ const LevelOnePage: React.FC = () => {
               </Button>
             </section>
           )}
-          <PlaygroundReportStep projectId={`sample:${sampleId}`} onGoToTest={() => goTo("test")} />
+          {model && <PlaygroundReportStep projectId={`sample:${sampleId}`} onGoToTest={() => goTo("test")} />}
         </div>
       )}
     </motion.div>
