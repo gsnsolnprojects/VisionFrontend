@@ -9,7 +9,6 @@ import {
   CupSoda,
   Hexagon,
   Lock,
-  PenLine,
   Pill,
   Plug,
   Shirt,
@@ -22,13 +21,13 @@ import { Button } from "@/components/ui/button";
 import { useProfile } from "@/hooks/useProfile";
 import { getSamples, type SampleDataset, type SampleModel } from "@/lib/api/samples";
 import type { PathProgress } from "@/lib/api/dashboard";
+import type { LevelProgress } from "@/lib/api/levels";
 import { cn } from "@/lib/utils";
 
 /**
  * Top of the Playground overview: "Pick a world" hero, the six industry cards and the picked
- * industry's three challenges (guided challenge and label practice on a GSN sample; own project,
- * not open yet). The challenges form a path: a card is soft-locked (dimmed, but "start anyway"
- * still works) until the ones before it are done.
+ * industry's levels (Level 1 on a GSN sample, Level 2 on the student's own photos). Either can be
+ * started first; Level 2 only suggests Level 1 to someone who hasn't done one.
  * The picked industry is remembered per user in this browser and drives the drawings (same
  * drawings as the landing page, in the same order).
  */
@@ -41,8 +40,8 @@ export interface Mission {
 }
 
 /**
- * practice: label GSN's sample photos for practice (labels aren't kept); guided: the labelled sample to
- * explore and train on; try: GSN's trained model on your photos; own: your images
+ * guided: Level 1 on GSN's sample; practice: Level 1's practice step; try: GSN's trained model on your
+ * photos; own: Level 2, your images
  */
 export type MissionMode = "practice" | "guided" | "try" | "own";
 
@@ -131,6 +130,14 @@ export const guidedMissionForSample = (sampleProject: string): { industryName: s
     : null;
 };
 
+/** An industry's Level 2 (by the industry's id or name): its mission, and GSN's sample for students without photos */
+export const levelTwoMission = (industry: string) => {
+  const found = INDUSTRIES.find((i) => i.id === industry || i.name === industry);
+  return found
+    ? { industryId: found.id, industryName: found.name, title: found.own.title, example: found.own.example, sample: found.guided?.sample ?? null }
+    : null;
+};
+
 const storageKey = (userId?: string) => `visionm_playground_industry_${userId ?? "anon"}`;
 
 const readIndustry = (userId?: string): string | null => {
@@ -149,7 +156,9 @@ export const IndustryPicker: React.FC<{
   onChoosePlan?: () => void;
   /** Challenge-path progress; null while loading (or before a plan): no locks shown */
   path?: PathProgress | null;
-}> = ({ onStartMission, onChoosePlan, path = null }) => {
+  /** The student's levels; null while loading (or before a plan) */
+  levels?: LevelProgress[] | null;
+}> = ({ onStartMission, onChoosePlan, path = null, levels = null }) => {
   const { user } = useProfile();
   const [selected, setSelected] = useState<string | null>(null);
   const [samples, setSamples] = useState<Samples | null>(null);
@@ -282,29 +291,24 @@ export const IndustryPicker: React.FC<{
           onStartMission={onStartMission}
           onChoosePlan={onChoosePlan}
           path={path}
+          levels={levels}
         />
       )}
     </>
   );
 };
 
-/** Where a card is on the challenge path; a locked card points to the step before it but can still start */
-type PathStep =
-  | { state: "done" | "next" }
-  | { state: "locked"; note: string; first: { label: string; onClick: () => void }; anyway: string };
+/** Where a card is on the challenge path */
+type PathStep = { state: "done" | "next" };
 
 const PathBadge: React.FC<{ state: PathStep["state"] }> = ({ state }) =>
   state === "done" ? (
     <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success">
       <Check className="h-3 w-3" aria-hidden="true" /> Done
     </span>
-  ) : state === "next" ? (
+  ) : (
     <span className="rounded-full bg-[#e9ff65] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#171f1b]">
       Next
-    </span>
-  ) : (
-    <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-      <Lock className="h-3 w-3" aria-hidden="true" /> Locked
     </span>
   );
 
@@ -320,9 +324,8 @@ const ChallengeCard: React.FC<{
   onLocked?: () => void;
   step?: PathStep | null;
 }> = ({ kicker, picture, title, children, action, soon, onLocked, step }) => {
-  const pathLocked = !soon && !onLocked && step?.state === "locked" ? step : null;
   return (
-  <article className={cn("flex flex-col rounded-xl border bg-background/40 p-4", (soon || pathLocked) && "opacity-75")}>
+  <article className={cn("flex flex-col rounded-xl border bg-background/40 p-4", soon && "opacity-75")}>
     <div className="flex min-h-5 items-center justify-between gap-2">
       <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{kicker}</p>
       {step && !soon && !onLocked && <PathBadge state={step.state} />}
@@ -341,26 +344,6 @@ const ChallengeCard: React.FC<{
           <Lock className="h-4 w-4" aria-hidden="true" />
           Unlocks with Playground
         </Button>
-      ) : pathLocked ? (
-        <div className="space-y-2">
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            {pathLocked.note}
-          </p>
-          <Button variant="outline" className="w-full gap-1.5" onClick={pathLocked.first.onClick}>
-            {pathLocked.first.label}
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </Button>
-          {action && (
-            <button
-              type="button"
-              onClick={action.onClick}
-              className="w-full text-center text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-            >
-              {pathLocked.anyway}
-            </button>
-          )}
-        </div>
       ) : (
         action && (
           <Button variant={action.primary ? "default" : "outline"} className="w-full gap-1.5" onClick={action.onClick}>
@@ -387,7 +370,8 @@ const Challenges: React.FC<{
   onStartMission: (industryName: string, mission: Mission, mode: MissionMode) => void;
   onChoosePlan?: () => void;
   path: PathProgress | null;
-}> = ({ industry, samples, onStartMission, onChoosePlan, path }) => {
+  levels: LevelProgress[] | null;
+}> = ({ industry, samples, onStartMission, onChoosePlan, path, levels }) => {
   const artIndex = Math.max(0, INDUSTRIES.findIndex((i) => i.id === industry.id));
   const guided = industry.guided;
   const loading = samples === null;
@@ -397,31 +381,13 @@ const Challenges: React.FC<{
     if (guidedMission) onStartMission(industry.name, guidedMission, "guided");
   };
 
-  // Path: 1 guided challenge -> 2 learn to label -> 3 own project (steps are company-wide)
-  const guidedStep: PathStep | null = path ? { state: path.guidedDone ? "done" : "next" } : null;
-  const practiceStep: PathStep | null = !path
-    ? null
-    : path.practiceDone
-      ? { state: "done" }
-      : path.guidedDone
-        ? { state: "next" }
-        : {
-            state: "locked",
-            note: "Finish the guided challenge first: run a test on its held-out photos.",
-            first: { label: "Start the guided challenge", onClick: startGuided },
-            anyway: "or start practising anyway",
-          };
-  // Card 3 follows the same path: open once the guided challenge and Learn to label are done
-  const ownStep: PathStep | null = !path
-    ? null
-    : path.guidedDone && path.practiceDone
-      ? { state: "next" }
-      : {
-          state: "locked",
-          note: "Finish the guided challenge and Learn to label first.",
-          first: { label: "Start the guided challenge", onClick: startGuided },
-          anyway: "or start your own project anyway",
-        };
+  // Level 1 of this industry, and whether any Level 1 is done (older accounts: the old guided path)
+  const levelOne = guided ? levels?.find((l) => l.level === 1 && l.mission === guided.title) : undefined;
+  const anyLevelOneDone = !!levels?.some((l) => l.level === 1 && l.finishedAt) || !!(path?.guidedDone && path.practiceDone);
+  const levelTwo = levels?.find((l) => l.level === 2 && l.mission === industry.own.title);
+  const guidedStep: PathStep | null = levels ? { state: levelOne?.finishedAt ? "done" : "next" } : null;
+  const ownStep: PathStep | null = !levels ? null : { state: levelTwo?.finishedAt ? "done" : "next" };
+  const showLevelOneTip = !!guidedMission && !levelTwo?.finishedAt && !levelTwo?.completedSteps.length && !anyLevelOneDone;
 
   return (
     <motion.section
@@ -434,7 +400,7 @@ const Challenges: React.FC<{
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            02 / Pick your challenge
+            02 / Pick your level
           </p>
           <h3 id="challenge-heading" className="mt-1 text-lg font-semibold text-foreground">
             {industry.name}: what will you inspect?
@@ -445,28 +411,27 @@ const Challenges: React.FC<{
         </span>
       </div>
       <p className="mt-3 text-sm text-muted-foreground">
-        Start with a guided challenge, practise labelling, then build your own. Each path teaches the same
-        inspection ideas.
+        Learn on a GSN sample first, step by step. Then build your own model on your own photos.
       </p>
 
-      <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
-        {/* 1. Guided challenge on GSN's labelled sample */}
+      <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+        {/* Level 1: learning on GSN's labelled sample */}
         <ChallengeCard
-          kicker="01 · Guided challenge"
-          title={guided?.title ?? "Guided challenge"}
+          kicker="Level 1 · Learn on a sample"
+          title={guided?.title ?? "Learn on a sample"}
           picture={
             <div className="relative h-full w-full">
               <IndustryArt index={artIndex} highlight="labelled" />
               <Tag Icon={Sparkles}>Labelled by GSN</Tag>
             </div>
           }
-          soon={!guided || (!loading && !sample) ? "Guided sample coming soon" : undefined}
+          soon={!guided || (!loading && !sample) ? "Level 1 coming soon" : undefined}
           onLocked={onChoosePlan}
           step={guidedStep}
           action={
             guidedMission
               ? {
-                  label: "Start guided challenge",
+                  label: levelOne?.finishedAt ? "Open Level 1 again" : levelOne ? "Continue Level 1" : "Start Level 1",
                   primary: true,
                   Icon: ArrowRight,
                   onClick: startGuided,
@@ -479,51 +444,18 @@ const Challenges: React.FC<{
               <strong className="font-medium text-foreground">
                 {sample.totalImages} {guided.photoNoun} photos
               </strong>{" "}
-              from a real inspection line, already labelled by GSN&apos;s team: {guided.finds}. Look through the labels
-              and test GSN&apos;s model on photos it has never seen. To train your own, label the photos yourself.
+              from a real inspection line, already labelled by GSN&apos;s team: {guided.finds}. See the data, practise
+              labelling, learn how training works, then test GSN&apos;s model on photos it has never seen.
+              <span className="mt-1 block text-xs">Learning only: it doesn&apos;t use your project.</span>
             </>
           ) : (
             "We're preparing a labelled GSN dataset for this industry."
           )}
         </ChallengeCard>
 
-        {/* 2. Label practice on the same sample: the practice labels are never saved */}
+        {/* Level 2: the student's own project: their photos, their labels, their model */}
         <ChallengeCard
-          kicker="02 · Learn to label"
-          title="Learn to label"
-          picture={
-            <div className="relative h-full w-full">
-              <IndustryArt index={artIndex} highlight="drawing" />
-              <Tag Icon={PenLine}>Practice</Tag>
-            </div>
-          }
-          soon={!guided || (!loading && !sample) ? "Label practice coming soon" : undefined}
-          onLocked={onChoosePlan}
-          step={practiceStep}
-          action={
-            guidedMission
-              ? {
-                  label: "Start practising",
-                  Icon: PenLine,
-                  onClick: () => onStartMission(industry.name, guidedMission, "practice"),
-                }
-              : undefined
-          }
-        >
-          {guided && sample ? (
-            <>
-              Draw boxes around {guided.finds} on real {guided.photoNoun} photos. Stuck? Ask for a hint. Check each
-              photo against GSN&apos;s labels, then watch auto-label do the rest.
-              <span className="mt-1 block text-xs">Practice only: your labels aren&apos;t saved.</span>
-            </>
-          ) : (
-            "Label practice needs a labelled GSN dataset, which we're preparing for this industry."
-          )}
-        </ChallengeCard>
-
-        {/* 3. The student's own project: their photos, their labels, their model */}
-        <ChallengeCard
-          kicker="03 · Your own project"
+          kicker="Level 2 · Your own model"
           title="Your own inspection"
           picture={
             <ol className="flex h-full flex-col justify-center gap-1.5 px-5 text-xs text-[#f5f5ee]">
@@ -540,13 +472,15 @@ const Challenges: React.FC<{
           onLocked={onChoosePlan}
           step={ownStep}
           action={{
-            label: "Start your own project",
+            label: levelTwo?.finishedAt ? "Open Level 2 again" : levelTwo?.completedSteps.length ? "Continue Level 2" : "Start Level 2",
             Icon: ArrowRight,
             onClick: () => onStartMission(industry.name, { title: industry.own.title }, "own"),
           }}
         >
           Inspect anything you like, for example {industry.own.example}. Upload your own photos, label them yourself,
           train your own model and test it.
+          <span className="mt-1 block text-xs">Your first upload makes this your project.</span>
+          {showLevelOneTip && <span className="mt-1 block text-xs">New to this? Level 1 is a helpful place to start.</span>}
         </ChallengeCard>
       </div>
     </motion.section>

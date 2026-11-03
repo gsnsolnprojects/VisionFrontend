@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, Check, Clock, Gauge, GraduationCap, Layers, Loader2, Play, Rabbit, Sparkles, Target, Trash2, Turtle } from "lucide-react";
+import { ArrowRight, Check, Clock, Gauge, Layers, Loader2, Play, Rabbit, Sparkles, Trash2, Turtle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -15,6 +15,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, apiUrl, getAuthHeaders } from "@/lib/api/config";
 import { getLearningProgress } from "@/lib/api/dashboard";
+import { getLevels, saveLevelProgress } from "@/lib/api/levels";
+import { TRAINING_JOURNEY } from "./trainingJourney";
 import { getModelQuota, type ModelQuota } from "@/lib/api/models";
 import type { PlanLimits } from "@/lib/api/subscription";
 import { cn } from "@/lib/utils";
@@ -94,7 +96,9 @@ export const PlaygroundTrainStep: React.FC<{
   counts: { training: number; validation: number; test: number; labelled: number };
   limits: PlanLimits | null | undefined;
   onTestModel: () => void;
-}> = ({ projectId, companyName, projectName, datasetId, isSample, classNames, counts, limits, onTestModel }) => {
+  /** the level's mission, which remembers the training run */
+  missionName: string;
+}> = ({ projectId, companyName, projectName, datasetId, isSample, classNames, counts, limits, onTestModel, missionName }) => {
   const { toast } = useToast();
   const [size, setSize] = useState(SIZES[0].key);
   const [job, setJob] = useState<JobState | null>(null);
@@ -191,17 +195,29 @@ export const PlaygroundTrainStep: React.FC<{
   );
 
   useEffect(() => {
+    let cancelled = false;
     let saved: string | null = null;
     try {
       saved = localStorage.getItem(jobKey(projectId));
     } catch {
       // ignore
     }
-    if (saved) void poll(saved);
+    if (saved) {
+      void poll(saved);
+    } else {
+      // Another computer's run: the level remembers it, so its progress still shows here
+      getLevels()
+        .then(({ levels }) => {
+          const running = levels.find((l) => l.mission === missionName && (l.training?.status === "queued" || l.training?.status === "running"));
+          if (!cancelled && running?.trainingJobId) void poll(running.trainingJobId);
+        })
+        .catch(() => undefined);
+    }
     return () => {
+      cancelled = true;
       if (pollTimer.current) window.clearTimeout(pollTimer.current);
     };
-  }, [projectId, poll]);
+  }, [projectId, missionName, poll]);
 
   const start = async () => {
     setStarting(true);
@@ -220,6 +236,7 @@ export const PlaygroundTrainStep: React.FC<{
       } catch {
         // ignore
       }
+      saveLevelProgress({ mission: missionName, trainingJobId: jobId });
       setJob({ jobId, status: "queued", currentEpoch: 0, totalEpochs: 0, percent: 0, mAP50: null, error: null });
       loadAllowance();
       void poll(jobId);
@@ -254,21 +271,6 @@ export const PlaygroundTrainStep: React.FC<{
         : job.status === "completed"
           ? 5
           : 0;
-
-  const journey = [
-    { Icon: Check, title: "Check photos and labels", text: "Every photo and its labels are read and checked, so nothing broken goes in." },
-    {
-      Icon: GraduationCap,
-      title: "Learn from examples",
-      text: "The model looks at your training photos again and again. One full pass over all of them is called an epoch.",
-    },
-    {
-      Icon: Target,
-      title: "Check itself",
-      text: "After each epoch it tries the validation photos it isn't learning from, and keeps its best version so far.",
-    },
-    { Icon: Sparkles, title: "Save your model", text: "The best version is saved, ready for you to test on the held-out photos." },
-  ];
 
   return (
     <div className="space-y-6">
@@ -434,7 +436,7 @@ export const PlaygroundTrainStep: React.FC<{
           )}
 
           <ol className="mt-4 space-y-3">
-            {journey.map(({ Icon, title, text }, i) => {
+            {TRAINING_JOURNEY.map(({ Icon, title, text }, i) => {
               const n = i + 1;
               const done = stage > n;
               const current = stage === n;

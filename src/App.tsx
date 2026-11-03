@@ -10,6 +10,8 @@ import DatasetManager from "@/pages/DatasetManager";
 import LearningCentrePage from "@/pages/LearningCentrePage";
 import PlaygroundReportsPage from "@/pages/PlaygroundReportsPage";
 import LabelPracticePage from "@/pages/LabelPracticePage";
+import LevelOnePage from "@/pages/LevelOnePage";
+import LevelTwoPage from "@/pages/LevelTwoPage";
 import ProjectDatasetRoute from "@/pages/ProjectDatasetRoute";
 import ResetPassword from "@/pages/ResetPassword";
 import SetPasswordPage from "@/pages/SetPasswordPage";
@@ -60,6 +62,8 @@ const APP_PATHS = [
   "/learn",
   "/reports",
   "/practice/:sampleId",
+  "/level-1/:sampleId",
+  "/level-2/:industryId",
   "/datasets",
   "/dataset/:id",
 ];
@@ -163,6 +167,8 @@ const ProtectedRoutes = () => {
         <Route path="/learn" element={<LearningCentrePage />} />
         <Route path="/reports" element={<PlaygroundReportsPage />} />
         <Route path="/practice/:sampleId" element={<LabelPracticePage />} />
+        <Route path="/level-1/:sampleId" element={<LevelOnePage />} />
+        <Route path="/level-2/:industryId" element={<LevelTwoPage />} />
 
         {/* Dataset Manager - keep existing routes for backward compatibility */}
         <Route path="/datasets" element={<DatasetManager />} />

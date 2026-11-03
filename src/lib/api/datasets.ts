@@ -272,6 +272,21 @@ export const downloadDataset = async (
 };
 
 /**
+ * A project's first dataset, from photos still to be labelled.
+ * POST /api/dataset/upload  (multipart: company, project, version, fileMeta, files[])
+ */
+export const uploadUnlabelledDataset = async (company: string, project: string, version: string, images: File[]) => {
+  const form = new FormData();
+  form.append("company", company);
+  form.append("project", project);
+  form.append("version", version);
+  form.append("fileMeta", JSON.stringify(images.map((f) => ({ originalName: f.name, folder: "unlabeled" }))));
+  images.forEach((f) => form.append("files", f, f.name));
+  const json = await apiRequest<{ datasetId?: string; id?: string }>("/dataset/upload", { method: "POST", body: form, maxRetries: 1 });
+  return String(json.datasetId ?? json.id ?? "");
+};
+
+/**
  * Add images / optional .txt labels to an existing dataset version.
  * POST /api/dataset/:datasetId/files  (multipart: files[], folder)
  */

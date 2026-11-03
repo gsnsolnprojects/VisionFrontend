@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, Check, ChevronDown, Circle, Compass, ImagePlus, Loader2, Lock, PenLine, Plus, Trash2, Upload, X } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Circle, Compass, Loader2, Lock, PenLine, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -17,13 +17,17 @@ import { useProfile } from "@/hooks/useProfile";
 import { usePlanAccess } from "@/contexts/plan-access-context";
 import { supabase } from "@/integrations/supabase/client";
 import { apiRequest, apiUrl, getAuthHeaders } from "@/lib/api/config";
-import { addDatasetFiles, deleteDatasetFile } from "@/lib/api/datasets";
+import { addDatasetFiles, deleteDatasetFile, uploadUnlabelledDataset } from "@/lib/api/datasets";
 import { getLearningProgress } from "@/lib/api/dashboard";
+import { getLevels, saveLevelProgress, type LevelProgress } from "@/lib/api/levels";
 import { cn } from "@/lib/utils";
+import { BOX_COLORS, LabelledThumbnail, type Box } from "@/components/playground/LabelledThumbnail";
 import { PlaygroundTrainStep } from "@/components/playground/PlaygroundTrainStep";
 import { PlaygroundTestStep } from "@/components/playground/PlaygroundTestStep";
 import { PlaygroundReportStep } from "@/components/playground/PlaygroundReportStep";
 import { PlaygroundLabelPractice } from "@/components/playground/PlaygroundLabelPractice";
+import { PhotoDropZone } from "@/components/playground/PhotoDropZone";
+import { StepGuide } from "@/components/playground/StepGuide";
 import { getSamples } from "@/lib/api/samples";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { DeleteProjectModal } from "@/components/dashboard/DeleteProjectModal";
@@ -34,7 +38,8 @@ import { DeleteProjectModal } from "@/components/dashboard/DeleteProjectModal";
  * Learn to label on a GSN sample). Shows the project's dataset as an
  * image grid with each image's labelled boxes drawn on it. A GSN sample dataset is view-only;
  * the company's own dataset can take more images and each image opens the labelling tool.
- * Other plans keep DatasetManager.
+ * Other plans keep DatasetManager. A project that belongs to a Level 2 also carries that level:
+ * each step is explained and opens once the ones before it are done.
  */
 
 interface DatasetVersion {
@@ -64,20 +69,30 @@ interface ImageFile {
   folder: string | null;
 }
 
-interface Box {
-  c: number;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
 type Filter = "all" | "training" | "test" | "unlabelled";
 
 const PAGE_SIZE = 24;
-const IMAGE_NAME = /\.(jpe?g|png)$/i;
-// Same colours as the labelling tool's default categories, by class index
-const BOX_COLORS = ["#ef4444", "#10b981", "#3b82f6", "#f59e0b", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"];
+/** Labelled photos a Level 2 model needs before it can train */
+const MIN_LABELLED = 20;
+
+const LEVEL_GUIDE = {
+  label: {
+    what: "Add photos of what you want to inspect, then draw a box around each defect.",
+    why: `Label at least ${MIN_LABELLED} photos: the model learns only from what your boxes show it. Once you have, you can make more training photos from them.`,
+  },
+  train: {
+    what: "Train your model on the photos you labelled.",
+    why: "Training takes a while and keeps going if you leave, so you can come back to it later.",
+  },
+  test: {
+    what: "Test your model on photos it never learned from.",
+    why: "A model's real score comes from photos it has never seen. If it misses defects, label more photos and train again.",
+  },
+  report: {
+    what: "Turn your test into a report. In a factory, this is how results get shared with the team.",
+    why: "Each report is kept for 24 hours, so download the ones you want to keep.",
+  },
+};
 
 const baseOf = (name: string) => name.replace(/\.[^./]+$/, "");
 
@@ -85,70 +100,6 @@ const splitOf = (folder: string | null): { label: string; kind: "training" | "te
   if (folder === "train" || folder === "val") return { label: folder === "train" ? "Training" : "Validation", kind: "training" };
   if (folder === "test") return { label: "Held-out test", kind: "test" };
   return { label: "Not split yet", kind: "other" };
-};
-
-/** A thumbnail with its labelled boxes drawn on top (SVG keeps the boxes aligned at any size) */
-const LabelledThumbnail: React.FC<{ datasetId: string; file: ImageFile; boxes: Box[] | undefined; classNames: string[] }> = ({
-  datasetId,
-  file,
-  boxes,
-  classNames,
-}) => {
-  const [src, setSrc] = useState<string | null>(null);
-  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let objectUrl: string | null = null;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(
-          apiUrl(`/dataset/${encodeURIComponent(datasetId)}/file/${encodeURIComponent(file.id)}/thumbnail`),
-          { headers: await getAuthHeaders() }
-        );
-        if (!res.ok) throw new Error(String(res.status));
-        objectUrl = URL.createObjectURL(await res.blob());
-        if (cancelled) return;
-        const img = new Image();
-        img.onload = () => !cancelled && setSize({ w: img.naturalWidth, h: img.naturalHeight });
-        img.src = objectUrl;
-        setSrc(objectUrl);
-      } catch {
-        if (!cancelled) setFailed(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [datasetId, file.id]);
-
-  if (failed) {
-    return <div className="flex h-full items-center justify-center text-xs text-muted-foreground">No preview</div>;
-  }
-  if (!src || !size) return <div className="h-full w-full animate-pulse bg-muted" />;
-
-  const stroke = Math.max(size.w, size.h) / 160;
-  return (
-    <svg viewBox={`0 0 ${size.w} ${size.h}`} preserveAspectRatio="xMidYMid meet" className="h-full w-full" role="img" aria-label={file.originalName}>
-      <image href={src} width={size.w} height={size.h} />
-      {(boxes ?? []).map((b, i) => (
-        <rect
-          key={i}
-          x={b.x * size.w}
-          y={b.y * size.h}
-          width={b.w * size.w}
-          height={b.h * size.h}
-          fill="none"
-          stroke={BOX_COLORS[b.c % BOX_COLORS.length]}
-          strokeWidth={stroke}
-        >
-          <title>{classNames[b.c] ?? `class ${b.c}`}</title>
-        </rect>
-      ))}
-    </svg>
-  );
 };
 
 export const PlaygroundProjectPage: React.FC = () => {
@@ -183,16 +134,19 @@ export const PlaygroundProjectPage: React.FC = () => {
   const [boxes, setBoxes] = useState<Record<string, Box[]>>({});
   const [classNames, setClassNames] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [dragging, setDragging] = useState(false);
   const [hasModel, setHasModel] = useState(false);
   const [hasPrediction, setHasPrediction] = useState(false);
-  const fileInput = useRef<HTMLInputElement>(null);
   const [sampleProject, setSampleProject] = useState<string | null>(null);
+  /** This project's Level 2, if it has one */
+  const [level, setLevel] = useState<LevelProgress | null>(null);
+  /** Steps done on this visit that the last read of the level may not show yet */
+  const [justDone, setJustDone] = useState<string[]>([]);
 
   const companyName = company?.name ?? "";
   const dataset = versions?.find((v) => v.datasetId === selectedId) ?? null;
   const isSample = !!dataset?.isLinkedSample;
-  const ownDataset = versions?.find((v) => !v.isLinkedSample) ?? null;
+  // Where new photos go: the company's own upload, not extra photos made from it or a sample it labels
+  const ownDataset = versions?.find((v) => !v.isLinkedSample && !v.isAugmented && !v.labelledSampleOf) ?? null;
 
   // Label practice now has its own page (/practice/:sampleId); old ?step=practice links go there
   useEffect(() => {
@@ -287,6 +241,13 @@ export const PlaygroundProjectPage: React.FC = () => {
       .order("created_at", { ascending: false })
       .then(({ data }) => setAllProjects(data ?? []));
   }, [profile?.company_id]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    getLevels()
+      .then(({ levels }) => setLevel(levels.find((l) => l.level === 2 && l.projectId === projectId) ?? null))
+      .catch(() => undefined);
+  }, [projectId, step]);
 
   useEffect(() => {
     getLearningProgress()
@@ -390,29 +351,7 @@ export const PlaygroundProjectPage: React.FC = () => {
   const imagesInOwn = ownDataset ? (ownDataset.datasetId === selectedId ? files.length : ownDataset.totalImages ?? 0) : 0;
   const spaceLeft = maxImages === null ? null : Math.max(0, maxImages - imagesInOwn);
 
-  const uploadImages = async (picked: File[]) => {
-    const images = picked.filter((f) => IMAGE_NAME.test(f.name));
-    if (!images.length) {
-      toast({ title: "No images", description: "Choose JPG or PNG images.", variant: "destructive" });
-      return;
-    }
-    const tooBig = maxMB === null ? [] : images.filter((f) => f.size > maxMB * 1024 * 1024);
-    if (tooBig.length) {
-      toast({
-        title: "Some images are too large",
-        description: `Images can be up to ${maxMB} MB each. Too large: ${tooBig.slice(0, 3).map((f) => f.name).join(", ")}${tooBig.length > 3 ? ` and ${tooBig.length - 3} more` : ""}.`,
-        variant: "destructive",
-      });
-      return;
-    }
-    if (spaceLeft !== null && images.length > spaceLeft) {
-      toast({
-        title: "Too many images",
-        description: `Your dataset can hold ${maxImages} images; there is room for ${spaceLeft} more.`,
-        variant: "destructive",
-      });
-      return;
-    }
+  const uploadImages = async (images: File[]) => {
     if (!project) return;
 
     setUploading(true);
@@ -425,33 +364,15 @@ export const PlaygroundProjectPage: React.FC = () => {
         setSelectedId(ownDataset.datasetId);
         await loadFiles(ownDataset.datasetId);
       } else {
-        const form = new FormData();
-        form.append("company", companyName);
-        form.append("project", project.name);
-        form.append("version", "my-images");
-        form.append("fileMeta", JSON.stringify(images.map((f) => ({ originalName: f.name, folder: "unlabeled" }))));
-        images.forEach((f) => form.append("files", f, f.name));
-        const headers = { ...(await getAuthHeaders()) } as Record<string, string>;
-        delete headers["Content-Type"];
-        const res = await fetch(apiUrl("/dataset/upload"), { method: "POST", headers, body: form });
-        const text = await res.text();
-        let json: Record<string, unknown> = {};
-        try {
-          json = JSON.parse(text);
-        } catch {
-          // not JSON
-        }
-        if (!res.ok) throw new Error(String(json.message || json.error || `Upload failed (${res.status})`));
+        const newId = await uploadUnlabelledDataset(companyName, project.name, "my-images", images);
         toast({ title: "Images uploaded", description: `${images.length} image(s) added. Label them to teach your model.` });
         await loadVersions(project.name);
-        const newId = String(json.datasetId ?? json.id ?? "");
         if (newId) setSelectedId(newId);
       }
     } catch (err) {
       toast({ title: "Upload failed", description: (err as Error).message, variant: "destructive" });
     } finally {
       setUploading(false);
-      if (fileInput.current) fileInput.current.value = "";
     }
   };
 
@@ -470,14 +391,30 @@ export const PlaygroundProjectPage: React.FC = () => {
     navigate(`/annotation/${encodeURIComponent(selectedId)}?image=${encodeURIComponent(file.storedName || file.originalName)}`);
   };
 
+  // Level 2 steps this screen shows are done (the server ignores them for any other mission)
+  const levelMission = project ? ((project.description ?? "").includes(" · ") ? (project.description ?? "").split(" · ")[1] : project.name) : null;
+  const doneSteps = !dataset || loadingFiles
+    ? ""
+    : [
+        !isSample && counts.all > 0 && "upload",
+        !isSample && counts.labelled >= 20 && "label",
+        dataset.isAugmented && dataset.status === "ready" && "augment",
+      ]
+        .filter(Boolean)
+        .join(",");
+  useEffect(() => {
+    if (!levelMission || !doneSteps) return;
+    for (const done of doneSteps.split(",")) saveLevelProgress({ mission: levelMission, step: done });
+  }, [levelMission, doneSteps]);
+
   if (!project || versions === null) return <LoadingState message="Loading your project..." />;
 
   const [industryName, missionName] = (project.description ?? "").includes(" · ")
     ? (project.description ?? "").split(" · ")
     : [null, project.name];
   const ownDatasetsAllowed = planAccess.data?.access?.features?.trainOnOwnDatasets ?? false;
-  // A sample you label yourself keeps GSN's photos: label them, but don't add your own to it
-  const canUpload = !isSample && !dataset?.labelledSampleOf && ownDatasetsAllowed;
+  // A sample you label yourself keeps GSN's photos, and extra photos are made from another version: no adding to either
+  const canUpload = !isSample && !dataset?.labelledSampleOf && !dataset?.isAugmented && ownDatasetsAllowed;
 
   // "Make more training photos": augment the company's own labelled dataset, up to 500 photos
   const augmentedChild = versions?.find((v) => v.isAugmented && v.augmentedFromVersion === dataset?.version) ?? null;
@@ -533,12 +470,19 @@ export const PlaygroundProjectPage: React.FC = () => {
     { label: "Model builder", done: hasModel },
     { label: "Result detective", done: hasPrediction },
   ];
+  const levelDone = (id: string) => !!level && (level.completedSteps.includes(id) || justDone.includes(id));
+  const labelDone = levelDone("label") || (!!level && !isSample && counts.labelled >= MIN_LABELLED);
+  const trainDone = levelDone("train") || level?.training?.status === "completed";
+  const testDone = levelDone("test");
+  const reportDone = levelDone("report");
+  const markLevelStep = (id: string) => setJustDone((prev) => [...prev, id]);
   const steps = [
-    { n: 1, label: "Upload & label", active: step === "label", onClick: () => goToStep("label") },
-    { n: 2, label: "Train", active: step === "train", onClick: () => goToStep("train") },
-    { n: 3, label: "Test & evaluate", active: step === "test", onClick: () => goToStep("test") },
-    { n: 4, label: "Report", active: step === "report", onClick: () => goToStep("report"), locked: false },
+    { n: 1, label: "Upload & label", active: step === "label", done: labelDone, locked: false, id: "label" as const },
+    { n: 2, label: "Train", active: step === "train", done: trainDone, locked: !!level && !labelDone, id: "train" as const },
+    { n: 3, label: "Test & evaluate", active: step === "test", done: testDone, locked: !!level && !trainDone, id: "test" as const },
+    { n: 4, label: "Report", active: step === "report", done: reportDone, locked: !!level && !testDone, id: "report" as const },
   ];
+  const guide = level && step !== "practice" ? LEVEL_GUIDE[step] : null;
   const filters: { id: Filter; label: string; count: number }[] = [
     { id: "all", label: "All images", count: counts.all },
     { id: "training", label: "Training", count: counts.training },
@@ -552,6 +496,11 @@ export const PlaygroundProjectPage: React.FC = () => {
       <div className="flex flex-wrap items-start justify-between gap-4">
         {step === "label" ? (
           <div>
+            {level && (
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                Level 2{industryName ? ` · ${industryName}` : ""}
+              </p>
+            )}
             <h1 className="text-3xl font-bold tracking-tight text-foreground">Give your model good examples.</h1>
             <p className="mt-1 text-sm text-muted-foreground">Add images, check their labels and keep test images separate.</p>
           </div>
@@ -673,7 +622,8 @@ export const PlaygroundProjectPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Badges */}
+      {/* Badges (a level shows its own steps instead) */}
+      {!level && (
       <div className="flex flex-wrap gap-2">
         {badges.map((b) => (
           <span
@@ -688,6 +638,7 @@ export const PlaygroundProjectPage: React.FC = () => {
           </span>
         ))}
       </div>
+      )}
 
       {/* Steps */}
       <nav className="grid grid-cols-2 overflow-hidden rounded-xl border sm:grid-cols-4" aria-label="Project steps">
@@ -695,29 +646,45 @@ export const PlaygroundProjectPage: React.FC = () => {
           <button
             key={s.n}
             type="button"
-            disabled={!s.onClick}
-            onClick={s.onClick}
+            disabled={s.locked}
+            onClick={() => goToStep(s.id)}
             aria-current={s.active ? "step" : undefined}
             className={cn(
               "flex items-center justify-center gap-2 border-b border-r px-3 py-3 text-sm transition-colors last:border-r-0 sm:border-b-0",
               s.active ? "bg-secondary font-medium text-foreground" : "bg-card text-muted-foreground",
-              s.onClick && "hover:bg-secondary/60 hover:text-foreground",
-              !s.onClick && !s.active && "cursor-not-allowed opacity-60"
+              !s.locked && "hover:bg-secondary/60 hover:text-foreground",
+              s.locked && "cursor-not-allowed opacity-60"
             )}
           >
             <span
               className={cn(
                 "flex h-5 w-5 items-center justify-center rounded-full text-[11px]",
-                s.active ? "bg-foreground text-background" : "border"
+                s.done ? "bg-success text-white" : s.active ? "bg-foreground text-background" : "border"
               )}
             >
-              {s.n}
+              {s.done ? <Check className="h-3 w-3" aria-label="Done" /> : s.n}
             </span>
             {s.label}
-            {s.locked && <Lock className="h-3 w-3" aria-label="Coming soon" />}
+            {s.locked && <Lock className="h-3 w-3" aria-label="Locked" />}
           </button>
         ))}
       </nav>
+
+      {guide && <StepGuide what={guide.what} why={guide.why} />}
+
+      {step === "report" && reportDone && (
+        <section className="flex flex-col gap-3 rounded-2xl border bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+              <Check className="h-5 w-5 text-success" aria-hidden="true" /> Level 2 complete
+            </h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">You trained and tested your own model. To make it better, label more photos and train again.</p>
+          </div>
+          <Button className="gap-1.5" onClick={() => navigate("/dashboard")}>
+            Back to overview <ArrowRight className="h-4 w-4" />
+          </Button>
+        </section>
+      )}
 
       {step === "train" && (
         dataset && selectedId ? (
@@ -736,6 +703,7 @@ export const PlaygroundProjectPage: React.FC = () => {
             }
             limits={limits}
             onTestModel={() => goToStep("test")}
+            missionName={missionName}
           />
         ) : (
           <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">
@@ -751,7 +719,12 @@ export const PlaygroundProjectPage: React.FC = () => {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <PlaygroundLabelPractice datasetId={selectedId} files={files} onContinue={() => goToStep("label")} />
+            <PlaygroundLabelPractice
+              datasetId={selectedId}
+              files={files}
+              onContinue={() => goToStep("label")}
+              onFinished={(score) => saveLevelProgress({ mission: missionName, step: "practice", practiceScore: score ?? undefined })}
+            />
           )
         ) : (
           <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">
@@ -772,7 +745,11 @@ export const PlaygroundProjectPage: React.FC = () => {
             sampleProject={sampleProject}
             missionName={missionName}
             industryName={industryName}
-            onReportCreated={() => goToStep("report")}
+            onTestFinished={() => markLevelStep("test")}
+            onReportCreated={() => {
+              markLevelStep("report");
+              goToStep("report");
+            }}
             preferUpload={searchParams.get("try") === "1"}
             testFiles={testFiles}
             classNames={classNames}
@@ -790,7 +767,15 @@ export const PlaygroundProjectPage: React.FC = () => {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 id="dataset-heading" className="text-xl font-semibold text-foreground">
-              {dataset ? (isSample ? `GSN sample · ${dataset.version}` : "My images") : missionName}
+              {!dataset
+                ? missionName
+                : isSample
+                  ? `GSN sample · ${dataset.version}`
+                  : dataset.isAugmented
+                    ? `Extra training photos · ${dataset.version}`
+                    : dataset.labelledSampleOf
+                      ? "GSN photos, my labels"
+                      : "My images"}
             </h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
               {dataset
@@ -798,50 +783,11 @@ export const PlaygroundProjectPage: React.FC = () => {
                 : "No images yet. Add your own to get started."}
             </p>
           </div>
-          {canUpload && dataset && (
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => fileInput.current?.click()} disabled={uploading}>
-              <ImagePlus className="h-4 w-4" />
-              Add images
-            </Button>
-          )}
         </div>
 
-        <input
-          ref={fileInput}
-          type="file"
-          accept="image/jpeg,image/png"
-          multiple
-          className="hidden"
-          onChange={(e) => void uploadImages(Array.from(e.target.files ?? []))}
-        />
-
         {showDropZone && (
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => fileInput.current?.click()}
-            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && fileInput.current?.click()}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragging(false);
-              void uploadImages(Array.from(e.dataTransfer.files));
-            }}
-            className={cn(
-              "mt-5 flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors",
-              dragging ? "border-ring bg-secondary/60" : "hover:border-ring/60"
-            )}
-          >
-            {uploading ? <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /> : <Upload className="h-6 w-6 text-muted-foreground" />}
-            <p className="font-medium text-foreground">{uploading ? "Uploading..." : "Drop images here, or browse files"}</p>
-            <p className="text-xs text-muted-foreground">
-              JPG or PNG{maxMB !== null && ` · Up to ${maxMB} MB each`}
-              {spaceLeft !== null && ` · ${spaceLeft} image space${spaceLeft === 1 ? "" : "s"} available`}
-            </p>
+          <div className="mt-5">
+            <PhotoDropZone uploading={uploading} maxMB={maxMB} spaceLeft={spaceLeft} onPhotos={(images) => void uploadImages(images)} />
           </div>
         )}
 
@@ -921,7 +867,7 @@ export const PlaygroundProjectPage: React.FC = () => {
                   </button>
                 ))}
               </div>
-              <Button className="gap-1.5" onClick={() => goToStep("train")} disabled={counts.labelled === 0}>
+              <Button className="gap-1.5" onClick={() => goToStep("train")} disabled={level ? !labelDone : counts.labelled === 0}>
                 Next: train a model
                 <ArrowRight className="h-4 w-4" />
               </Button>

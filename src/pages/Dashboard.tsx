@@ -46,7 +46,7 @@ import { SimulationView } from "@/components/SimulationView";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
 import { PlaygroundOverview } from "@/components/dashboard/PlaygroundOverview";
-import type { Mission, MissionMode } from "@/components/dashboard/IndustryPicker";
+import { levelTwoMission, type Mission, type MissionMode } from "@/components/dashboard/IndustryPicker";
 import { getSamples, importSampleDataset, importSampleModel } from "@/lib/api/samples";
 import { apiRequest } from "@/lib/api/config";
 import { RoleBadge } from "@/components/RoleBadge";
@@ -1089,30 +1089,39 @@ const Dashboard = () => {
   };
 
   /**
-   * Playground mission: open its project if it exists, otherwise create it (named after the
-   * mission, "Industry · Mission" as description). Guided and quick-try missions add the GSN
-   * sample; the quick try also adds GSN's trained model and opens Test & evaluate on the
-   * student's own photos. Practice needs no project: it opens /practice on the GSN sample.
+   * Playground mission. Level 1 (guided, practice) needs no project: it opens /level-1 on the GSN
+   * sample. Level 2 (own) opens /level-2, which makes the project at the first upload. The quick try
+   * opens its project if it exists, otherwise creates it (named after the mission, "Industry · Mission"
+   * as description), adds the GSN sample and its trained model, and opens Test & evaluate on the
+   * student's own photos.
    */
   const startMission = async (industryName: string, mission: Mission, mode: MissionMode) => {
     if (!user || !profile?.company_id) return;
-    if (mode === "practice" && mission.sample) {
+    if ((mode === "guided" || mode === "practice") && mission.sample) {
       try {
         const { datasets } = await getSamples();
         const wanted = mission.sample.trim().toLowerCase();
         const sample = datasets.find((d) => d.project.trim().toLowerCase() === wanted);
         if (!sample) throw new Error("This sample isn't in the library right now.");
-        navigate(`/practice/${sample.id}`);
+        navigate(`/level-1/${sample.id}`);
       } catch (err) {
-        toast({ title: "Couldn't open label practice", description: (err as Error).message, variant: "destructive" });
+        toast({ title: "Couldn't open Level 1", description: (err as Error).message, variant: "destructive" });
       }
       return;
     }
-    const useSample = mode !== "own" && !!mission.sample;
-    const openProject = (id: string) =>
-      navigate(
-        mode === "try" ? `/dataset/${id}?step=test&try=1` : mode === "practice" ? `/dataset/${id}?step=practice` : `/dataset/${id}`
-      );
+    if (mode === "own") {
+      const levelTwo = levelTwoMission(industryName);
+      if (levelTwo) {
+        navigate(`/level-2/${levelTwo.industryId}`);
+        return;
+      }
+      toast({ title: "Couldn't open Level 2", description: "Pick an industry on the overview and start it there.", variant: "destructive" });
+      return;
+    }
+    const useSample = mode === "try" && !!mission.sample;
+    const openProject = (id: string) => {
+      navigate(mode === "try" ? `/dataset/${id}?step=test&try=1` : `/dataset/${id}`);
+    };
 
     /** GSN's best trained model for the sample, added to the project (already added is fine) */
     const addReadyMadeModel = async (projectName: string) => {
@@ -1138,26 +1147,8 @@ const Dashboard = () => {
       await importSampleDataset(sample.id, projectName);
     };
 
-    /** An existing mission project made before its sample could be added: add it now */
-    const ensureSample = async (projectName: string) => {
-      const q = new URLSearchParams({ company: company?.name ?? "", project: projectName, includeInactive: "true" });
-      const json = await apiRequest<{ datasets?: { isLinkedSample?: boolean }[] } | { isLinkedSample?: boolean }[]>(`/datasets?${q}`);
-      const items = Array.isArray(json) ? json : json.datasets ?? [];
-      if (!items.some((d) => d.isLinkedSample)) await addSample(projectName);
-    };
-
     const existing = projects.find((p) => String(p.name).trim().toLowerCase() === mission.title.toLowerCase());
     if (existing) {
-      if (useSample && mode !== "try") {
-        setLoading(true);
-        try {
-          await ensureSample(existing.name);
-        } catch (err) {
-          toast({ title: "Couldn't add GSN's sample", description: (err as Error).message, variant: "destructive" });
-        } finally {
-          setLoading(false);
-        }
-      }
       if (mode === "try") {
         setLoading(true);
         try {
@@ -1192,10 +1183,10 @@ const Dashboard = () => {
       if (useSample) {
         try {
           await addSample(project.name);
-          if (mode === "try") await addReadyMadeModel(project.name);
+          await addReadyMadeModel(project.name);
         } catch (sampleError) {
           toast({
-            title: mode === "try" ? "Project created, ready-made model not added" : "Project created, sample not added",
+            title: "Project created, ready-made model not added",
             description: `${(sampleError as Error).message} You can upload your own images instead.`,
             variant: "destructive",
           });
@@ -1368,7 +1359,7 @@ const Dashboard = () => {
       {/* Dashboard Overview - shown when user has a company */}
       {activeView === "overview" && profile?.company_id && (
         isPlaygroundWorkspace ? (
-          <PlaygroundOverview projects={projects} onCreateProject={openCreateProject} onStartMission={startMission} />
+          <PlaygroundOverview projects={projects} projectsLoaded={projectsLoaded} onCreateProject={openCreateProject} onStartMission={startMission} />
         ) : workspaceKind === "preview" ? (
           <PlaygroundOverview projects={projects} preview />
         ) : (

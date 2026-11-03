@@ -4,6 +4,7 @@ import { AlertTriangle, Check, Clock, FileText, FlaskConical, ImagePlus, Loader2
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, apiUrl, getAuthHeaders } from "@/lib/api/config";
+import { saveLevelProgress } from "@/lib/api/levels";
 import { getSamples, importSampleModel } from "@/lib/api/samples";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +16,8 @@ import { cn } from "@/lib/utils";
  */
 
 const MAX_UPLOADS = 30;
+const LEARNING_PHOTOS = 30;
+const LEARNING_MODEL_ID = "gsn-ready-made";
 const IMAGE_NAME = /\.(jpe?g|png)$/i;
 
 interface ModelEntry {
@@ -94,6 +97,9 @@ export const PlaygroundTestStep: React.FC<{
   testFiles: TestFile[];
   /** class index -> name, for the held-out photos' known answers */
   classNames: string[];
+  /** Level 1: GSN's model on the sample's held-out photos, with no project and no predictions used */
+  learning?: { modelName: string; mAP50: number | null };
+  onTestFinished?: () => void;
 }> = ({
   projectId,
   companyName,
@@ -104,10 +110,18 @@ export const PlaygroundTestStep: React.FC<{
   industryName,
   onReportCreated,
   preferUpload = false,
-  testFiles,
+  testFiles: allTestFiles,
   classNames,
+  learning,
+  onTestFinished,
 }) => {
   const { toast } = useToast();
+  // A Level 1 test uses as many held-out photos as one run may hold, spread evenly so every defect shows up
+  const testFiles = useMemo(() => {
+    if (!learning || allTestFiles.length <= LEARNING_PHOTOS) return allTestFiles;
+    const step = allTestFiles.length / LEARNING_PHOTOS;
+    return Array.from({ length: LEARNING_PHOTOS }, (_, i) => allTestFiles[Math.floor(i * step)]);
+  }, [learning, allTestFiles]);
   const [models, setModels] = useState<ModelEntry[] | null>(null);
   const [modelId, setModelId] = useState<string | null>(null);
   const [addingSample, setAddingSample] = useState(false);
@@ -125,7 +139,15 @@ export const PlaygroundTestStep: React.FC<{
   const pollTimer = useRef<number | null>(null);
 
   // ---- Models ----
+  const learningName = learning?.modelName;
+  const learningScore = learning?.mAP50 ?? null;
   const loadModels = useCallback(async () => {
+    if (learningName) {
+      // The server picks GSN's model for the sample; here it's only shown
+      setModels([{ modelId: LEARNING_MODEL_ID, modelVersion: learningName, isLinkedSample: true, createdAt: "", metrics: { mAP50: learningScore } }]);
+      setModelId(LEARNING_MODEL_ID);
+      return;
+    }
     try {
       const q = new URLSearchParams({ company: companyName, project: projectName });
       const json = await apiRequest<{ models: ModelEntry[] }>(`/models?${q}`);
@@ -134,7 +156,7 @@ export const PlaygroundTestStep: React.FC<{
     } catch {
       setModels([]);
     }
-  }, [companyName, projectName]);
+  }, [companyName, projectName, learningName, learningScore]);
 
   useEffect(() => {
     void loadModels();
@@ -219,6 +241,8 @@ export const PlaygroundTestStep: React.FC<{
           autoCloseAt: s.autoCloseAt ?? null,
         });
         if (s.status === "completed") {
+          saveLevelProgress({ mission: missionName, step: "test" });
+          onTestFinished?.();
           await loadResults(id);
           return;
         }
@@ -229,7 +253,7 @@ export const PlaygroundTestStep: React.FC<{
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [loadResults]
+    [loadResults, missionName]
   );
 
   /** Clear the finished test from this page */
@@ -270,15 +294,25 @@ export const PlaygroundTestStep: React.FC<{
     setStarting(true);
     setResults(null);
     try {
-      const form = new FormData();
-      form.append("modelId", modelId);
-      if (source === "test") form.append("datasetId", datasetId);
-      else uploads.forEach((f) => form.append("files", f, f.name));
-      const headers = { ...(await getAuthHeaders()) } as Record<string, string>;
-      delete headers["Content-Type"];
-      const res = await fetch(apiUrl("/inference/start"), { method: "POST", headers, body: form });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.message || json.error || `Couldn't start the test (${res.status})`);
+      let json: { inferenceId?: string; id?: string };
+      if (learning) {
+        json = await apiRequest("/playground/level1/test", {
+          method: "POST",
+          body: JSON.stringify({ datasetId, fileIds: testFiles.map((f) => f.id) }),
+          maxRetries: 1,
+        });
+      } else {
+        const form = new FormData();
+        form.append("modelId", modelId);
+        if (source === "test") form.append("datasetId", datasetId);
+        else uploads.forEach((f) => form.append("files", f, f.name));
+        const headers = { ...(await getAuthHeaders()) } as Record<string, string>;
+        delete headers["Content-Type"];
+        const res = await fetch(apiUrl("/inference/start"), { method: "POST", headers, body: form });
+        json = await res.json().catch(() => ({}));
+        const failure = json as { message?: string; error?: string };
+        if (!res.ok) throw new Error(failure.message || failure.error || `Couldn't start the test (${res.status})`);
+      }
       const id = String(json.inferenceId ?? json.id ?? "");
       if (!id) throw new Error("The server didn't return a test run.");
       try {
@@ -334,6 +368,7 @@ export const PlaygroundTestStep: React.FC<{
       });
       forgetRun();
       toast({ title: "Report ready", description: "Download it from the Report step within 24 hours." });
+      saveLevelProgress({ mission: missionName, step: "report" });
       onReportCreated();
     } catch (err) {
       toast({ title: "Couldn't make the report", description: (err as Error).message, variant: "destructive" });
@@ -353,7 +388,9 @@ export const PlaygroundTestStep: React.FC<{
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-3xl font-bold tracking-tight text-foreground">Put your model to the test.</h2>
+        <h2 className="text-3xl font-bold tracking-tight text-foreground">
+          {learning ? "Put GSN's model to the test." : "Put your model to the test."}
+        </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           A model is only as good as its results on photos it has never seen. Let&apos;s find out what it gets right and
           where it slips.
@@ -368,7 +405,7 @@ export const PlaygroundTestStep: React.FC<{
 
           {/* 1. Model */}
           <div>
-            <p className="mb-2 text-sm font-medium text-foreground">1. Choose a model</p>
+            <p className="mb-2 text-sm font-medium text-foreground">{learning ? "1. The model" : "1. Choose a model"}</p>
             {models === null ? (
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             ) : models.length === 0 ? (
@@ -411,7 +448,7 @@ export const PlaygroundTestStep: React.FC<{
 
           {/* 2. Photos */}
           <div>
-            <p className="mb-2 text-sm font-medium text-foreground">2. Choose the photos</p>
+            <p className="mb-2 text-sm font-medium text-foreground">{learning ? "2. The photos" : "2. Choose the photos"}</p>
             <div className="grid gap-3 sm:grid-cols-2">
               {[
                 {
@@ -420,12 +457,16 @@ export const PlaygroundTestStep: React.FC<{
                   text: "Kept aside while training, and we know the right answers, so you get a score.",
                   disabled: testFiles.length === 0,
                 },
-                {
-                  id: "upload" as Source,
-                  title: `Your own photos (up to ${MAX_UPLOADS})`,
-                  text: "Try the model on new photos. You judge whether it got them right.",
-                  disabled: false,
-                },
+                ...(learning
+                  ? []
+                  : [
+                      {
+                        id: "upload" as Source,
+                        title: `Your own photos (up to ${MAX_UPLOADS})`,
+                        text: "Try the model on new photos. You judge whether it got them right.",
+                        disabled: false,
+                      },
+                    ]),
               ].map((o) => (
                 <button
                   key={o.id}
@@ -504,7 +545,7 @@ export const PlaygroundTestStep: React.FC<{
             {starting || busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             {busy ? "Testing..." : "Run the test"}
           </Button>
-          <p className="text-center text-xs text-muted-foreground">Each photo counts towards your 1,000 predictions a month.</p>
+          {!learning && <p className="text-center text-xs text-muted-foreground">Each photo counts towards your 1,000 predictions a month.</p>}
         </section>
 
         <section className="rounded-2xl border bg-card p-5 md:p-6" aria-labelledby="how-heading">
@@ -555,7 +596,7 @@ export const PlaygroundTestStep: React.FC<{
         <section className="rounded-2xl border bg-card p-5 md:p-6" aria-labelledby="results-heading" role="status">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 id="results-heading" className="text-lg font-semibold text-foreground">
-              {results ? "Your results" : "Testing your model"}
+              {results ? "Your results" : learning ? "Testing the model" : "Testing your model"}
             </h3>
             {selectedModel && <span className="text-xs text-muted-foreground">Model: {selectedModel.modelVersion}</span>}
           </div>

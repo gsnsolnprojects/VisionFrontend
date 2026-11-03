@@ -676,7 +676,12 @@ export const PlaygroundLabelPractice: React.FC<{
   files: PracticeFile[];
   /** Practice finished: go on to training on GSN's labels */
   onContinue: () => void;
-}> = ({ datasetId, files, onContinue }) => {
+  /** Practice finished, with the average match over the checked photos (0-1) */
+  onFinished?: (score: number | null) => void;
+  /** The average match needed to go on (0-1); below it the student practises again */
+  passMark?: number;
+  continueLabel?: string;
+}> = ({ datasetId, files, onContinue, onFinished, passMark, continueLabel = "Continue" }) => {
   const { user } = useProfile();
   const storageKey = user?.id ? savedKey(user.id, datasetId) : null;
   const [phase, setPhase] = useState<"loading" | "practice" | "autolabel" | "done">("loading");
@@ -899,7 +904,12 @@ export const PlaygroundLabelPractice: React.FC<{
 
   // Finishing practice unlocks the next challenge on the overview
   useEffect(() => {
-    if (phase === "done") markPracticeDone().catch(() => undefined);
+    if (phase === "done") {
+      markPracticeDone().catch(() => undefined);
+      onFinished?.(averageScore);
+    }
+    // Once per finish: the score and the callback can't change on the finished screen
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
   const restart = () => {
@@ -928,10 +938,11 @@ export const PlaygroundLabelPractice: React.FC<{
 
   // ---- Finished ----
   if (phase === "done") {
+    const passed = passMark === undefined || (averageScore ?? 0) >= passMark;
     return (
       <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border bg-card p-6 md:p-8">
-        <CheckCircle2 className="h-10 w-10 text-success" aria-hidden="true" />
-        <h2 className="mt-3 text-2xl font-bold tracking-tight text-foreground">Practice complete</h2>
+        {passed && <CheckCircle2 className="h-10 w-10 text-success" aria-hidden="true" />}
+        <h2 className="mt-3 text-2xl font-bold tracking-tight text-foreground">{passed ? "Practice complete" : "Almost there"}</h2>
         <dl className="mt-5 grid max-w-xl grid-cols-1 gap-3 sm:grid-cols-3">
           {[
             ["Photos checked", `${checkedCount} of ${practice.length}`],
@@ -945,14 +956,17 @@ export const PlaygroundLabelPractice: React.FC<{
           ))}
         </dl>
         <p className="mt-6 max-w-2xl border-l-2 border-ring bg-secondary/40 px-4 py-3 text-sm text-muted-foreground">
-          This was practice, so your labels aren&apos;t saved. When you train a model on this sample, it learns from GSN&apos;s
-          checked labels, so it gets clean, consistent examples.
+          {passed
+            ? "This was practice, so your labels aren't saved. A model learns from labels like these, so careful labelling makes a better model."
+            : `You need an average match of ${Math.round((passMark ?? 0) * 100)}% to go on. Practise again as many times as you like: use the hints, and keep each box tight around the defect.`}
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
-          <Button className="gap-1.5" onClick={onContinue}>
-            Continue: train &amp; test <ArrowRight className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" className="gap-1.5" onClick={restart}>
+          {passed && (
+            <Button className="gap-1.5" onClick={onContinue}>
+              {continueLabel} <ArrowRight className="h-4 w-4" />
+            </Button>
+          )}
+          <Button variant={passed ? "outline" : "default"} className="gap-1.5" onClick={restart}>
             <RotateCcw className="h-4 w-4" /> Practise again
           </Button>
         </div>
