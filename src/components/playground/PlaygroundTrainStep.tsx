@@ -67,7 +67,7 @@ const SIZES = [
 ];
 
 /** What a run uses unless the student changes it, and the limits (the server checks the same) */
-const DEFAULT_SETTINGS = { epochs: "50", batchSize: "8", imgSize: "640", learningRate: "0.01" };
+const DEFAULT_SETTINGS = { epochs: "50", batchSize: "8", imgSize: "640", learningRate: "0.002" };
 const BATCH_SIZES = [4, 8, 16, 32];
 const IMAGE_SIZES = [320, 416, 512, 640, 800, 960, 1280];
 
@@ -75,7 +75,7 @@ const settingsProblem = (s: typeof DEFAULT_SETTINGS) => {
   const epochs = Number(s.epochs);
   const learningRate = Number(s.learningRate);
   if (!Number.isInteger(epochs) || epochs < 1 || epochs > 200) return "Epochs must be a whole number from 1 to 200.";
-  if (!s.learningRate.trim() || !(learningRate >= 0.0001 && learningRate <= 0.1)) return "Learning rate must be from 0.0001 to 0.1.";
+  if (!s.learningRate.trim() || !(learningRate >= 0.0001 && learningRate <= 0.01)) return "Learning rate must be from 0.0001 to 0.01.";
   if (Number(s.batchSize) * (Number(s.imgSize) / 640) ** 2 > 32) return "That batch size needs too much memory at this image size. Choose a smaller one.";
   return null;
 };
@@ -412,14 +412,14 @@ export const PlaygroundTrainStep: React.FC<{
                     <p className="mt-1 text-xs text-muted-foreground">More passes can learn more, but take longer.</p>
                   </div>
                   <div>
-                    <Label htmlFor="train-rate">Learning rate (0.0001 to 0.1)</Label>
+                    <Label htmlFor="train-rate">Learning rate (0.0001 to 0.01)</Label>
                     <Input
                       id="train-rate"
                       className="mt-1.5"
                       type="number"
                       min={0.0001}
-                      max={0.1}
-                      step={0.001}
+                      max={0.01}
+                      step={0.0005}
                       disabled={busy}
                       value={settings.learningRate}
                       onChange={(e) => setSettings((s) => ({ ...s, learningRate: e.target.value }))}
