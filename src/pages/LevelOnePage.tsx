@@ -233,7 +233,7 @@ const TrainingStep: React.FC<{ model: SampleModel | null; onNext: () => void; on
           </div>
         ))}
       </dl>
-      <p className="mt-3 text-sm text-muted-foreground">In Level 2 you choose the model size and can make more training photos. Vision-M sets the rest for you.</p>
+      <p className="mt-3 text-sm text-muted-foreground">In Level 2 you choose the model size and can make more training photos. Vision-M starts you with good settings, and you can change them.</p>
     </div>
     {model ? (
       <div className="rounded-xl border bg-secondary/30 p-4">

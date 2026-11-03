@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, Gauge, Layers, Loader2, Play, Rabbit, Sparkles, Trash2, Turtle } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Gauge, Layers, Loader2, Play, Rabbit, Sparkles, Trash2, Turtle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import {
   AlertDialog,
@@ -64,6 +66,20 @@ const SIZES = [
   },
 ];
 
+/** What a run uses unless the student changes it, and the limits (the server checks the same) */
+const DEFAULT_SETTINGS = { epochs: "50", batchSize: "8", imgSize: "640", learningRate: "0.01" };
+const BATCH_SIZES = [4, 8, 16, 32];
+const IMAGE_SIZES = [320, 416, 512, 640, 800, 960, 1280];
+
+const settingsProblem = (s: typeof DEFAULT_SETTINGS) => {
+  const epochs = Number(s.epochs);
+  const learningRate = Number(s.learningRate);
+  if (!Number.isInteger(epochs) || epochs < 1 || epochs > 200) return "Epochs must be a whole number from 1 to 200.";
+  if (!s.learningRate.trim() || !(learningRate >= 0.0001 && learningRate <= 0.1)) return "Learning rate must be from 0.0001 to 0.1.";
+  if (Number(s.batchSize) * (Number(s.imgSize) / 640) ** 2 > 32) return "That batch size needs too much memory at this image size. Choose a smaller one.";
+  return null;
+};
+
 /**
  * Set to false to show "Training opens soon" instead of queuing jobs (e.g. while the training
  * servers are down), so runs and model slots aren't used up for nothing.
@@ -101,6 +117,8 @@ export const PlaygroundTrainStep: React.FC<{
 }> = ({ projectId, companyName, projectName, datasetId, isSample, classNames, counts, limits, onTestModel, missionName }) => {
   const { toast } = useToast();
   const [size, setSize] = useState(SIZES[0].key);
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [showSettings, setShowSettings] = useState(false);
   const [job, setJob] = useState<JobState | null>(null);
   const [starting, setStarting] = useState(false);
   const [runsUsed, setRunsUsed] = useState<number | null>(null);
@@ -225,7 +243,19 @@ export const PlaygroundTrainStep: React.FC<{
       const res = await fetch(apiUrl("/train"), {
         method: "POST",
         headers: await getAuthHeaders(),
-        body: JSON.stringify({ datasetId, projectId, modelType: "YOLO", modelKey: size, augmentationPreset: "none" }),
+        body: JSON.stringify({
+          datasetId,
+          projectId,
+          modelType: "YOLO",
+          modelKey: size,
+          augmentationPreset: "none",
+          hyperparameters: {
+            epochs: Number(settings.epochs),
+            batchSize: Number(settings.batchSize),
+            imgSize: Number(settings.imgSize),
+            learningRate: Number(settings.learningRate),
+          },
+        }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.message || json.error || `Couldn't start training (${res.status})`);
@@ -247,8 +277,11 @@ export const PlaygroundTrainStep: React.FC<{
     }
   };
 
+  const problem = settingsProblem(settings);
   const blockedReason = !TRAINING_AVAILABLE
     ? null
+    : problem
+      ? problem
     : isSample
       ? "GSN's labelled samples are for viewing and testing. To train, choose \"Label this sample myself\" in step 1, or upload your own photos."
       : counts.labelled < MIN_LABELLED
@@ -344,6 +377,96 @@ export const PlaygroundTrainStep: React.FC<{
               ))}
             </div>
           </fieldset>
+
+          <div className="mt-5 rounded-xl border p-4">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-3 text-left"
+              aria-expanded={showSettings}
+              onClick={() => setShowSettings((open) => !open)}
+            >
+              <span>
+                <span className="block text-sm font-medium text-foreground">Training settings</span>
+                <span className="block text-xs text-muted-foreground">
+                  {settings.epochs} epochs · batch {settings.batchSize} · image size {settings.imgSize} · learning rate {settings.learningRate}
+                </span>
+              </span>
+              <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", showSettings && "rotate-180")} />
+            </button>
+            {showSettings && (
+              <div className="mt-4 space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="train-epochs">Epochs (1 to 200)</Label>
+                    <Input
+                      id="train-epochs"
+                      className="mt-1.5"
+                      type="number"
+                      min={1}
+                      max={200}
+                      step={1}
+                      disabled={busy}
+                      value={settings.epochs}
+                      onChange={(e) => setSettings((s) => ({ ...s, epochs: e.target.value }))}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">More passes can learn more, but take longer.</p>
+                  </div>
+                  <div>
+                    <Label htmlFor="train-rate">Learning rate (0.0001 to 0.1)</Label>
+                    <Input
+                      id="train-rate"
+                      className="mt-1.5"
+                      type="number"
+                      min={0.0001}
+                      max={0.1}
+                      step={0.001}
+                      disabled={busy}
+                      value={settings.learningRate}
+                      onChange={(e) => setSettings((s) => ({ ...s, learningRate: e.target.value }))}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">Too high overshoots; too low learns slowly.</p>
+                  </div>
+                  <div>
+                    <Label htmlFor="train-batch">Batch size</Label>
+                    <select
+                      id="train-batch"
+                      className="mt-1.5 h-10 w-full rounded-md border bg-background px-3 text-sm"
+                      disabled={busy}
+                      value={settings.batchSize}
+                      onChange={(e) => setSettings((s) => ({ ...s, batchSize: e.target.value }))}
+                    >
+                      {BATCH_SIZES.map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-muted-foreground">Photos it looks at before correcting itself.</p>
+                  </div>
+                  <div>
+                    <Label htmlFor="train-size">Image size</Label>
+                    <select
+                      id="train-size"
+                      className="mt-1.5 h-10 w-full rounded-md border bg-background px-3 text-sm"
+                      disabled={busy}
+                      value={settings.imgSize}
+                      onChange={(e) => setSettings((s) => ({ ...s, imgSize: e.target.value }))}
+                    >
+                      {IMAGE_SIZES.map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-muted-foreground">Larger keeps small defects visible, but takes longer.</p>
+                  </div>
+                </div>
+                <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => setSettings(DEFAULT_SETTINGS)}>
+                  Back to default settings
+                </Button>
+              </div>
+            )}
+          </div>
 
           <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-xl bg-secondary/40 p-3">
