@@ -25,8 +25,9 @@ import { cn } from "@/lib/utils";
 
 /**
  * Learn to label (?step=practice on a GSN sample): the student draws boxes on a few of GSN's
- * labelled photos, can ask for a hint (GSN's box, dotted) and checks each photo against GSN's
- * labels. No number of photos is required: the student can finish at any point. Auto-label runs
+ * labelled photos, can ask for a hint (GSN's box, dotted) and each photo is checked against GSN's
+ * labels: once it has as many boxes as GSN's, or when the student leaves it. No number of photos or
+ * score is required: the student can finish at any point. Auto-label runs
  * GSN's ready-made model on more photos and shows its boxes next to GSN's. Practice labels live in this component only: they
  * are never sent to the server, and training keeps using GSN's labels.
  */
@@ -677,10 +678,8 @@ export const PlaygroundLabelPractice: React.FC<{
   onContinue: () => void;
   /** Practice finished, with the average match over the checked photos (0-1) */
   onFinished?: (score: number | null) => void;
-  /** The average match needed to go on (0-1); below it the student practises again */
-  passMark?: number;
   continueLabel?: string;
-}> = ({ datasetId, files, onContinue, onFinished, passMark, continueLabel = "Continue" }) => {
+}> = ({ datasetId, files, onContinue, onFinished, continueLabel = "Continue" }) => {
   const { user } = useProfile();
   const storageKey = user?.id ? savedKey(user.id, datasetId) : null;
   const [phase, setPhase] = useState<"loading" | "practice" | "autolabel" | "done">("loading");
@@ -784,6 +783,8 @@ export const PlaygroundLabelPractice: React.FC<{
   const setBoxes = (boxes: Box[]) => update((s) => ({ ...s, boxes, checked: false, feedback: [] }));
 
   const goTo = (i: number) => {
+    // Leaving a photo checks the boxes drawn on it
+    if (i !== index && state.boxes.length > 0 && !state.checked) check();
     setIndex(Math.max(0, Math.min(practice.length - 1, i)));
     setSelected(null);
     setShowHint(false);
@@ -810,6 +811,28 @@ export const PlaygroundLabelPractice: React.FC<{
     const result = checkPhoto(currentTruth, state.boxes, classNames);
     update((s) => ({ ...s, checked: true, score: result.score, feedback: result.feedback }));
     setShowHint(false);
+  };
+
+  // Checked by itself once the photo has as many boxes as GSN's; a changed box is checked again
+  useEffect(() => {
+    if (phase === "practice" && state.boxes.length > 0 && !state.checked && state.boxes.length >= currentTruth.length) check();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, state.boxes, state.checked, currentTruth.length]);
+
+  /** Finishing checks every photo with boxes on it */
+  const finish = () => {
+    setStates((prev) => {
+      const next = { ...prev };
+      for (const f of practice) {
+        const s = next[f.id];
+        if (s?.boxes.length && !s.checked) {
+          const result = checkPhoto(truth[f.id] ?? [], s.boxes, classNames);
+          next[f.id] = { ...s, checked: true, score: result.score, feedback: result.feedback };
+        }
+      }
+      return next;
+    });
+    setPhase("done");
   };
 
   const checkedStates = practice.map((f) => states[f.id]).filter((s) => s?.checked);
@@ -936,12 +959,10 @@ export const PlaygroundLabelPractice: React.FC<{
 
   // ---- Finished ----
   if (phase === "done") {
-    // The pass mark is on the photos checked; nothing checked means the practice was skipped
-    const passed = passMark === undefined || averageScore === null || averageScore >= passMark;
     return (
       <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border bg-card p-6 md:p-8">
-        {passed && <CheckCircle2 className="h-10 w-10 text-success" aria-hidden="true" />}
-        <h2 className="mt-3 text-2xl font-bold tracking-tight text-foreground">{averageScore === null ? "Practice skipped" : passed ? "Practice complete" : "Almost there"}</h2>
+        <CheckCircle2 className="h-10 w-10 text-success" aria-hidden="true" />
+        <h2 className="mt-3 text-2xl font-bold tracking-tight text-foreground">{averageScore === null ? "Practice skipped" : "Practice complete"}</h2>
         <dl className="mt-5 grid max-w-xl grid-cols-1 gap-3 sm:grid-cols-3">
           {[
             ["Photos checked", `${checkedCount} of ${practice.length}`],
@@ -957,17 +978,13 @@ export const PlaygroundLabelPractice: React.FC<{
         <p className="mt-6 max-w-2xl border-l-2 border-ring bg-secondary/40 px-4 py-3 text-sm text-muted-foreground">
           {averageScore === null
             ? "You skipped the practice. You can come back to it any time: drawing a few boxes yourself shows what a model needs to see."
-            : passed
-            ? "This was practice, so your labels aren't saved. A model learns from labels like these, so careful labelling makes a better model."
-            : `You need an average match of ${Math.round((passMark ?? 0) * 100)}% to go on. Practise again as many times as you like: use the hints, and keep each box tight around the defect.`}
+            : "This was practice, so your labels aren't saved. A model learns from labels like these, so careful labelling makes a better model."}
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
-          {passed && (
-            <Button className="gap-1.5" onClick={onContinue}>
-              {continueLabel} <ArrowRight className="h-4 w-4" />
-            </Button>
-          )}
-          <Button variant={passed ? "outline" : "default"} className="gap-1.5" onClick={restart}>
+          <Button className="gap-1.5" onClick={onContinue}>
+            {continueLabel} <ArrowRight className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" className="gap-1.5" onClick={restart}>
             <RotateCcw className="h-4 w-4" /> Practise again
           </Button>
         </div>
@@ -1007,7 +1024,7 @@ export const PlaygroundLabelPractice: React.FC<{
           <div className="mt-8 flex flex-col items-center gap-3 py-10 text-sm text-muted-foreground">
             <Loader2 className="h-6 w-6 animate-spin" />
             <p>
-              Auto-labelling{autoRun ? ` ${autoRun.processed} of ${autoRun.total} photos` : ""}... this takes about a minute.
+              Auto-labelling{autoRun ? ` ${autoRun.processed} of ${autoRun.total} photos` : ""}...
             </p>
           </div>
         ) : (
@@ -1039,7 +1056,7 @@ export const PlaygroundLabelPractice: React.FC<{
               ))}
             </div>
             <div className="mt-6 flex justify-end">
-              <Button className="gap-1.5" onClick={() => setPhase("done")}>
+              <Button className="gap-1.5" onClick={finish}>
                 Finish practice <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
@@ -1226,8 +1243,10 @@ export const PlaygroundLabelPractice: React.FC<{
             <Button className="gap-1.5" onClick={check} disabled={state.checked || state.boxes.length === 0}>
               <Check className="h-4 w-4" /> {state.checked ? "Checked" : "Check my labels"}
             </Button>
-            {!state.checked && state.boxes.length === 0 && (
-              <p className="text-center text-xs text-muted-foreground">Draw at least one box to check this photo.</p>
+            {!state.checked && (
+              <p className="text-center text-xs text-muted-foreground">
+                {state.boxes.length === 0 ? "Your boxes are checked by themselves as you draw." : "Done with this photo? Check it now, or go to the next one."}
+              </p>
             )}
           </div>
 
@@ -1249,7 +1268,7 @@ export const PlaygroundLabelPractice: React.FC<{
                 ))
               )}
               {(state.score ?? 0) < 0.999 && (
-                <p className="text-xs text-muted-foreground">Fix your boxes and check again, or move on.</p>
+                <p className="text-xs text-muted-foreground">Fix your boxes to try again, or move on.</p>
               )}
             </div>
           )}
@@ -1292,15 +1311,16 @@ export const PlaygroundLabelPractice: React.FC<{
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="ghost" size="sm" onClick={() => setPhase("done")}>
-            {checkedCount === 0 ? "Skip practice" : "Finish practice"}
-          </Button>
           <Button
+            variant="outline"
             className="gap-1.5"
             disabled={pool.length === 0}
             onClick={() => (autoRun && !autoError ? setPhase("autolabel") : void startAutoLabel())}
           >
             <Wand2 className="h-4 w-4" /> {autoRun && !autoError ? "See auto-label results" : "Auto-label the rest"}
+          </Button>
+          <Button className="gap-1.5" onClick={finish}>
+            {checkedCount === 0 ? "Skip practice" : "Finish practice"} <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
       </div>

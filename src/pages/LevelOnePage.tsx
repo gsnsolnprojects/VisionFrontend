@@ -25,15 +25,13 @@ import { cn } from "@/lib/utils";
 
 const STEPS = [
   { id: "dataset", label: "See the data" },
-  { id: "practice", label: "Practise" },
+  { id: "practice", label: "Labelling" },
   { id: "training", label: "How training works" },
   { id: "test", label: "Test" },
   { id: "report", label: "Report" },
 ] as const;
 type StepId = (typeof STEPS)[number]["id"];
 
-/** Average match needed in label practice to go on */
-const PASS_MARK = 0.6;
 const PAGE_SIZE = 12;
 
 interface SampleFile {
@@ -42,6 +40,34 @@ interface SampleFile {
   originalName: string;
   folder: string | null;
 }
+
+/** The settings of a training run, so Level 2 makes sense when the student gets there */
+const TRAINING_SETTINGS = [
+  {
+    name: "Model size",
+    text: "How big the model is. Nano trains fastest; Small takes longer and usually spots defects a little better.",
+  },
+  {
+    name: "Epochs",
+    text: "How many times the model goes through all the training photos. Too few and it hasn't learned enough; too many and it starts memorising the photos instead of learning.",
+  },
+  {
+    name: "Batch size",
+    text: "How many photos it looks at before correcting itself. A bigger batch needs more computer memory.",
+  },
+  {
+    name: "Image size",
+    text: "How large each photo is made before the model sees it. Larger keeps small defects visible, but training takes longer.",
+  },
+  {
+    name: "Learning rate",
+    text: "How big a step the model takes each time it corrects itself. Too big and it overshoots; too small and it learns very slowly.",
+  },
+  {
+    name: "More training photos",
+    text: "Flipped, rotated, brighter or darker copies of your labelled photos. They help when you have only a few real ones. This is called augmentation.",
+  },
+];
 
 const splitLabel = (folder: string | null) =>
   folder === "test" ? "Held-out test" : folder === "val" ? "Validation" : folder === "train" ? "Training" : "Photo";
@@ -92,11 +118,18 @@ const DatasetStep: React.FC<{ sampleId: string; files: SampleFile[]; onNext: () 
         what="Every AI inspection starts with photos. Look at what a defect looks like, and how each one is marked with a coloured box."
         why="These boxes are called labels. A model learns only from what the labels show it, so good labels matter most."
       />
+      <div>
+        <h3 className="text-sm font-semibold text-foreground">Why the photos are split into three groups</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          A model can memorise photos it has seen, just as a student can memorise answers. So some photos are kept away from its
+          learning, to find out if it really learned to spot defects.
+        </p>
+      </div>
       <dl className="grid gap-3 sm:grid-cols-3">
         {[
-          ["Training", count("train"), "The model learns from these."],
-          ["Validation", count("val"), "The model checks itself on these while it learns."],
-          ["Held-out test", count("test"), "Kept aside, for a final honest test."],
+          ["Training", count("train"), "The model learns from these, like a student's textbook."],
+          ["Validation", count("val"), "It checks itself on these while learning, like practice tests."],
+          ["Held-out test", count("test"), "Never used while learning. This is the final exam, so the score is honest."],
         ].map(([name, value, text]) => (
           <div key={name as string} className="rounded-xl border bg-background/40 p-3">
             <dt className="text-sm font-medium text-foreground">
@@ -152,7 +185,7 @@ const DatasetStep: React.FC<{ sampleId: string; files: SampleFile[]; onNext: () 
           </Button>
         </div>
         <Button className="gap-1.5" onClick={onNext}>
-          Next: practise labelling <ArrowRight className="h-4 w-4" />
+          Next: try labelling <ArrowRight className="h-4 w-4" />
         </Button>
       </div>
     </section>
@@ -168,8 +201,8 @@ const TrainingStep: React.FC<{ model: SampleModel | null; onNext: () => void }> 
       <p className="mt-0.5 text-sm text-muted-foreground">Training means showing the computer labelled photos many times, until it can spot the defects by itself.</p>
     </div>
     <StepGuide
-      what="In this level GSN has already trained the model, so you won't wait for one here."
-      why="You'll train a model yourself in Level 2, on your own photos. First, see what happens during training."
+      what="This is practice, so GSN has already trained a model for you to test. No model is trained in this level."
+      why="You'll train a real one in Level 2, on your own photos. Learn what happens during training and what its settings mean, so you're ready for it."
     />
     <ol className="grid gap-3 sm:grid-cols-2">
       {TRAINING_JOURNEY.map(({ Icon, title, text }, i) => (
@@ -186,6 +219,18 @@ const TrainingStep: React.FC<{ model: SampleModel | null; onNext: () => void }> 
         </li>
       ))}
     </ol>
+    <div>
+      <h3 className="text-sm font-semibold text-foreground">The settings of a training run</h3>
+      <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+        {TRAINING_SETTINGS.map(({ name, text }) => (
+          <div key={name} className="rounded-xl border bg-background/40 p-3">
+            <dt className="text-sm font-medium text-foreground">{name}</dt>
+            <dd className="mt-0.5 text-sm text-muted-foreground">{text}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-3 text-sm text-muted-foreground">In Level 2 you choose the model size and can make more training photos. Vision-M sets the rest for you.</p>
+    </div>
     {model ? (
       <div className="rounded-xl border bg-secondary/30 p-4">
         <p className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
@@ -340,7 +385,7 @@ const LevelOnePage: React.FC = () => {
         </p>
         <h1 className="mt-1 text-3xl font-bold tracking-tight text-foreground">{mission}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Learn how AI inspection works on real photos. This level doesn&apos;t use your project, and you can leave and continue any time.
+          Here you only practise, to understand the basics of AI inspection on real photos. No real model is made in this level: you&apos;ll build your own in Level 2.
         </p>
       </div>
 
@@ -382,19 +427,17 @@ const LevelOnePage: React.FC = () => {
       {step === "practice" && (
         <div className="space-y-4">
           <StepGuide
-            what="Now try it yourself: draw a box around each defect, then check it against GSN's labels."
-            why={`This is how you learn what a model needs to see. Label as many photos as you like, or skip this step. If you check photos, an average of ${Math.round(PASS_MARK * 100)}% takes you on, with as many tries as you like. Your practice labels aren't saved.`}
+            what="Now try it yourself: draw a box around each defect, and your boxes are checked against GSN's labels."
+            why="This is how you learn what a model needs to see. Do as many photos as you like, even one or two, then move on. Your labels here are for practice and aren't saved."
           />
           <PlaygroundLabelPractice
             datasetId={sampleId}
             files={files}
-            passMark={PASS_MARK}
             continueLabel="Next: how training works"
             onContinue={() => goTo("training")}
             onFinished={(score) => {
-              const passed = score === null || score >= PASS_MARK;
-              if (passed) markDone("practice");
-              saveLevelProgress({ mission, step: passed ? "practice" : undefined, practiceScore: score ?? undefined });
+              markDone("practice");
+              saveLevelProgress({ mission, step: "practice", practiceScore: score ?? undefined });
             }}
           />
         </div>

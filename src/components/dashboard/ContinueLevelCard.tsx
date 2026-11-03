@@ -15,7 +15,7 @@ import type { Mission, MissionMode } from "./IndustryPicker";
 
 const STEP_NAMES: Record<string, string> = {
   dataset: "See the data",
-  practice: "Practise",
+  practice: "Labelling",
   training: "How training works",
   upload: "Upload",
   label: "Label",
@@ -26,7 +26,7 @@ const STEP_NAMES: Record<string, string> = {
 
 const STEP_NEXT: Record<string, string> = {
   dataset: "Look through the sample photos and their labels.",
-  practice: "Practise labelling on real inspection photos.",
+  practice: "Try labelling real inspection photos.",
   training: "See how a model gets trained.",
   upload: "Upload your own photos.",
   label: "Label at least 20 of your photos.",
