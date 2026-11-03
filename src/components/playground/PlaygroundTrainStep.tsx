@@ -39,6 +39,8 @@ interface JobState {
   percent: number;
   mAP50: number | null;
   error: string | null;
+  /** Queued, and AWS has no GPU computer free right now */
+  noGpu: boolean;
 }
 
 interface TrainedModel {
@@ -183,6 +185,7 @@ export const PlaygroundTrainStep: React.FC<{
           metrics?: { mAP50?: number };
           finalMetrics?: { mAP50?: number };
           error?: string | { message?: string } | null;
+          noGpuAvailable?: boolean;
         }>(`/train/${encodeURIComponent(jobId)}/status`, { maxRetries: 1 });
         const next: JobState = {
           jobId,
@@ -192,6 +195,7 @@ export const PlaygroundTrainStep: React.FC<{
           percent: s.progress?.progressPercent ?? 0,
           mAP50: s.finalMetrics?.mAP50 ?? s.metrics?.mAP50 ?? null,
           error: typeof s.error === "string" ? s.error : s.error?.message ?? null,
+          noGpu: !!s.noGpuAvailable,
         };
         setJob(next);
         if (next.status === "completed" || next.status === "failed" || next.status === "cancelled") {
@@ -267,7 +271,7 @@ export const PlaygroundTrainStep: React.FC<{
         // ignore
       }
       saveLevelProgress({ mission: missionName, trainingJobId: jobId });
-      setJob({ jobId, status: "queued", currentEpoch: 0, totalEpochs: 0, percent: 0, mAP50: null, error: null });
+      setJob({ jobId, status: "queued", currentEpoch: 0, totalEpochs: 0, percent: 0, mAP50: null, error: null, noGpu: false });
       loadAllowance();
       void poll(jobId);
     } catch (err) {
@@ -509,7 +513,9 @@ export const PlaygroundTrainStep: React.FC<{
               <div className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="font-medium text-foreground">
                   {job.status === "queued"
-                    ? "Waiting for a training computer"
+                    ? job.noGpu
+                      ? "No GPU available right now"
+                      : "Waiting for a training computer"
                     : job.totalEpochs
                       ? `Epoch ${job.currentEpoch} of ${job.totalEpochs}`
                       : "Getting started"}
@@ -519,7 +525,9 @@ export const PlaygroundTrainStep: React.FC<{
               <Progress value={job.percent} className="mt-2 h-3 bg-background" indicatorClassName="bg-ring" aria-label="Training progress" />
               <p className="mt-2 text-xs text-muted-foreground">
                 {job.status === "queued"
-                  ? "It starts by itself as soon as one is free. This can take a while; you can leave this page and come back."
+                  ? job.noGpu
+                    ? "AWS, where our training computers run, has no GPU free right now, so your training hasn't started yet. Nothing is wrong with your photos. We keep trying every minute and it starts by itself. This can take a while; you can leave this page and come back."
+                    : "It starts by itself as soon as one is free. This can take a while; you can leave this page and come back."
                   : job.mAP50 !== null
                     ? `Current score ${percent(job.mAP50)}: ${scoreWords(job.mAP50).toLowerCase()}. You can leave this page and come back.`
                     : "You can leave this page and come back: training keeps going."}
