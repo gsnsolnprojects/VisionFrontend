@@ -13,6 +13,7 @@ import {
   Lock,
   PenLine,
   Trophy,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,8 @@ import { useProfile } from "@/hooks/useProfile";
 import { apiRequest } from "@/lib/api/config";
 import type { LearningProgress } from "@/lib/api/dashboard";
 import type { LevelProgress } from "@/lib/api/levels";
-import { fadeInUpVariants } from "@/utils/animations";
+import { IndustryArt } from "@/components/landing/IndustryArt";
+import { fadeInUpVariants, staggerContainerVariants } from "@/utils/animations";
 import { cn } from "@/lib/utils";
 
 /**
@@ -41,28 +43,56 @@ const LEARN: { Icon: LucideIcon; title: string; text: string }[] = [
 
 /** For someone who hasn't started anything yet. Before a plan, the button leads to choosing one. */
 export const PlaygroundWelcome: React.FC<{ onChoosePlan?: () => void }> = ({ onChoosePlan }) => (
-  <motion.section variants={fadeInUpVariants} aria-labelledby="welcome-heading" className="rounded-2xl border bg-card p-5 md:p-7">
-    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">You&apos;re in Vision-M Playground</p>
-    <h2 id="welcome-heading" className="mt-2 text-2xl font-bold tracking-tight text-foreground md:text-3xl">
-      Learn how factories use AI to catch defects, by building it yourself.
-    </h2>
-    <p className="mt-2 max-w-3xl text-sm text-muted-foreground md:text-base">
-      No coding needed. By the end, you&apos;ll have built and tested your own AI inspection model.
-    </p>
-    <h3 className="mt-6 text-sm font-semibold text-foreground">What you&apos;ll learn</h3>
-    <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      {LEARN.map(({ Icon, title, text }) => (
-        <li key={title} className="rounded-xl bg-secondary/40 p-4">
-          <Icon className="h-5 w-5 text-foreground" aria-hidden="true" />
-          <p className="mt-2 text-sm font-semibold text-foreground">{title}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{text}</p>
-        </li>
-      ))}
-    </ul>
-    <Button className="mt-6 gap-1.5" onClick={onChoosePlan ?? goToLevels}>
-      {onChoosePlan ? "Choose Playground" : "Start Level 1"}
-      {onChoosePlan ? <ArrowRight className="h-4 w-4" aria-hidden="true" /> : <ArrowDown className="h-4 w-4" aria-hidden="true" />}
-    </Button>
+  <motion.section
+    variants={fadeInUpVariants}
+    aria-labelledby="welcome-heading"
+    className="overflow-hidden rounded-2xl bg-[#171f1b] text-[#f5f5ee]"
+  >
+    <div className="grid items-center gap-8 p-6 md:p-10 lg:grid-cols-[1.1fr_1fr]">
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#bec9b0]">You&apos;re in Vision-M Playground</p>
+        <h2 id="welcome-heading" className="mt-4 text-3xl font-bold leading-[1.05] tracking-tight sm:text-4xl md:text-5xl">
+          Learn how factories use AI to catch defects,{" "}
+          <span className="text-[#e9ff65]">by building it yourself.</span>
+        </h2>
+        <p className="mt-5 max-w-md text-sm leading-relaxed text-[#bec9b0] md:text-base">
+          No coding needed. By the end, you&apos;ll have built and tested your own AI inspection model.
+        </p>
+        <Button className="mt-7 gap-1.5 bg-[#e9ff65] text-[#171f1b] hover:bg-[#e9ff65]/90" onClick={onChoosePlan ?? goToLevels}>
+          {onChoosePlan ? "Choose Playground" : "Start Level 1"}
+          {onChoosePlan ? <ArrowRight className="h-4 w-4" aria-hidden="true" /> : <ArrowDown className="h-4 w-4" aria-hidden="true" />}
+        </Button>
+      </div>
+      <div className="relative hidden overflow-hidden rounded-xl border border-[#485840] p-2 sm:block">
+        <IndustryArt index={1} highlight="labelled" />
+        {/* Scanner line sweeping over the picture, like an inspection camera */}
+        <div aria-hidden className="scan-line pointer-events-none absolute inset-x-2" />
+      </div>
+    </div>
+    <div className="border-t border-[#485840] p-6 md:px-10 md:py-8">
+      <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#bec9b0]">What you&apos;ll learn</h3>
+      <motion.ul
+        className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+        variants={staggerContainerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        {LEARN.map(({ Icon, title, text }) => (
+          <motion.li
+            key={title}
+            variants={fadeInUpVariants}
+            whileHover={{ y: -4 }}
+            className="rounded-xl border border-[#485840] p-4 transition-colors hover:border-[#e9ff65]"
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#e9ff65] text-[#171f1b]">
+              <Icon className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <p className="mt-3 text-sm font-semibold">{title}</p>
+            <p className="mt-1 text-sm text-[#bec9b0]">{text}</p>
+          </motion.li>
+        ))}
+      </motion.ul>
+    </div>
   </motion.section>
 );
 
@@ -154,8 +184,17 @@ export const BadgeShelf: React.FC<{ levels: LevelProgress[]; progress: LearningP
 /** Marks finishing a level, with what the student really made */
 export const LevelCompleteCard: React.FC<{ level: LevelProgress; onNext: () => void }> = ({ level, onNext }) => {
   const navigate = useNavigate();
-  const { company } = useProfile();
+  const { company, user } = useProfile();
   const companyName = company?.name ?? "";
+  // Closed once, it stays closed in this browser; finishing the level again shows it again
+  const closedKey = `visionm_level_done_closed_${user?.id ?? "anon"}_${level.mission}_${level.finishedAt}`;
+  const [closed, setClosed] = useState(() => {
+    try {
+      return !!localStorage.getItem(closedKey);
+    } catch {
+      return false;
+    }
+  });
   const [numbers, setNumbers] = useState<{ photos: number | null; score: number | null } | null>(null);
 
   useEffect(() => {
@@ -177,13 +216,32 @@ export const LevelCompleteCard: React.FC<{ level: LevelProgress; onNext: () => v
     };
   }, [level.level, level.mission, companyName]);
 
+  if (closed) return null;
+
+  const close = () => {
+    setClosed(true);
+    try {
+      localStorage.setItem(closedKey, "1");
+    } catch {
+      // a convenience only
+    }
+  };
+
   const isTwo = level.level === 2;
   return (
     <motion.section
       variants={fadeInUpVariants}
       aria-labelledby="level-complete-heading"
-      className="overflow-hidden rounded-2xl bg-[#171f1b] p-6 text-[#f5f5ee] md:p-8"
+      className="relative overflow-hidden rounded-2xl bg-[#171f1b] p-6 text-[#f5f5ee] md:p-8"
     >
+      <button
+        type="button"
+        onClick={close}
+        aria-label="Close"
+        className="absolute right-3 top-3 rounded-md p-1.5 text-[#bec9b0] transition-colors hover:bg-white/10 hover:text-[#f5f5ee]"
+      >
+        <X className="h-4 w-4" aria-hidden="true" />
+      </button>
       <div className="flex flex-wrap items-start gap-4">
         <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#e9ff65] text-[#171f1b]">
           <Trophy className="h-6 w-6" aria-hidden="true" />

@@ -3,9 +3,9 @@ import { motion } from "framer-motion";
 import {
   ArrowLeft,
   ArrowRight,
-  Check,
   CheckCircle2,
   Hand,
+  HelpCircle,
   Lightbulb,
   Loader2,
   Minus,
@@ -18,6 +18,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { GuidedTour, useFirstTimeTour, type TourStep } from "./GuidedTour";
 import { apiRequest, apiUrl, getAuthHeaders } from "@/lib/api/config";
 import { markPracticeDone } from "@/lib/api/dashboard";
 import { useProfile } from "@/hooks/useProfile";
@@ -25,9 +26,9 @@ import { cn } from "@/lib/utils";
 
 /**
  * Learn to label (?step=practice on a GSN sample): the student draws boxes on a few of GSN's
- * labelled photos, can ask for a hint (GSN's box, dotted) and each photo is checked against GSN's
- * labels: once it has as many boxes as GSN's, or when the student leaves it. No number of photos or
- * score is required: the student can finish at any point. Auto-label runs
+ * labelled photos, can ask for a hint (GSN's box, dotted) and every box is checked against GSN's
+ * labels as it's drawn. GSN's answers show once the photo has as many boxes as GSN's, or when the
+ * student leaves it. No number of photos or score is required: the student can finish at any point. Auto-label runs
  * GSN's ready-made model on more photos and shows its boxes next to GSN's. Practice labels live in this component only: they
  * are never sent to the server, and training keeps using GSN's labels.
  */
@@ -83,6 +84,69 @@ interface AutoLabelResult {
   fileId: string;
   boxes: Box[];
 }
+
+/** The walkthrough of labelling, for a student's first time here */
+const LABELLING_TOUR: TourStep[] = [
+  {
+    title: "Now you try",
+    text: "So far you've looked at labels GSN made. Now you'll draw them yourself, the way real AI teams prepare their data. It's only practice: nothing you do here is saved or used for training.",
+  },
+  {
+    target: "practice-photo",
+    title: "The photo you're labelling",
+    text: "This is a real inspection photo with one or more defects in it. Your job is to find each one and mark it. What you mark here is what a model would learn to look for.",
+  },
+  {
+    target: "practice-prompt",
+    title: "What to do right now",
+    text: "This line always tells you your next move. Labelling takes two moves: pick the kind of defect, then draw a box around it.",
+  },
+  {
+    target: "practice-labels",
+    title: "1. Pick a label",
+    text: "Each label is one kind of defect, with a line on what it looks like. Pick the one you're marking, and your box takes its name and colour. A wrong name teaches a model the wrong thing, even if the box is perfect.",
+  },
+  {
+    target: "practice-photo",
+    title: "2. Draw a box",
+    text: "Press on the photo and drag around the defect. Keep the box tight: too big and the model learns the background too, too small and it misses part of the defect.",
+  },
+  {
+    target: "practice-tools",
+    title: "Zoom in on small defects",
+    text: "Some defects are tiny. Scroll on the photo or use + and - to zoom. To move around while zoomed, choose Move, or hold Space and drag. Fit shows the whole photo again.",
+  },
+  {
+    target: "practice-boxes",
+    title: "Your boxes",
+    text: "Every box you draw is listed here. Click one to select it, then pick another label to rename it, or use the bin to remove it. Undo takes back your last box.",
+  },
+  {
+    target: "practice-help",
+    title: "Stuck? Ask for a hint",
+    text: "Show hint draws GSN's boxes, dotted, until you hide them. Try on your own first: finding defects yourself is how you learn what to look for.",
+  },
+  {
+    target: "practice-score",
+    title: "How you're scored",
+    text: "Every box is checked the moment you draw it, and you see how many are right, like 1 of 5 labels correct. A box turns green if it's right, amber if it needs a fix, and red if it's extra. There's no pass mark: it's only there to help you improve.",
+  },
+  {
+    target: "practice-strip",
+    title: "Your practice photos",
+    text: "These photos cover every kind of defect. Move between them here. The dot on each one shows how it went: green for all right, amber for some fixes, blue for not checked yet.",
+  },
+  {
+    target: "practice-auto",
+    title: "Auto-label",
+    text: "Labelling hundreds of photos by hand is slow. So real projects label a few, train a model, and let it suggest boxes for the rest, which people then check. Try it here with GSN's model.",
+  },
+  {
+    target: "practice-finish",
+    title: "Move on any time",
+    text: "One or two photos are enough if you've got the idea. Press this when you're ready, and next you'll see how a model is trained from labels like these. You can replay this guide with Show guide.",
+  },
+];
 
 const nice = (name: string) => name.replace(/_/g, " ");
 
@@ -455,7 +519,7 @@ const DrawingCanvas: React.FC<{
   const cursor = moving ? (pan ? "grabbing" : "grab") : drawClass === null ? "not-allowed" : "crosshair";
 
   return (
-    <div className="rounded-xl bg-[#171f1b] p-2">
+    <div data-tour="practice-photo" className="rounded-xl bg-[#171f1b] p-2">
       <div className="flex justify-center">
         <div
           ref={surface}
@@ -535,7 +599,7 @@ const DrawingCanvas: React.FC<{
         </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-white/70">
+      <div data-tour="practice-tools" className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-white/70">
         <div className="flex items-center gap-1" role="radiogroup" aria-label="What dragging does">
           {(
             [
@@ -702,6 +766,7 @@ export const PlaygroundLabelPractice: React.FC<{
   const [autoResults, setAutoResults] = useState<AutoLabelResult[] | null>(null);
   const [autoError, setAutoError] = useState<string | null>(null);
   const [showGsnOnAuto, setShowGsnOnAuto] = useState(true);
+  const [showTour, setShowTour] = useFirstTimeTour("labelling", phase === "practice" && practice.length > 0);
 
   // ---- Pick the practice photos and the auto-label photos, with GSN's labels for both ----
   useEffect(() => {
@@ -840,15 +905,19 @@ export const PlaygroundLabelPractice: React.FC<{
   const averageScore = checkedCount ? checkedStates.reduce((sum, s) => sum + (s.score ?? 0), 0) / checkedCount : null;
   const hintsUsed = practice.filter((f) => states[f.id]?.hinted).length;
 
+  // Every box is checked as it's drawn
+  const liveFeedback = useMemo(() => checkPhoto(currentTruth, state.boxes, classNames).feedback, [currentTruth, state.boxes, classNames]);
+  const correctNow = liveFeedback.filter((f) => f.verdict === "good").length;
+
   const verdictColors = useMemo(() => {
-    if (!state.checked) return null;
+    if (!state.boxes.length) return null;
     const colors: (string | null)[] = state.boxes.map(() => null);
-    for (const f of state.feedback) {
+    for (const f of liveFeedback) {
       if (f.mine === undefined) continue;
       colors[f.mine] = f.verdict === "good" ? "#22c55e" : f.verdict === "extra" ? "#ef4444" : "#f59e0b";
     }
     return colors;
-  }, [state]);
+  }, [state.boxes, liveFeedback]);
 
   // ---- Auto-label: start, then poll until done ----
   const startAutoLabel = async () => {
@@ -1080,7 +1149,11 @@ export const PlaygroundLabelPractice: React.FC<{
             you&apos;re marking. Your labels are for practice only and aren&apos;t saved.
           </p>
         </div>
-        <div className="text-right text-sm">
+        <div className="flex flex-wrap items-start gap-3">
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowTour(true)}>
+            <HelpCircle className="h-4 w-4" aria-hidden="true" /> Show guide
+          </Button>
+        <div data-tour="practice-score" className="text-right text-sm">
           <p className="text-muted-foreground">
             Checked <strong className="text-foreground">{checkedCount}</strong> of {practice.length}
           </p>
@@ -1090,12 +1163,14 @@ export const PlaygroundLabelPractice: React.FC<{
             </p>
           )}
         </div>
+        </div>
       </div>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-w-0 space-y-3">
           <p
             key={nudge}
+            data-tour="practice-prompt"
             aria-live="polite"
             className={cn(
               "rounded-lg border px-3 py-2 text-sm text-foreground",
@@ -1134,7 +1209,7 @@ export const PlaygroundLabelPractice: React.FC<{
         </div>
 
         <div className="space-y-4">
-          <div>
+          <div data-tour="practice-labels">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Label to draw</p>
             {selected !== null && (
               <p className="mt-1 text-xs text-muted-foreground">Click a label to change the selected box to it.</p>
@@ -1179,7 +1254,7 @@ export const PlaygroundLabelPractice: React.FC<{
             </div>
           </div>
 
-          <div>
+          <div data-tour="practice-boxes">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Your boxes ({state.boxes.length})</p>
               <Button
@@ -1228,7 +1303,7 @@ export const PlaygroundLabelPractice: React.FC<{
             )}
           </div>
 
-          <div className="flex flex-col gap-2">
+          <div data-tour="practice-help" className="flex flex-col gap-2">
             <Button
               variant="outline"
               className="gap-1.5"
@@ -1240,34 +1315,25 @@ export const PlaygroundLabelPractice: React.FC<{
             >
               <Lightbulb className="h-4 w-4" /> {showHint ? "Hide hint" : "Show hint"}
             </Button>
-            <Button className="gap-1.5" onClick={check} disabled={state.checked || state.boxes.length === 0}>
-              <Check className="h-4 w-4" /> {state.checked ? "Checked" : "Check my labels"}
-            </Button>
-            {!state.checked && (
-              <p className="text-center text-xs text-muted-foreground">
-                {state.boxes.length === 0 ? "Your boxes are checked by themselves as you draw." : "Done with this photo? Check it now, or go to the next one."}
-              </p>
-            )}
           </div>
 
-          {state.checked && (
+          {state.boxes.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Each box is checked as soon as you draw it.</p>
+          ) : (
             <div className="space-y-1.5" aria-live="polite">
-              <p className="text-sm font-medium text-foreground">
-                {Math.round((state.score ?? 0) * 100)}% right
-                <span className="ml-1 font-normal text-muted-foreground">· GSN&apos;s labels are dotted</span>
+              <p className="text-sm font-semibold text-foreground">
+                {correctNow} of {currentTruth.length} label{currentTruth.length === 1 ? "" : "s"} correct
               </p>
-              {state.feedback.length === 0 ? (
-                <p className="rounded-md border border-success/40 bg-success/10 px-2.5 py-1.5 text-xs">
-                  Nothing to label here, and you drew nothing. Correct!
-                </p>
-              ) : (
-                state.feedback.map((f, i) => (
+              {state.checked && <p className="text-xs text-muted-foreground">GSN&apos;s labels are dotted.</p>}
+              {/* What's still missing stays hidden until the photo is finished: finding it is the practice */}
+              {liveFeedback
+                .filter((f) => state.checked || f.verdict !== "missed")
+                .map((f, i) => (
                   <p key={i} className={cn("rounded-md border px-2.5 py-1.5 text-xs text-foreground", VERDICT_STYLE[f.verdict])}>
                     {f.text}
                   </p>
-                ))
-              )}
-              {(state.score ?? 0) < 0.999 && (
+                ))}
+              {state.checked && correctNow < currentTruth.length && (
                 <p className="text-xs text-muted-foreground">Fix your boxes to try again, or move on.</p>
               )}
             </div>
@@ -1285,7 +1351,7 @@ export const PlaygroundLabelPractice: React.FC<{
       </div>
 
       {/* Photo strip */}
-      <div className="mt-5 flex gap-2 overflow-x-auto pb-1" aria-label="Practice photos">
+      <div data-tour="practice-strip" className="mt-5 flex gap-2 overflow-x-auto pb-1" aria-label="Practice photos">
         {practice.map((f, i) => (
           <StripTile
             key={f.id}
@@ -1301,7 +1367,7 @@ export const PlaygroundLabelPractice: React.FC<{
 
       {/* Auto-label */}
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ring bg-secondary/60 px-4 py-3">
-        <div className="flex items-start gap-3">
+        <div data-tour="practice-auto" className="flex items-start gap-3">
           <Wand2 className="mt-0.5 h-5 w-5 shrink-0 text-ring" aria-hidden="true" />
           <div>
             <p className="font-medium text-foreground">Auto-label the rest</p>
@@ -1319,11 +1385,12 @@ export const PlaygroundLabelPractice: React.FC<{
           >
             <Wand2 className="h-4 w-4" /> {autoRun && !autoError ? "See auto-label results" : "Auto-label the rest"}
           </Button>
-          <Button className="gap-1.5" onClick={finish}>
+          <Button data-tour="practice-finish" className="gap-1.5" onClick={finish}>
             {checkedCount === 0 ? "Skip practice" : "Finish practice"} <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
       </div>
+      <GuidedTour steps={LABELLING_TOUR} open={showTour} onClose={() => setShowTour(false)} />
     </section>
   );
 };

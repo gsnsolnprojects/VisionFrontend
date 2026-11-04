@@ -51,6 +51,10 @@ interface Industry {
   name: string;
   tagline: string;
   Icon: LucideIcon;
+  /** Which drawing is this industry's (the landing page's order) */
+  art: number;
+  /** The one we suggest starting with */
+  recommended?: boolean;
   /** Guided challenge on a GSN sample (the quick try uses the same project and sample) */
   guided?: { title: string; sample: string; finds: string; photoNoun: string };
   /** An example defect, for the student's own project */
@@ -59,24 +63,12 @@ interface Industry {
 
 const INDUSTRIES: Industry[] = [
   {
-    // id kept as "automotive" so browsers that remembered this card still pick it
-    id: "automotive",
-    name: "Electrical Components",
-    tagline: "Terminals, connectors and switchgear.",
-    Icon: Plug,
-    guided: {
-      title: "Missing screw detective",
-      sample: "Terminals",
-      finds: "missing screws, missing bars and blackened parts",
-      photoNoun: "terminal",
-    },
-    own: { example: "a missing screw or a cracked housing" },
-  },
-  {
     id: "electronics",
     name: "Electronics & PCB",
     tagline: "Tiny components. Big inspection questions.",
     Icon: Cpu,
+    art: 1,
+    recommended: true,
     guided: {
       title: "PCB defect detective",
       sample: "PCB",
@@ -86,10 +78,26 @@ const INDUSTRIES: Industry[] = [
     own: { example: "a missing component or a solder bridge" },
   },
   {
+    // id kept as "automotive" so browsers that remembered this card still pick it
+    id: "automotive",
+    name: "Electrical Components",
+    tagline: "Terminals, connectors and switchgear.",
+    Icon: Plug,
+    art: 0,
+    guided: {
+      title: "Missing screw detective",
+      sample: "Terminals",
+      finds: "missing screws, missing bars and blackened parts",
+      photoNoun: "terminal",
+    },
+    own: { example: "a missing screw or a cracked housing" },
+  },
+  {
     id: "pharma",
     name: "Pharma Packaging",
     tagline: "Explore what makes packaging acceptable.",
     Icon: Pill,
+    art: 2,
     guided: {
       title: "Blister pack inspector",
       sample: "Blister Pack",
@@ -103,6 +111,7 @@ const INDUSTRIES: Industry[] = [
     name: "Food & Beverages",
     tagline: "Explore the details behind everyday packs.",
     Icon: CupSoda,
+    art: 3,
     own: { example: "a crooked label or a dented can" },
   },
   {
@@ -110,6 +119,7 @@ const INDUSTRIES: Industry[] = [
     name: "Plastics & Precision Parts",
     tagline: "Investigate shape, finish and consistency.",
     Icon: Hexagon,
+    art: 4,
     own: { example: "an incomplete moulding or a surface scratch" },
   },
   {
@@ -117,6 +127,7 @@ const INDUSTRIES: Industry[] = [
     name: "Textiles",
     tagline: "Look closer at patterns, stains and fabric.",
     Icon: Shirt,
+    art: 5,
     own: { example: "a stain or a pulled thread" },
   },
 ];
@@ -178,7 +189,7 @@ export const IndustryPicker: React.FC<{
     }
   };
 
-  const artIndex = Math.max(0, INDUSTRIES.findIndex((i) => i.id === selected));
+  const artIndex = INDUSTRIES.find((i) => i.id === selected)?.art ?? INDUSTRIES[0].art;
   const industry = INDUSTRIES.find((i) => i.id === selected);
 
   /** Down to the picked industry's levels, or to the industries while none is picked */
@@ -252,7 +263,7 @@ export const IndustryPicker: React.FC<{
           <p className="text-xs text-muted-foreground">Choose one to unlock challenges</p>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="Industry">
-          {INDUSTRIES.map(({ id, name, tagline, Icon }, i) => {
+          {INDUSTRIES.map(({ id, name, tagline, Icon, recommended }, i) => {
             const isSelected = id === selected;
             return (
               <button
@@ -267,8 +278,13 @@ export const IndustryPicker: React.FC<{
                   isSelected && "border-ring bg-secondary/60 ring-1 ring-ring"
                 )}
               >
-                <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-secondary text-foreground">
-                  <Icon className="h-5 w-5" aria-hidden="true" />
+                <span className="flex items-center gap-2">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-secondary text-foreground">
+                    <Icon className="h-5 w-5" aria-hidden="true" />
+                  </span>
+                  {recommended && (
+                    <span className="rounded-full bg-[#e9ff65] px-2.5 py-1 text-[11px] font-semibold text-[#171f1b]">Recommended</span>
+                  )}
                 </span>
                 <span className="absolute right-4 top-4 text-muted-foreground" aria-hidden="true">
                   {isSelected ? (
@@ -393,7 +409,7 @@ const Challenges: React.FC<{
   levels: LevelProgress[] | null;
   projectIds: string[];
 }> = ({ industry, samples, onStartMission, onChoosePlan, path, levels, projectIds }) => {
-  const artIndex = Math.max(0, INDUSTRIES.findIndex((i) => i.id === industry.id));
+  const artIndex = industry.art;
   const guided = industry.guided;
   const loading = samples === null;
   const sample = guided ? samples?.datasets.find((d) => sameProject(d.project, guided.sample)) : undefined;

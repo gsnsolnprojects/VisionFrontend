@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, Check, Clock, FileText, FlaskConical, ImagePlus, Loader2, Play, Sparkles, Upload, X } from "lucide-react";
+import { HelpCircle, AlertTriangle, Check, Clock, FileText, FlaskConical, ImagePlus, Loader2, Play, Sparkles, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { GuidedTour, useFirstTimeTour, type TourStep } from "./GuidedTour";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, apiUrl, getAuthHeaders } from "@/lib/api/config";
 import { saveLevelProgress } from "@/lib/api/levels";
@@ -16,6 +17,51 @@ import { cn } from "@/lib/utils";
  */
 
 const MAX_UPLOADS = 30;
+/** The walkthroughs of the Level 1 test: setting it up, then reading what comes back */
+const TEST_TOUR: TourStep[] = [
+  {
+    title: "Time for the final exam",
+    text: "Training scores come from photos the model checks itself on while learning. A test on photos it has never seen shows how it would really do in a factory. Here you'll test GSN's model.",
+  },
+  {
+    target: "test-model",
+    title: "The model being tested",
+    text: "This is GSN's ready-made model, already trained on this kind of photo. The score is from its training. Now you'll see if it holds up.",
+  },
+  {
+    target: "test-photos",
+    title: "The photos it's tested on",
+    text: "These are the held-out photos you met in See the data. The model never learned from them. GSN has labelled them too, so you can compare what it finds with the right answers.",
+  },
+  {
+    target: "test-how",
+    title: "What to look for",
+    text: "Each box is something the model found, and its number is how sure it is, from 0 to 1. A missed defect means a bad part slips through. An extra box means a good part gets thrown away.",
+  },
+  {
+    target: "test-run",
+    title: "Run the test",
+    text: "Press this when you're ready. The model looks at each photo, and the results appear below, photo by photo. In this level, tests don't use your monthly predictions.",
+  },
+];
+const RESULTS_TOUR: TourStep[] = [
+  {
+    target: "result-first",
+    title: "One photo, one result",
+    text: "Each box drawn on the photo is something the model found, with its confidence. Look for defects it missed, and for boxes where nothing's wrong.",
+  },
+  {
+    target: "result-compare",
+    title: "Compare with the right answers",
+    text: "Model found is what the model said. Labelled in the dataset is what GSN marked. Where they differ, the model got something wrong. In a real project, those are the kinds of photos you'd add and label before training again.",
+  },
+  {
+    target: "result-actions",
+    title: "Keep your results",
+    text: "Generate report turns this test into a PDF, the way a factory team shares results, and takes you to the last step of Level 1. Close test only clears it. Either way, the test's photos are deleted.",
+  },
+];
+
 const LEARNING_PHOTOS = 30;
 const LEARNING_MODEL_ID = "gsn-ready-made";
 const IMAGE_NAME = /\.(jpe?g|png)$/i;
@@ -390,19 +436,30 @@ export const PlaygroundTestStep: React.FC<{
 
   const busy = run?.status === "queued" || run?.status === "running";
   const selectedModel = models?.find((m) => m.modelId === modelId);
+  const [showTour, setShowTour] = useFirstTimeTour("test", !!learning && !run && models !== null);
+  const [showResultsTour, setShowResultsTour] = useFirstTimeTour("test_results", !!learning && !!results?.length);
   const canStart = !!modelId && !busy && !starting && (source === "test" ? testFiles.length > 0 : uploads.length > 0);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight text-foreground">
-          {learning ? "Put GSN's model to the test." : "Put your model to the test."}
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          A model is only as good as its results on photos it has never seen. Let&apos;s find out what it gets right and
-          where it slips.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">
+            {learning ? "Put GSN's model to the test." : "Put your model to the test."}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            A model is only as good as its results on photos it has never seen. Let&apos;s find out what it gets right and
+            where it slips.
+          </p>
+        </div>
+        {learning && (
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => (results?.length ? setShowResultsTour(true) : setShowTour(true))}>
+            <HelpCircle className="h-4 w-4" aria-hidden="true" /> Show guide
+          </Button>
+        )}
       </div>
+      {learning && <GuidedTour steps={TEST_TOUR} open={showTour} onClose={() => setShowTour(false)} />}
+      {learning && <GuidedTour steps={RESULTS_TOUR} open={showResultsTour} onClose={() => setShowResultsTour(false)} />}
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
         <section className="space-y-5 rounded-2xl border bg-card p-5 md:p-6" aria-labelledby="test-setup">
@@ -411,7 +468,7 @@ export const PlaygroundTestStep: React.FC<{
           </h3>
 
           {/* 1. Model */}
-          <div>
+          <div data-tour="test-model">
             <p className="mb-2 text-sm font-medium text-foreground">{learning ? "1. The model" : "1. Choose a model"}</p>
             {models === null ? (
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -454,7 +511,7 @@ export const PlaygroundTestStep: React.FC<{
           </div>
 
           {/* 2. Photos */}
-          <div>
+          <div data-tour="test-photos">
             <p className="mb-2 text-sm font-medium text-foreground">{learning ? "2. The photos" : "2. Choose the photos"}</p>
             <div className="grid gap-3 sm:grid-cols-2">
               {[
@@ -548,14 +605,14 @@ export const PlaygroundTestStep: React.FC<{
             )}
           </div>
 
-          <Button className="w-full gap-2" size="lg" onClick={() => void startTest()} disabled={!canStart}>
+          <Button data-tour="test-run" className="w-full gap-2" size="lg" onClick={() => void startTest()} disabled={!canStart}>
             {starting || busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             {busy ? "Testing..." : "Run the test"}
           </Button>
           {!learning && <p className="text-center text-xs text-muted-foreground">Each photo counts towards your 1,000 predictions a month.</p>}
         </section>
 
-        <section className="rounded-2xl border bg-card p-5 md:p-6" aria-labelledby="how-heading">
+        <section data-tour="test-how" className="rounded-2xl border bg-card p-5 md:p-6" aria-labelledby="how-heading">
           <h3 id="how-heading" className="text-lg font-semibold text-foreground">
             How to read the results
           </h3>
@@ -628,7 +685,7 @@ export const PlaygroundTestStep: React.FC<{
 
           {results && (
             <>
-              <div className="mt-4 flex flex-col gap-3 rounded-xl border bg-secondary/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div data-tour="result-actions" className="mt-4 flex flex-col gap-3 rounded-xl border bg-secondary/40 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-foreground">
                   <span className="font-semibold">Done with this test?</span>{" "}
                   <span className="text-muted-foreground">
@@ -656,12 +713,12 @@ export const PlaygroundTestStep: React.FC<{
                 <p className="mt-4 text-sm text-muted-foreground">No result photos came back.</p>
               ) : (
                 <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {shown.map((r) => (
-                    <article key={r.filename} className="overflow-hidden rounded-xl border bg-background/40">
+                  {shown.map((r, i) => (
+                    <article key={r.filename} data-tour={i === 0 ? "result-first" : undefined} className="overflow-hidden rounded-xl border bg-background/40">
                       <div className="relative aspect-[4/3] bg-[#171f1b]">
                         <ResultPhoto url={r.url} alt={`Model result for ${r.shownName}`} />
                       </div>
-                      <div className="space-y-1 p-3 text-xs">
+                      <div data-tour={i === 0 ? "result-compare" : undefined} className="space-y-1 p-3 text-xs">
                         <p className="truncate font-medium text-foreground" title={r.shownName}>
                           {r.shownName}
                         </p>

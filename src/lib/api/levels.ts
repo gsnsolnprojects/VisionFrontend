@@ -17,6 +17,7 @@ export interface LevelProgress {
   trainingJobId: string | null;
   training: { status: string } | null;
   finishedAt: string | null;
+  startedAt?: string;
   updatedAt: string;
 }
 

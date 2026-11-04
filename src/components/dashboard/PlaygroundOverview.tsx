@@ -57,16 +57,17 @@ export const PlaygroundOverview: React.FC<PlaygroundOverviewProps> = ({ projects
   const projectsUsed = planAccess.data?.usage?.projects ?? projects.length;
 
   const projectIds = (projects as { id: string }[]).map((p) => p.id);
-  // The level touched last, when it's finished and its project (if any) is still here
-  const latest = levels?.[0];
-  const justFinished = latest?.finishedAt && (latest.level === 1 || projectIds.includes(latest.projectId ?? "")) ? latest : null;
-  const isNew = !preview && !!levels && projectsLoaded && !levels.some((l) => l.completedSteps.length > 0);
+  // A Level 2 whose project was deleted is gone: it isn't shown or counted
+  const liveLevels = levels?.filter((l) => l.level === 1 || projectIds.includes(l.projectId ?? "")) ?? null;
+  const latest = liveLevels?.[0];
+  const justFinished = latest?.finishedAt ? latest : null;
+  const isNew = !preview && !!liveLevels && projectsLoaded && !liveLevels.some((l) => l.completedSteps.length > 0);
 
   return (
     <motion.div className="space-y-8" variants={staggerContainerVariants} initial="hidden" animate="visible">
       {(preview || isNew) && <PlaygroundWelcome onChoosePlan={preview ? choosePlan : undefined} />}
 
-      {justFinished && projectsLoaded && <LevelCompleteCard level={justFinished} onNext={() => document.getElementById("pick-industry")?.scrollIntoView({ behavior: "smooth", block: "start" })} />}
+      {justFinished && projectsLoaded && <LevelCompleteCard key={`${justFinished.mission}-${justFinished.finishedAt}`} level={justFinished} onNext={() => document.getElementById("pick-industry")?.scrollIntoView({ behavior: "smooth", block: "start" })} />}
 
       {!preview && onStartMission && projectsLoaded && levels && (
         <ContinueLevelCard
@@ -76,13 +77,13 @@ export const PlaygroundOverview: React.FC<PlaygroundOverviewProps> = ({ projects
         />
       )}
 
-      {!preview && levels && (
+      {!preview && liveLevels && projectsLoaded && (
         <motion.section variants={fadeInUpVariants} aria-label="Your journey and badges" className="space-y-5 rounded-2xl border bg-card p-5 md:p-6">
           <div>
             <h2 className="mb-3 text-sm font-semibold text-foreground">Your journey</h2>
-            <JourneyMap levels={levels} />
+            <JourneyMap levels={liveLevels} />
           </div>
-          <BadgeShelf levels={levels} progress={progress} />
+          <BadgeShelf levels={liveLevels} progress={progress} />
         </motion.section>
       )}
 

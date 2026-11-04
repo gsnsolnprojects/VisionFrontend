@@ -7,6 +7,7 @@ import { AppBreadcrumbs } from "./Breadcrumbs";
 import { BreadcrumbProvider } from "./breadcrumb-context";
 import { PlanRequiredBanner } from "./PlanRequiredBanner";
 import { PlanAccessProvider } from "@/contexts/PlanAccessProvider";
+import { usePlanAccess } from "@/contexts/plan-access-context";
 import { SidebarProvider, useSidebar } from "./sidebar-context";
 import { useProfile } from "@/hooks/useProfile";
 import { useRoutePersistence } from "@/hooks/useRoutePersistence";
@@ -54,11 +55,12 @@ const AppShellContent = () => {
     });
   }, [sessionReady, error, toast]);
 
-  // Restore route after session is ready and user is authenticated
-  useRoutePersistence(sessionReady, user);
-
   // Before a plan is chosen (not GSN): only the overview, Learning centre and Settings open
   const workspaceKind = useWorkspaceKind();
+  const { data: planData } = usePlanAccess();
+
+  // Restore route after session is ready and user is authenticated. Playground students land on the overview.
+  useRoutePersistence(sessionReady, user, planData ? workspaceKind !== "standard" : null);
   const location = useLocation();
   useEffect(() => {
     if (workspaceKind === "preview" && !isPreviewPath(location.pathname, location.search)) {

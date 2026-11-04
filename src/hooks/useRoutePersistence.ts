@@ -11,8 +11,10 @@ const isAppRoute = (path: string) => APP_ROUTE_PREFIXES.some((prefix) => path.st
  * Hook to persist and restore the current route on page refresh
  * Saves route to localStorage and restores it after session hydration
  * Only works when user is authenticated
+ * @param stayOnLanding - The landing page isn't replaced by the last page (Playground: students start
+ *   on the overview). null while that isn't known yet: nothing is restored until it is.
  */
-export const useRoutePersistence = (isSessionReady: boolean, user: any) => {
+export const useRoutePersistence = (isSessionReady: boolean, user: any, stayOnLanding: boolean | null = false) => {
   const location = useLocation();
   const navigate = useNavigate();
   const hasRestored = useRef(false);
@@ -45,7 +47,7 @@ export const useRoutePersistence = (isSessionReady: boolean, user: any) => {
 
   // Restore route after session is ready and user is authenticated (only once)
   useEffect(() => {
-    if (!isSessionReady || !user || hasRestored.current) return;
+    if (!isSessionReady || !user || hasRestored.current || stayOnLanding === null) return;
 
     try {
       const savedRoute = localStorage.getItem(ROUTE_STORAGE_KEY);
@@ -79,10 +81,11 @@ export const useRoutePersistence = (isSessionReady: boolean, user: any) => {
         const isSavedRouteValid = isAppRoute(savedRoute);
         
         // Check if current route is a default/landing route that should be replaced
-        const isDefaultRoute = 
-          location.pathname === "/dashboard" || 
+        const isDefaultRoute =
+          !stayOnLanding &&
+          (location.pathname === "/dashboard" ||
           location.pathname === "/" ||
-          location.pathname === "/auth";
+          location.pathname === "/auth");
         
         // Check if current route is a valid app route
         const isCurrentRouteValid = isAppRoute(location.pathname);
@@ -150,7 +153,7 @@ export const useRoutePersistence = (isSessionReady: boolean, user: any) => {
       console.warn("Failed to restore route from localStorage:", error);
       hasRestored.current = true;
     }
-  }, [isSessionReady, user, location.pathname, location.search, navigate]);
+  }, [isSessionReady, user, stayOnLanding, location.pathname, location.search, navigate]);
 
   return null;
 };
