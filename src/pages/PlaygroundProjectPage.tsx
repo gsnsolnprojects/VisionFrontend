@@ -30,6 +30,7 @@ import { apiRequest, apiUrl, getAuthHeaders } from "@/lib/api/config";
 import { addDatasetFiles, deleteDatasetFile, uploadUnlabelledDataset } from "@/lib/api/datasets";
 import { getLearningProgress } from "@/lib/api/dashboard";
 import { getLevels, saveLevelProgress, type LevelProgress } from "@/lib/api/levels";
+import { photoName } from "@/lib/photoName";
 import { cn } from "@/lib/utils";
 import { BOX_COLORS, LabelledThumbnail, type Box } from "@/components/playground/LabelledThumbnail";
 import { PlaygroundTrainStep } from "@/components/playground/PlaygroundTrainStep";
@@ -418,7 +419,7 @@ export const PlaygroundProjectPage: React.FC = () => {
       } else {
         await deleteDatasetFile(selectedId, target.id);
         await Promise.all([loadVersions(project.name), loadFiles(selectedId)]);
-        toast({ title: "Photo deleted", description: target.originalName });
+        toast({ title: "Photo deleted", description: photoName(target.originalName) });
       }
     } catch (err) {
       toast({ title: "Couldn't delete", description: (err as Error).message, variant: "destructive" });
@@ -993,7 +994,7 @@ export const PlaygroundProjectPage: React.FC = () => {
               <p className="py-16 text-center text-sm text-muted-foreground">No images here.</p>
             ) : (
               <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-                {visible.items.map((f) => {
+                {visible.items.map((f, i) => {
                   const split = splitOf(f.folder);
                   const done = isLabelled(f);
                   return (
@@ -1010,8 +1011,8 @@ export const PlaygroundProjectPage: React.FC = () => {
                         </span>
                       </div>
                       <div className="space-y-2 p-3">
-                        <p className="truncate text-xs text-foreground" title={f.originalName}>
-                          {f.originalName}
+                        <p className="truncate text-xs text-foreground" title={photoName(f.originalName, (page - 1) * PAGE_SIZE + i + 1)}>
+                          {photoName(f.originalName, (page - 1) * PAGE_SIZE + i + 1)}
                         </p>
                         {isSample ? (
                           <p className={cn("text-xs", done ? "text-success" : "text-muted-foreground")}>
@@ -1038,7 +1039,7 @@ export const PlaygroundProjectPage: React.FC = () => {
                               className="h-8 w-8 shrink-0 p-0 text-destructive hover:text-destructive"
                               disabled={deleting}
                               onClick={() => setToDelete(f)}
-                              aria-label={`Delete ${f.originalName}`}
+                              aria-label={`Delete ${photoName(f.originalName, (page - 1) * PAGE_SIZE + i + 1)}`}
                               title="Delete this photo"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -1079,7 +1080,7 @@ export const PlaygroundProjectPage: React.FC = () => {
                 ? dataset?.isAugmented
                   ? `All ${counts.all} photos in this set of extra training photos go. Your own photos and labels stay.`
                   : `All ${counts.all} photos and their labels go, extra copies included. Your project and trained models stay${level ? ", and Level 2 starts again from upload" : ""}. This can't be undone.`
-                : `${toDelete?.originalName ?? "This photo"} and its labels go. This can't be undone.`}
+                : `${photoName(toDelete?.originalName, undefined, "This photo")} and its labels go. This can't be undone.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

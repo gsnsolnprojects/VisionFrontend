@@ -15,6 +15,7 @@ import { StepGuide } from "@/components/playground/StepGuide";
 import { TRAINING_JOURNEY } from "@/components/playground/trainingJourney";
 import { apiRequest } from "@/lib/api/config";
 import { saveLevelProgress, saveLevelSteps, startLevel } from "@/lib/api/levels";
+import { photoName } from "@/lib/photoName";
 import { getSamples, type SampleDataset, type SampleModel } from "@/lib/api/samples";
 import { cn } from "@/lib/utils";
 
@@ -303,8 +304,8 @@ const DatasetStep: React.FC<{ sampleId: string; files: SampleFile[]; onNext: () 
                 {splitLabel(f.folder)}
               </span>
             </div>
-            <p className="truncate p-2 text-xs text-foreground" title={f.originalName}>
-              {f.originalName}
+            <p className="truncate p-2 text-xs text-foreground" title={photoName(f.originalName, (page - 1) * PAGE_SIZE + i + 1)}>
+              {photoName(f.originalName, (page - 1) * PAGE_SIZE + i + 1)}
             </p>
           </article>
         ))}
@@ -480,6 +481,11 @@ const LevelOnePage: React.FC = () => {
     return () => {
       cancelled = true;
     };
+  }, [sampleId]);
+
+  // Opening the level from further down the Overview starts at the top of the page
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
   }, [sampleId]);
 
   const firstOpen = STEPS.findIndex((s) => !completed.includes(s.id));

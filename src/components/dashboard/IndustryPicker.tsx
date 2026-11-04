@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowDown,
@@ -173,6 +173,18 @@ export const IndustryPicker: React.FC<{
     setSelected(readIndustry(user?.id));
   }, [user?.id]);
 
+  // No level started (a new or reset account): a choice from an earlier go doesn't count
+  const pickedHere = useRef(false);
+  useEffect(() => {
+    if (levels?.length !== 0 || pickedHere.current) return;
+    setSelected(null);
+    try {
+      localStorage.removeItem(storageKey(user?.id));
+    } catch {
+      // Remembering the choice is a convenience only
+    }
+  }, [levels, user?.id]);
+
   // Which GSN samples and ready-made models exist decides which cards are live or "coming soon"
   useEffect(() => {
     getSamples()
@@ -181,6 +193,7 @@ export const IndustryPicker: React.FC<{
   }, []);
 
   const pick = (id: string) => {
+    pickedHere.current = true;
     setSelected(id);
     try {
       localStorage.setItem(storageKey(user?.id), id);

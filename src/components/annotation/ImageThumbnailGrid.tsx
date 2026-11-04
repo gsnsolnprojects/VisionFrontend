@@ -1,3 +1,4 @@
+import { hasReadableName } from "@/lib/photoName";
 import React, { useMemo } from "react";
 import type { Image } from "@/types/annotation";
 
@@ -24,10 +25,10 @@ const ThumbnailButton = React.memo<{
           ? "border-primary bg-primary/5 ring-1 ring-primary"
           : "border-muted hover:bg-muted"
       }`}
-      aria-label={`Select image ${index + 1}: ${image.filename} (${isLabeled ? "labeled" : "unlabeled"})`}
+      aria-label={`Select image ${index + 1} (${isLabeled ? "labeled" : "unlabeled"})`}
     >
       Image {index + 1}
-      <div className="block text-[9px] text-muted-foreground truncate">{image.filename}</div>
+      {hasReadableName(image.filename) && <div className="block text-[9px] text-muted-foreground truncate">{image.filename}</div>}
       <span
         className={`mt-1 inline-block rounded-full px-1.5 py-0.5 text-[8px] font-medium leading-none ${
           isLabeled

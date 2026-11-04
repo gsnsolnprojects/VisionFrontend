@@ -1,3 +1,4 @@
+import { photoName } from "@/lib/photoName";
 import React, { useEffect, useState } from "react";
 import { apiUrl, getAuthHeaders } from "@/lib/api/config";
 
@@ -56,7 +57,7 @@ export const LabelledThumbnail: React.FC<{
 
   const stroke = Math.max(size.w, size.h) / 160;
   return (
-    <svg viewBox={`0 0 ${size.w} ${size.h}`} preserveAspectRatio="xMidYMid meet" className="h-full w-full" role="img" aria-label={file.originalName}>
+    <svg viewBox={`0 0 ${size.w} ${size.h}`} preserveAspectRatio="xMidYMid meet" className="h-full w-full" role="img" aria-label={photoName(file.originalName)}>
       <image href={src} width={size.w} height={size.h} />
       {(boxes ?? []).map((b, i) => (
         <rect

@@ -27,6 +27,7 @@ import { Loader2, ArrowLeft, ZoomIn, ZoomOut, ChevronLeft, ChevronRight } from "
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { photoName } from "@/lib/photoName";
 import { getAuthHeaders, apiUrl, API_BASE_URL } from "@/lib/api/config";
 
 interface HistoryInferenceResults {
@@ -129,7 +130,7 @@ const VideoPlayer = ({
         )}
       </div>
       <div className="text-xs text-muted-foreground truncate">
-        {video.filename}
+        {photoName(video.filename, undefined, "Video")}
       </div>
       {detectionCount !== undefined && detectionCount > 0 && (
         <div className="text-xs text-muted-foreground">
@@ -472,8 +473,7 @@ const PredictionHistoryDetailsPage = () => {
             <CardHeader>
               <CardTitle className="text-sm">Results Summary</CardTitle>
               <CardDescription>
-                Inference ID: {inferenceId}
-                {regionName ? ` · Region: ${regionName}` : ""}
+                {regionName ? `Region: ${regionName}` : ""}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -648,7 +648,7 @@ const PredictionHistoryDetailsPage = () => {
                               <div className="relative aspect-video bg-muted rounded-md overflow-hidden">
                                 <AuthenticatedImage
                                   src={img.url}
-                                  alt={img.filename}
+                                  alt={photoName(img.filename, idx + 1)}
                                   className="w-full h-full object-contain"
                                 />
                                 {img.tag && img.tag !== 'unreviewed' && (
@@ -665,7 +665,7 @@ const PredictionHistoryDetailsPage = () => {
                                 )}
                               </div>
                               <div className="text-xs text-muted-foreground truncate">
-                                {img.filename}
+                                {photoName(img.filename, idx + 1)}
                               </div>
                             </div>
                           ))}
@@ -687,7 +687,7 @@ const PredictionHistoryDetailsPage = () => {
                               <div className="relative aspect-video bg-muted rounded-md overflow-hidden">
                                 <AuthenticatedImage
                                   src={img.url}
-                                  alt={img.filename}
+                                  alt={photoName(img.filename, idx + 1)}
                                   className="w-full h-full object-contain"
                                 />
                                 <Badge
@@ -698,7 +698,7 @@ const PredictionHistoryDetailsPage = () => {
                                 </Badge>
                               </div>
                               <div className="text-xs text-muted-foreground truncate">
-                                {img.filename}
+                                {photoName(img.filename, idx + 1)}
                               </div>
                             </div>
                           ))}
@@ -720,7 +720,7 @@ const PredictionHistoryDetailsPage = () => {
                               <div className="relative aspect-video bg-muted rounded-md overflow-hidden">
                                 <AuthenticatedImage
                                   src={img.url}
-                                  alt={img.filename}
+                                  alt={photoName(img.filename, idx + 1)}
                                   className="w-full h-full object-contain"
                                 />
                                 <Badge
@@ -731,7 +731,7 @@ const PredictionHistoryDetailsPage = () => {
                                 </Badge>
                               </div>
                               <div className="text-xs text-muted-foreground truncate">
-                                {img.filename}
+                                {photoName(img.filename, idx + 1)}
                               </div>
                             </div>
                           ))}
@@ -748,12 +748,12 @@ const PredictionHistoryDetailsPage = () => {
                           <div className="relative aspect-video bg-muted rounded-md overflow-hidden">
                             <AuthenticatedImage
                               src={img.url}
-                              alt={img.filename}
+                              alt={photoName(img.filename, idx + 1)}
                               className="w-full h-full object-contain"
                             />
                           </div>
                           <div className="text-xs text-muted-foreground truncate">
-                            {img.filename}
+                            {photoName(img.filename, idx + 1)}
                           </div>
                         </div>
                       ))}

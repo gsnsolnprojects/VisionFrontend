@@ -1,6 +1,7 @@
 // src/pages/DatasetManager.tsx
 import { markLearningStep } from "@/lib/learningProgress";
 import { liveProjectFilter } from "@/lib/liveProjects";
+import { photoName } from "@/lib/photoName";
 import type { RolePermissions } from "@/types/roles";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -330,8 +331,10 @@ const FileCard = ({
   onAnnotateClick,
   fetchThumbnailAsObjectUrl,
   labeledBaseNames,
+  position,
 }: {
   file: FileEntry;
+  position: number;
   datasetId: string;
   hasPermission: (perm: string) => boolean;
   onImageClick: (file: FileEntry) => void;
@@ -368,7 +371,7 @@ const FileCard = ({
             thumbEndpoint={thumbEndpoint}
             fileId={file.id!}
             datasetId={datasetId}
-            alt={file.originalName}
+            alt={photoName(file.originalName, position)}
             onClick={() => onImageClick(file)}
             fetchThumbnailAsObjectUrl={fetchThumbnailAsObjectUrl}
             className="w-full h-full object-cover cursor-pointer"
@@ -388,8 +391,8 @@ const FileCard = ({
         )}
       </div>
       <div className="p-2">
-        <p className="text-xs font-medium truncate" title={file.originalName}>
-          {file.originalName}
+        <p className="text-xs font-medium truncate" title={photoName(file.originalName, position, isLabel ? "Label file" : "Photo")}>
+          {photoName(file.originalName, position, isLabel ? "Label file" : "Photo")}
         </p>
         <p className="text-xs text-muted-foreground truncate">{file.folder || "Uncategorized"}</p>
       </div>
@@ -438,8 +441,10 @@ const FileListItem = ({
   onAnnotateClick,
   fetchThumbnailAsObjectUrl,
   labeledBaseNames,
+  position,
 }: {
   file: FileEntry;
+  position: number;
   datasetId: string;
   hasPermission: (perm: string) => boolean;
   onImageClick: (file: FileEntry) => void;
@@ -477,7 +482,7 @@ const FileListItem = ({
             thumbEndpoint={thumbEndpoint}
             fileId={file.id!}
             datasetId={datasetId}
-            alt={file.originalName}
+            alt={photoName(file.originalName, position)}
             onClick={() => onImageClick(file)}
             fetchThumbnailAsObjectUrl={fetchThumbnailAsObjectUrl}
           />
@@ -494,8 +499,8 @@ const FileListItem = ({
         )}
       </div>
       <div className="min-w-0">
-        <p className="text-sm font-medium truncate" title={file.originalName}>
-          {file.originalName}
+        <p className="text-sm font-medium truncate" title={photoName(file.originalName, position, isLabel ? "Label file" : "Photo")}>
+          {photoName(file.originalName, position, isLabel ? "Label file" : "Photo")}
         </p>
         <p className="text-xs text-muted-foreground truncate">{file.folder || "Uncategorized"}</p>
       </div>
@@ -585,9 +590,10 @@ const FolderSection = ({
       </div>
       {viewMode === "grid" ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-          {files.map((file) => (
+          {files.map((file, i) => (
             <FileCard
               key={file.id}
+              position={i + 1}
               file={file}
               datasetId={datasetId}
               hasPermission={hasPermission}
@@ -602,9 +608,10 @@ const FolderSection = ({
         </div>
       ) : (
         <div className="space-y-0">
-          {files.map((file) => (
+          {files.map((file, i) => (
             <FileListItem
               key={file.id}
+              position={i + 1}
               file={file}
               datasetId={datasetId}
               hasPermission={hasPermission}
@@ -2280,7 +2287,7 @@ const DatasetManager = () => {
 
       toast({
         title: "Upload queued",
-        description: `Dataset ${datasetId} queued with ${json.totalImages} images.`,
+        description: `Dataset queued with ${json.totalImages} images.`,
       });
 
       // Capture before clearing state — used for detected-classes popup (labeled vs unlabeled)
@@ -2632,7 +2639,7 @@ const DatasetManager = () => {
       const result = await datasetsApi.deleteDatasetFile(datasetId, fileToDelete.id);
       toast({
         title: "Photo deleted",
-        description: result.message || `Removed ${fileToDelete.originalName}`,
+        description: "Removed from the dataset.",
       });
       if (selectedImageFile?.id === fileToDelete.id) setSelectedImageFile(null);
       if (selectedLabelFile?.id === fileToDelete.id) setSelectedLabelFile(null);
@@ -3359,7 +3366,7 @@ const DatasetManager = () => {
                           <div className="flex items-center gap-3">
                             <button className="text-left" onClick={() => onSelectVersion(v.datasetId)}>
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-medium">{v.version || v.datasetId}</span>
+                                <span className="font-medium">{v.version || "Version"}</span>
                                 {v.isLinkedSample && (
                                   <Badge variant="secondary" title="Shared GSN sample dataset (read-only)">
                                     Sample
@@ -4019,7 +4026,7 @@ const DatasetManager = () => {
           <DialogHeader className="flex-shrink-0">
             <div className="flex items-center justify-between">
               <div className="flex-1">
-                <DialogTitle>{selectedImageFile?.originalName || selectedLabelFile?.originalName}</DialogTitle>
+                <DialogTitle>{selectedImageFile ? photoName(selectedImageFile.originalName) : photoName(selectedLabelFile?.originalName, undefined, "Label file")}</DialogTitle>
                 <DialogDescription>
                   {(selectedImageFile?.folder || selectedLabelFile?.folder) && `Folder: ${selectedImageFile?.folder || selectedLabelFile?.folder}`}
                   {(selectedImageFile?.size || selectedLabelFile?.size) && ` • Size: ${((selectedImageFile?.size || selectedLabelFile?.size || 0) / 1024).toFixed(1)} KB`}
@@ -4034,7 +4041,7 @@ const DatasetManager = () => {
             {selectedLabelFile && !selectedImageFile && (
               <Card className="flex-1 min-h-[50vh] flex flex-col">
                 <CardHeader className="flex-shrink-0">
-                  <CardTitle className="text-base">Label file: {selectedLabelFile.originalName}</CardTitle>
+                  <CardTitle className="text-base">{photoName(selectedLabelFile.originalName, undefined, "Label file")}</CardTitle>
                   <CardDescription>
                     {(selectedLabelFile.folder && `Folder: ${selectedLabelFile.folder}`)}
                     {(selectedLabelFile.size != null && ` • Size: ${(selectedLabelFile.size / 1024).toFixed(1)} KB`)}
@@ -4138,7 +4145,7 @@ const DatasetManager = () => {
                         <img
                           key={selectedImageFile.id}
                           src={modalImageObjectUrl}
-                          alt={selectedImageFile.originalName}
+                          alt={photoName(selectedImageFile.originalName)}
                           className="max-w-full max-h-full object-contain"
                           draggable={false}
                         />
@@ -4161,7 +4168,7 @@ const DatasetManager = () => {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm">
-                    Associated Label File: {selectedLabelFile.originalName}
+                    {photoName(selectedLabelFile.originalName, undefined, "Associated label file")}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -4545,8 +4552,8 @@ const DatasetManager = () => {
             <AlertDialogTitle>Delete this photo?</AlertDialogTitle>
             <AlertDialogDescription>
               {fileToDelete?.type === "image"
-                ? `This removes ${fileToDelete.originalName} from the dataset. A matching label file, if any, is deleted too. This cannot be undone.`
-                : `This removes ${fileToDelete?.originalName || "this file"} from the dataset. This cannot be undone.`}
+                ? `This removes ${photoName(fileToDelete.originalName, undefined, "this photo")} from the dataset. A matching label file, if any, is deleted too. This cannot be undone.`
+                : `This removes ${photoName(fileToDelete?.originalName, undefined, "this file")} from the dataset. This cannot be undone.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

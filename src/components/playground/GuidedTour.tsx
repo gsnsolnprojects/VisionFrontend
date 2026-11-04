@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { ArrowLeft, ArrowRight, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useProfile } from "@/hooks/useProfile";
-import { getLevels } from "@/lib/api/levels";
+import { firstLevelStart, getLevels } from "@/lib/api/levels";
 import { cn } from "@/lib/utils";
 
 /**
@@ -35,8 +35,7 @@ export function useFirstTimeTour(name: string, ready: boolean): [boolean, (open:
     getLevels()
       .then(({ levels }) => {
         if (cancelled) return;
-        const firstStart = levels.map((l) => l.startedAt ?? "").filter(Boolean).sort()[0] ?? "";
-        const seenKey = `visionm_tour_${name}_${user.id}_${firstStart}`;
+        const seenKey = `visionm_tour_${name}_${user.id}_${firstLevelStart(levels)}`;
         try {
           if (localStorage.getItem(seenKey)) return;
         } catch {

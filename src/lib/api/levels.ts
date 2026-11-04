@@ -24,6 +24,12 @@ export interface LevelProgress {
 /** GET /api/playground/levels - the student's levels, the one they touched last first */
 export const getLevels = () => apiRequest<{ levels: LevelProgress[] }>("/playground/levels", { maxRetries: 1 });
 
+/**
+ * When the student first started a level. What a browser remembers about a student's progress is
+ * saved under this, so an account reset to fresh doesn't get its earlier progress back.
+ */
+export const firstLevelStart = (levels: LevelProgress[]) => levels.map((l) => l.startedAt ?? "").filter(Boolean).sort()[0] ?? "";
+
 /** POST /api/playground/levels/start - starts a level, or re-opens it; a changed projectId (null: none now) starts it over */
 export const startLevel = (body: { level: number; mission: string; industry?: string; sample?: string; projectId?: string | null }) =>
   apiRequest<{ level: LevelProgress }>("/playground/levels/start", { method: "POST", body: JSON.stringify(body), maxRetries: 1 });

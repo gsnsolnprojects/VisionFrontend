@@ -6,6 +6,7 @@ import { GuidedTour, useFirstTimeTour, type TourStep } from "./GuidedTour";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, apiUrl, getAuthHeaders } from "@/lib/api/config";
 import { saveLevelProgress } from "@/lib/api/levels";
+import { hasReadableName, photoName } from "@/lib/photoName";
 import { getSamples, importSampleModel } from "@/lib/api/samples";
 import { cn } from "@/lib/utils";
 
@@ -294,7 +295,11 @@ export const PlaygroundTestStep: React.FC<{
         }
         if (s.status === "failed" || s.status === "cancelled") return;
         pollTimer.current = window.setTimeout(() => void poll(id, runSource), 4000);
-      } catch {
+      } catch (err) {
+        if (/not found/i.test((err as Error).message)) {
+          forgetRun();
+          return;
+        }
         pollTimer.current = window.setTimeout(() => void poll(id, runSource), 8000);
       }
     },
@@ -381,12 +386,13 @@ export const PlaygroundTestStep: React.FC<{
     // Held-out photos are stored under another name than the one the student knows
     const uploadedName: Record<string, string> = {};
     if (run?.source === "test") for (const f of testFiles) uploadedName[baseOf(f.storedName)] = f.originalName;
-    return results.map((r) => {
+    return results.map((r, i) => {
       const found = new Set(
         (r.byClass ?? []).filter((c) => (c.count ?? 1) > 0).map((c) => c.class ?? c.className ?? `class ${c.classId}`)
       );
       const labelled = run?.source === "test" ? truth[baseOf(r.originalName ?? r.filename)] : undefined;
-      return { ...r, found, labelled, shownName: uploadedName[baseOf(r.originalName ?? r.filename)] ?? r.originalName ?? r.filename };
+      const ownName = uploadedName[baseOf(r.originalName ?? r.filename)] ?? r.originalName ?? r.filename;
+      return { ...r, found, labelled, ownName, shownName: photoName(ownName, i + 1) };
     });
   }, [results, truth, run?.source, testFiles]);
 
@@ -412,7 +418,7 @@ export const PlaygroundTestStep: React.FC<{
       const names: Record<string, string> = {};
       for (const r of shown) {
         if (r.labelled) labelled[r.originalName ?? r.filename] = [...r.labelled];
-        names[r.originalName ?? r.filename] = r.shownName;
+        if (hasReadableName(r.ownName)) names[r.originalName ?? r.filename] = r.ownName;
       }
       await apiRequest(`/playground/runs/${encodeURIComponent(run.id)}/report`, {
         method: "POST",

@@ -21,6 +21,8 @@ import { Button } from "@/components/ui/button";
 import { GuidedTour, useFirstTimeTour, type TourStep } from "./GuidedTour";
 import { apiRequest, apiUrl, getAuthHeaders } from "@/lib/api/config";
 import { markPracticeDone } from "@/lib/api/dashboard";
+import { firstLevelStart, getLevels } from "@/lib/api/levels";
+import { photoName } from "@/lib/photoName";
 import { useProfile } from "@/hooks/useProfile";
 import { cn } from "@/lib/utils";
 
@@ -183,7 +185,7 @@ interface SavedPractice {
   autoRunId: string | null;
 }
 const SAVED_DAYS = 14;
-const savedKey = (userId: string, datasetId: string) => `vm.labelPractice.v1.${userId}.${datasetId}`;
+const savedKey = (userId: string, datasetId: string, attempt: string) => `vm.labelPractice.v2.${userId}.${datasetId}.${attempt}`;
 
 function loadSaved(key: string, photoIds: string[]): SavedPractice | null {
   try {
@@ -745,7 +747,14 @@ export const PlaygroundLabelPractice: React.FC<{
   continueLabel?: string;
 }> = ({ datasetId, files, onContinue, onFinished, continueLabel = "Continue" }) => {
   const { user } = useProfile();
-  const storageKey = user?.id ? savedKey(user.id, datasetId) : null;
+  /** Saved progress goes with this go at the levels; null until it's known */
+  const [attempt, setAttempt] = useState<string | null>(null);
+  useEffect(() => {
+    getLevels()
+      .then(({ levels }) => setAttempt(firstLevelStart(levels)))
+      .catch(() => setAttempt(""));
+  }, []);
+  const storageKey = user?.id && attempt !== null ? savedKey(user.id, datasetId, attempt) : null;
   const [phase, setPhase] = useState<"loading" | "practice" | "autolabel" | "done">("loading");
   const [classNames, setClassNames] = useState<string[]>([]);
   /** Labels the student can draw (class indexes; a class hidden in the Playground is left out) */
@@ -770,7 +779,7 @@ export const PlaygroundLabelPractice: React.FC<{
 
   // ---- Pick the practice photos and the auto-label photos, with GSN's labels for both ----
   useEffect(() => {
-    if (!files.length) return;
+    if (!files.length || !storageKey) return;
     let cancelled = false;
     (async () => {
       setPhase("loading");
@@ -797,7 +806,7 @@ export const PlaygroundLabelPractice: React.FC<{
         setPractice(picked);
         setPool(rest);
         // Carry on from this browser's saved progress, if any
-        const saved = storageKey ? loadSaved(storageKey, picked.map((f) => f.id)) : null;
+        const saved = loadSaved(storageKey, picked.map((f) => f.id));
         setStates({ ...Object.fromEntries(picked.map((f) => [f.id, emptyPhoto()])), ...saved?.states });
         setIndex(Math.min(saved?.index ?? 0, picked.length - 1));
         setAutoRun(saved?.autoRunId ? { id: saved.autoRunId, processed: 0, total: rest.length } : null);
@@ -1111,12 +1120,12 @@ export const PlaygroundLabelPractice: React.FC<{
               </label>
             </div>
             <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {autoResults.map((r) => (
+              {autoResults.map((r, i) => (
                 <AutoLabelTile
                   key={r.fileId}
                   datasetId={datasetId}
                   fileId={r.fileId}
-                  name={pool.find((f) => f.id === r.fileId)?.originalName ?? r.fileId}
+                  name={photoName(pool.find((f) => f.id === r.fileId)?.originalName, i + 1)}
                   model={r.boxes}
                   truth={truth[r.fileId] ?? []}
                   showTruth={showGsnOnAuto}
@@ -1386,7 +1395,7 @@ export const PlaygroundLabelPractice: React.FC<{
             <Wand2 className="h-4 w-4" /> {autoRun && !autoError ? "See auto-label results" : "Auto-label the rest"}
           </Button>
           <Button data-tour="practice-finish" className="gap-1.5" onClick={finish}>
-            {checkedCount === 0 ? "Skip practice" : "Finish practice"} <ArrowRight className="h-4 w-4" />
+            {Object.values(states).some((s) => s.boxes.length > 0) ? "Finish practice" : "Skip practice"} <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
       </div>

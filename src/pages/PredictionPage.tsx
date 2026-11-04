@@ -1,5 +1,6 @@
 // src/pages/PredictionPage.tsx
 import { liveProjectFilter } from "@/lib/liveProjects";
+import { photoName } from "@/lib/photoName";
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -437,7 +438,7 @@ const VideoPlayer = ({
         )}
       </div>
       <div className="text-xs text-muted-foreground truncate">
-        {video.filename}
+        {photoName(video.filename, undefined, "Video")}
       </div>
       {detectionCount !== undefined && detectionCount > 0 && (
         <div className="text-xs text-muted-foreground">
@@ -4967,7 +4968,7 @@ const PredictionPage = () => {
                           <div className="relative aspect-video bg-muted rounded-md overflow-hidden">
                             <AuthenticatedImage
                               src={img.url}
-                              alt={img.filename}
+                              alt={photoName(img.filename, idx + 1)}
                               className="w-full h-full object-contain"
                             />
                                     {img.tag && img.tag !== 'unreviewed' && (
@@ -4984,7 +4985,7 @@ const PredictionPage = () => {
                                     )}
                           </div>
                           <div className="text-xs text-muted-foreground truncate">
-                            {img.filename}
+                            {photoName(img.filename, idx + 1)}
                           </div>
                           {img.detections && img.detections.length > 0 && (
                             <div className="text-xs text-muted-foreground">
@@ -5012,7 +5013,7 @@ const PredictionPage = () => {
                                   <div className="relative aspect-video bg-muted rounded-md overflow-hidden">
                                     <AuthenticatedImage
                                       src={img.url}
-                                      alt={img.filename}
+                                      alt={photoName(img.filename, idx + 1)}
                                       className="w-full h-full object-contain"
                                     />
                                     <Badge
@@ -5023,7 +5024,7 @@ const PredictionPage = () => {
                                     </Badge>
                                   </div>
                                   <div className="text-xs text-muted-foreground truncate">
-                                    {img.filename}
+                                    {photoName(img.filename, idx + 1)}
                                   </div>
                                   {img.detections && img.detections.length > 0 && (
                                     <div className="text-xs text-muted-foreground">
@@ -5051,7 +5052,7 @@ const PredictionPage = () => {
                                   <div className="relative aspect-video bg-muted rounded-md overflow-hidden">
                                     <AuthenticatedImage
                                       src={img.url}
-                                      alt={img.filename}
+                                      alt={photoName(img.filename, idx + 1)}
                                       className="w-full h-full object-contain"
                                     />
                                     <Badge
@@ -5062,7 +5063,7 @@ const PredictionPage = () => {
                                     </Badge>
                                   </div>
                                   <div className="text-xs text-muted-foreground truncate">
-                                    {img.filename}
+                                    {photoName(img.filename, idx + 1)}
                                   </div>
                                   {img.detections && img.detections.length > 0 && (
                                     <div className="text-xs text-muted-foreground">
@@ -5086,12 +5087,12 @@ const PredictionPage = () => {
                               <div className="relative aspect-video bg-muted rounded-md overflow-hidden">
                                 <AuthenticatedImage
                                   src={img.url}
-                                  alt={img.filename}
+                                  alt={photoName(img.filename, idx + 1)}
                                   className="w-full h-full object-contain"
                                 />
                               </div>
                               <div className="text-xs text-muted-foreground truncate">
-                                {img.filename}
+                                {photoName(img.filename, idx + 1)}
                               </div>
                               {img.detections && img.detections.length > 0 && (
                                 <div className="text-xs text-muted-foreground">
@@ -5133,7 +5134,7 @@ const PredictionPage = () => {
                     {imageViewerImages[imageViewerIndex] && (
                       <AuthenticatedImage
                         src={imageViewerImages[imageViewerIndex].url}
-                        alt={imageViewerImages[imageViewerIndex].filename}
+                        alt={photoName(imageViewerImages[imageViewerIndex].filename, imageViewerIndex + 1)}
                         className="max-h-[80vh] object-contain transition-transform"
                         style={{
                           transform: `scale(${imageZoom})`,
@@ -5371,7 +5372,7 @@ const PredictionPage = () => {
                           <div className="flex items-center justify-between gap-3">
                             <div className="flex items-center gap-2 min-w-0">
                               <CardTitle className="text-sm font-semibold truncate">
-                                Inference: {job.inferenceId}
+                                Prediction run
                               </CardTitle>
                               {getStatusBadgeForJob(job.status)}
                             </div>

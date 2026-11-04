@@ -2165,11 +2165,6 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
               : "Edit any image in this dataset. Pre-labeled images may load boxes from label files when you open them; check toasts if something could not be imported."}
           </p>
           <p className="text-xs text-muted-foreground">
-            {!simpleTools && (
-              <>
-                Dataset: <span className="font-mono">{datasetId}</span>
-              </>
-            )}
             {unsavedChanges && (
               <span className="ml-2 text-amber-500">• Unsaved changes</span>
             )}

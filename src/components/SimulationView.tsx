@@ -1556,7 +1556,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
     if (jobId && ["queued", "running"].includes(simulationStatus)) {
       toast({
         title: "Training already running",
-        description: `Job ${jobId} is still ${simulationStatus}. Cancel it before starting another.`,
+        description: `A job is still ${simulationStatus}. Cancel it before starting another.`,
       });
       return;
     }
@@ -2092,7 +2092,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
       
       startPollingJob(newId);
       startLogsPolling(newId);
-      toast({ title: "Retry started", description: `New job ${newId} started`, variant: "default" });
+      toast({ title: "Retry started", description: "New job started", variant: "default" });
     } catch (err: any) {
       console.error("retryJob error:", err);
       const errorInfo = getBackendErrorMessage(err);
@@ -3554,7 +3554,7 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
           <Card>
             <CardHeader>
               <CardTitle>Training Status</CardTitle>
-              <CardDescription>Job ID: {jobId} — Status: {simulationStatus}</CardDescription>
+              <CardDescription>Status: {simulationStatus}</CardDescription>
             </CardHeader>
             <CardContent>
               {/* metadata */}
@@ -3719,12 +3719,6 @@ export const SimulationView: React.FC<SimulationViewProps> = ({ projects, profil
                     <div>
                       <h4 className="text-sm font-semibold mb-2">Model Information</h4>
                       <div className="grid grid-cols-2 gap-3 text-sm">
-                        {modelInfo.modelId && (
-                          <div>
-                            <div className="text-muted-foreground">Model ID</div>
-                            <div className="font-medium">{modelInfo.modelId}</div>
-                          </div>
-                        )}
                         {modelInfo.modelVersion && (
                           <div>
                             <div className="text-muted-foreground">Version</div>
