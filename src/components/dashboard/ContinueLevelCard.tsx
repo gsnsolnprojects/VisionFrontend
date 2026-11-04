@@ -3,14 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowRight, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import type { LevelProgress } from "@/lib/api/levels";
 import { fadeInUpVariants } from "@/utils/animations";
 import { cn } from "@/lib/utils";
 import type { Mission, MissionMode } from "./IndustryPicker";
 
 /**
- * Top of the Playground overview: the unfinished level the student touched last, with "Continue"
- * to its next step. Hidden when there is none.
+ * Top of the Playground overview: the unfinished level the student touched last: what they did
+ * before, what's on now with "Continue", and what comes after. Hidden when there is none.
  */
 
 const STEP_NAMES: Record<string, string> = {
@@ -22,6 +23,28 @@ const STEP_NAMES: Record<string, string> = {
   train: "Train",
   test: "Test",
   report: "Report",
+};
+
+/** What the student did, in a line */
+const STEP_DONE: Record<string, string> = {
+  dataset: "You looked through the sample photos and how defects are marked.",
+  practice: "You tried labelling real inspection photos.",
+  training: "You learned how a model is trained.",
+  upload: "You uploaded your own photos.",
+  label: "You labelled your photos.",
+  train: "You trained your own model.",
+  test: "You tested the model on photos it had never seen.",
+  report: "You made your report.",
+};
+
+/** What a coming step is, in a line */
+const STEP_AFTER: Record<string, string> = {
+  practice: "Try labelling real inspection photos yourself.",
+  training: "Learn how a model is trained.",
+  label: "Draw boxes around the defects in your photos.",
+  train: "Train your own model.",
+  test: "Test the model on photos it has never seen.",
+  report: "Turn your test into a report.",
 };
 
 const STEP_NEXT: Record<string, string> = {
@@ -73,6 +96,11 @@ export const ContinueLevelCard: React.FC<{
   if (!level) return null;
 
   const next = nextUp(level);
+  const nextIndex = level.steps.indexOf(level.nextStep ?? "");
+  const before = [...level.steps.slice(0, Math.max(0, nextIndex))].reverse().find((s) => level.completedSteps.includes(s));
+  const after = nextIndex >= 0 ? level.steps[nextIndex + 1] : undefined;
+  const doneCount = level.steps.filter((s) => level.completedSteps.includes(s)).length;
+  const percent = level.steps.length ? Math.round((doneCount / level.steps.length) * 100) : 0;
 
   const resume = () => {
     const mission: Mission = { title: level.mission, sample: level.sample ?? undefined };
@@ -96,18 +124,37 @@ export const ContinueLevelCard: React.FC<{
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            Level {level.level} · Continue where you left off
+            Level {level.level} · Your progress
           </p>
           <h2 id="continue-heading" className="mt-1 text-lg font-semibold text-foreground">
             {level.mission}
           </h2>
-          <p className="mt-3 text-sm font-medium text-foreground">{next.title}</p>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{next.text}</p>
         </div>
-        <Button className="gap-1.5" onClick={resume}>
-          Continue
-          <ArrowRight className="h-4 w-4" aria-hidden="true" />
-        </Button>
+        <p className="text-sm font-medium text-foreground">
+          {doneCount} of {level.steps.length} steps done
+        </p>
+      </div>
+      <Progress value={percent} className="mt-3 h-2" indicatorClassName="bg-ring" aria-label={`${doneCount} of ${level.steps.length} steps done`} />
+      <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_1.6fr_1fr]">
+        <div className="rounded-xl bg-secondary/40 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">You did</p>
+          <p className="mt-2 text-sm text-foreground">{before ? STEP_DONE[before] : "You've just started. Everything's ahead of you."}</p>
+        </div>
+        <div className="rounded-xl border border-ring bg-secondary/60 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">You&apos;re here</p>
+          <p className="mt-2 text-sm font-semibold text-foreground">{next.title}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{next.text}</p>
+          <Button className="mt-3 gap-1.5" onClick={resume}>
+            Continue
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </div>
+        <div className="rounded-xl bg-secondary/40 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Then</p>
+          <p className="mt-2 text-sm text-foreground">
+            {after ? STEP_AFTER[after] : `That's the last step: Level ${level.level} is complete after this.`}
+          </p>
+        </div>
       </div>
       <ol className="mt-4 flex flex-wrap gap-2" aria-label="Steps in this level">
         {level.steps.map((step) => {

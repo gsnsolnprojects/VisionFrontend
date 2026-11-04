@@ -143,6 +143,14 @@ export const setAdminCompanyPlayground = (companyId: string, granted: boolean) =
     maxRetries: 1,
   });
 
+/** Deletes all the company has made; the company, its members and its plan stay */
+export const resetAdminCompany = (companyId: string, confirmName: string) =>
+  apiRequest<{ success: boolean; steps: string[] }>(`/admin/companies/${companyId}/reset`, {
+    method: "POST",
+    body: JSON.stringify({ confirmName }),
+    maxRetries: 1,
+  });
+
 export const deleteAdminCompany = (companyId: string, confirmName: string) =>
   apiRequest<{ success: boolean; steps: string[] }>(`/admin/companies/${companyId}`, {
     method: "DELETE",

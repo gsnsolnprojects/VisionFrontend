@@ -14,9 +14,9 @@ import { getSamples, type SampleDataset } from "@/lib/api/samples";
 import { cn } from "@/lib/utils";
 
 /**
- * Sidebar for Playground workspaces: the overview, one group for each Level 1 the student has
- * started and each project of theirs, resources and the plan card. A group opens to the same four
- * steps, which lead to that level or project. Other workspaces keep AppSidebar's menu. With `preview`
+ * Sidebar for Playground workspaces: the overview, Level 1 (the samples the student has started) and
+ * Level 2 (their projects), resources and the plan card. A sample or project opens to the same four
+ * steps, which lead to it. Other workspaces keep AppSidebar's menu. With `preview`
  * (a company that hasn't chosen a plan yet): only Overview, Learning centre, Plan & billing and
  * Settings, and the plan card asks them to choose Playground.
  */
@@ -36,9 +36,8 @@ interface Item {
 
 interface Group {
   key: string;
-  kicker: string;
+  level: 1 | 2;
   name: string;
-  Icon: LucideIcon;
   active: boolean;
   items: Item[];
 }
@@ -57,7 +56,8 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void; preview?: bo
   const [projects, setProjects] = useState<Project[]>([]);
   const [levels, setLevels] = useState<LevelProgress[]>([]);
   const [samples, setSamples] = useState<SampleDataset[]>([]);
-  /** The open group; opening another closes it */
+  /** The open level and the open sample or project in it; opening another closes them */
+  const [openLevel, setOpenLevel] = useState<1 | 2 | null>(null);
   const [openKey, setOpenKey] = useState<string | null>(null);
 
   const routeProjectId = matchPath("/dataset/:id", location.pathname)?.params.id ?? null;
@@ -132,9 +132,8 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void; preview?: bo
     return [
       ...[...levelOne.entries()].map(([id, mission]) => ({
         key: `level-1-${id}`,
-        kicker: "Level 1",
+        level: 1 as const,
         name: mission,
-        Icon: Sparkles,
         active: routeSampleId === id,
         items: stepItems(
           [`/level-1/${id}?step=dataset`, `/level-1/${id}?step=training`, `/level-1/${id}?step=test`, `/level-1/${id}?step=report`],
@@ -143,9 +142,8 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void; preview?: bo
       })),
       ...projects.map((p) => ({
         key: `project-${p.id}`,
-        kicker: levels.some((l) => l.level === 2 && l.projectId === p.id) ? "Level 2" : "Project",
+        level: 2 as const,
         name: p.name,
-        Icon: FolderOpen,
         active: routeProjectId === p.id,
         items: stepItems(
           [`/dataset/${p.id}`, `/dataset/${p.id}?step=train`, `/dataset/${p.id}?step=test`, `/dataset/${p.id}?step=report`],
@@ -157,10 +155,14 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void; preview?: bo
   }, [preview, levels, samples, projects, routeSampleId, routeProjectId, stepParam]);
 
   // The level or project on screen stays open as the student moves around in it
-  const activeKey = groups.find((g) => g.active)?.key ?? null;
+  const activeGroup = groups.find((g) => g.active) ?? null;
+  const activeKey = activeGroup?.key ?? null;
+  const activeLevel = activeGroup?.level ?? null;
   useEffect(() => {
-    if (activeKey) setOpenKey(activeKey);
-  }, [activeKey]);
+    if (!activeKey) return;
+    setOpenKey(activeKey);
+    setOpenLevel(activeLevel);
+  }, [activeKey, activeLevel]);
 
   const overview: Item = { label: "Overview", Icon: LayoutDashboard, active: onOverview, onClick: () => go("/dashboard") };
   const resources: Item[] = [
@@ -223,53 +225,70 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void; preview?: bo
   };
 
   const renderGroup = (group: Group) => {
-    const open = isOpen && openKey === group.key;
+    const open = openKey === group.key;
+    return (
+      <div key={group.key}>
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpenKey(open ? null : group.key)}
+          className={cn(
+            "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors hover:bg-muted hover:text-foreground",
+            group.active ? "font-medium text-foreground" : "text-muted-foreground"
+          )}
+        >
+          <span className="min-w-0 flex-1 break-words">{group.name}</span>
+          <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", open && "rotate-180")} aria-hidden="true" />
+        </button>
+        {open && <div className="ml-3 mt-1 space-y-1 border-l pl-2">{group.items.map(renderItem)}</div>}
+      </div>
+    );
+  };
+
+  const renderLevel = (level: 1 | 2, Icon: LucideIcon) => {
+    const inLevel = groups.filter((g) => g.level === level);
+    if (!inLevel.length) return null;
+    const label = `Level ${level}`;
+    const open = isOpen && openLevel === level;
     const button = (
       <button
-        key={group.key}
+        key={label}
         type="button"
         aria-expanded={open}
         onClick={() => {
           if (!isOpen) {
             toggleSidebar();
-            setOpenKey(group.key);
+            setOpenLevel(level);
             return;
           }
-          setOpenKey(open ? null : group.key);
+          setOpenLevel(open ? null : level);
         }}
         className={cn(
-          "flex w-full items-center gap-3 rounded-lg text-left text-sm transition-colors hover:bg-muted hover:text-foreground",
-          isOpen ? "px-3 py-2" : "h-10 justify-center",
-          group.active ? "font-medium text-foreground" : "text-muted-foreground"
+          "flex w-full items-center gap-3 rounded-lg text-sm transition-colors hover:bg-muted hover:text-foreground",
+          isOpen ? "px-3 py-2.5" : "h-10 justify-center",
+          inLevel.some((g) => g.active) ? "font-medium text-foreground" : "text-muted-foreground"
         )}
       >
-        <group.Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+        <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
         {isOpen && (
           <>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{group.kicker}</span>
-              <span className="block truncate" title={group.name}>
-                {group.name}
-              </span>
-            </span>
+            <span className="flex-1 text-left">{label}</span>
             <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", open && "rotate-180")} aria-hidden="true" />
           </>
         )}
       </button>
     );
     return (
-      <div key={group.key}>
+      <div key={label}>
         {isOpen ? (
           button
         ) : (
           <Tooltip delayDuration={0}>
             <TooltipTrigger asChild>{button}</TooltipTrigger>
-            <TooltipContent side="right">
-              {group.kicker}: {group.name}
-            </TooltipContent>
+            <TooltipContent side="right">{label}</TooltipContent>
           </Tooltip>
         )}
-        {open && <div className="ml-5 mt-1 space-y-1 border-l pl-2">{group.items.map(renderItem)}</div>}
+        {open && <div className="ml-5 mt-1 space-y-1 border-l pl-2">{inLevel.map(renderGroup)}</div>}
       </div>
     );
   };
@@ -311,7 +330,8 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void; preview?: bo
                 <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Workspace</p>
               )}
               {renderItem(overview)}
-              {groups.map(renderGroup)}
+              {renderLevel(1, Sparkles)}
+              {renderLevel(2, FolderOpen)}
             </div>
 
             <div className="space-y-1">

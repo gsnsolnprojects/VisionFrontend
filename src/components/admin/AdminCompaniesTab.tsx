@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, Trash2, ShieldCheck } from "lucide-react";
+import { RotateCcw, Search, Trash2, ShieldCheck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   deleteAdminCompany,
   getAdminCompanies,
+  resetAdminCompany,
   setAdminCompanyPlayground,
   setAdminCompanyUnlimited,
   type AdminCompany,
@@ -64,6 +65,7 @@ export const AdminCompaniesTab: React.FC = () => {
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<AdminCompany | null>(null);
+  const [resetting, setResetting] = useState<AdminCompany | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -179,6 +181,21 @@ export const AdminCompaniesTab: React.FC = () => {
     }
   };
 
+  const confirmReset = async (typedName: string) => {
+    if (!resetting) return;
+    setBusyId(resetting.id);
+    try {
+      await resetAdminCompany(resetting.id, typedName);
+      toast({ title: "Account reset", description: `${resetting.name} is fresh now. Its members should refresh the page.` });
+      setResetting(null);
+    } catch (err) {
+      toast({ title: "Couldn't reset the account", description: errorMessage(err), variant: "destructive" });
+    } finally {
+      setBusyId(null);
+      load(); // show the real counts, also if only part of it was deleted
+    }
+  };
+
   if (loading) return <LoadingState message="Loading companies..." />;
   if (error) return <ErrorState title="Couldn't load companies" message={error} onRetry={load} />;
 
@@ -215,7 +232,7 @@ export const AdminCompaniesTab: React.FC = () => {
                     <TableHead>Free Playground</TableHead>
                     <TableHead>Unlimited</TableHead>
                     <TableHead>Created</TableHead>
-                    <TableHead className="w-12" />
+                    <TableHead className="w-24" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -291,16 +308,32 @@ export const AdminCompaniesTab: React.FC = () => {
                               <TooltipContent>The GSN company can't be deleted</TooltipContent>
                             </Tooltip>
                           ) : (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-destructive hover:text-destructive"
-                              disabled={busyId === c.id}
-                              onClick={() => setDeleting(c)}
-                              aria-label={`Delete ${c.name}`}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            <div className="flex items-center justify-end gap-1">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    disabled={busyId === c.id}
+                                    onClick={() => setResetting(c)}
+                                    aria-label={`Reset ${c.name}`}
+                                  >
+                                    <RotateCcw className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Reset to fresh: deletes its data, keeps its plan</TooltipContent>
+                              </Tooltip>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive hover:text-destructive"
+                                disabled={busyId === c.id}
+                                onClick={() => setDeleting(c)}
+                                aria-label={`Delete ${c.name}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           )}
                         </TableCell>
                       </TableRow>
@@ -312,6 +345,22 @@ export const AdminCompaniesTab: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      <ConfirmByTypingDialog
+        open={!!resetting}
+        onOpenChange={(open) => !open && setResetting(null)}
+        title={`Reset ${resetting?.name ?? "company"} to fresh?`}
+        consequences={[
+          `Delete its ${resetting?.projects ?? 0} project(s), ${resetting?.datasets ?? 0} dataset(s) and ${resetting?.models ?? 0} model(s), with their files`,
+          "Delete all its tests, reports and level progress, for every member",
+          "Set this month's training runs and predictions back to 0",
+          "Keep the company, its members, their logins and its plan as they are",
+        ]}
+        confirmText={resetting?.name ?? ""}
+        confirmLabel="Reset account"
+        busy={!!resetting && busyId === resetting.id}
+        onConfirm={confirmReset}
+      />
 
       <ConfirmByTypingDialog
         open={!!deleting}

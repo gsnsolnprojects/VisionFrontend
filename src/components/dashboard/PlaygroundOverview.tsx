@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { staggerContainerVariants } from "@/utils/animations";
+import { fadeInUpVariants, staggerContainerVariants } from "@/utils/animations";
 import { usePlanAccess, BILLING_ROUTE } from "@/contexts/plan-access-context";
 import { getLearningProgress, type LearningProgress } from "@/lib/api/dashboard";
 import { getLevels, type LevelProgress } from "@/lib/api/levels";
@@ -9,6 +9,7 @@ import { IndustryPicker, type Mission, type MissionMode } from "./IndustryPicker
 import { SpotTheIssueQuiz } from "./SpotTheIssueQuiz";
 import { AllowanceMeters } from "./AllowanceMeters";
 import { ContinueLevelCard } from "./ContinueLevelCard";
+import { BadgeShelf, JourneyMap, LevelCompleteCard, PlaygroundWelcome } from "./PlaygroundJourney";
 import { PlaygroundIncluded } from "./PlaygroundIncluded";
 
 interface PlaygroundOverviewProps {
@@ -23,8 +24,10 @@ interface PlaygroundOverviewProps {
 }
 
 /**
- * Overview for Playground workspaces: pick an industry and a challenge, a quick spot-the-defect
- * warm-up, and the workspace's allowance. Other plans keep the regular DashboardOverview.
+ * Overview for Playground workspaces: a welcome for someone new, or where a returning student is
+ * (with the card for a level just finished), their journey and badges, then pick an industry and a
+ * challenge, a quick spot-the-defect warm-up, and the workspace's allowance. Other plans keep the
+ * regular DashboardOverview.
  * With `preview` (no plan yet) it is informative: the challenges can be browsed but not started,
  * and "What's included" replaces the allowance.
  */
@@ -53,21 +56,41 @@ export const PlaygroundOverview: React.FC<PlaygroundOverviewProps> = ({ projects
 
   const projectsUsed = planAccess.data?.usage?.projects ?? projects.length;
 
+  const projectIds = (projects as { id: string }[]).map((p) => p.id);
+  // The level touched last, when it's finished and its project (if any) is still here
+  const latest = levels?.[0];
+  const justFinished = latest?.finishedAt && (latest.level === 1 || projectIds.includes(latest.projectId ?? "")) ? latest : null;
+  const isNew = !preview && !!levels && projectsLoaded && !levels.some((l) => l.completedSteps.length > 0);
+
   return (
     <motion.div className="space-y-8" variants={staggerContainerVariants} initial="hidden" animate="visible">
+      {(preview || isNew) && <PlaygroundWelcome onChoosePlan={preview ? choosePlan : undefined} />}
+
+      {justFinished && projectsLoaded && <LevelCompleteCard level={justFinished} onNext={() => document.getElementById("pick-industry")?.scrollIntoView({ behavior: "smooth", block: "start" })} />}
+
       {!preview && onStartMission && projectsLoaded && levels && (
         <ContinueLevelCard
           levels={levels}
-          projectIds={(projects as { id: string }[]).map((p) => p.id)}
+          projectIds={projectIds}
           onStartMission={onStartMission}
         />
+      )}
+
+      {!preview && levels && (
+        <motion.section variants={fadeInUpVariants} aria-label="Your journey and badges" className="space-y-5 rounded-2xl border bg-card p-5 md:p-6">
+          <div>
+            <h2 className="mb-3 text-sm font-semibold text-foreground">Your journey</h2>
+            <JourneyMap levels={levels} />
+          </div>
+          <BadgeShelf levels={levels} progress={progress} />
+        </motion.section>
       )}
 
       <IndustryPicker
         onChoosePlan={preview ? choosePlan : undefined}
         path={preview ? null : progress?.path ?? null}
         levels={preview ? null : levels}
-        projectIds={(projects as { id: string }[]).map((p) => p.id)}
+        projectIds={projectIds}
         onStartMission={(industryName, mission, mode) =>
           onStartMission
             ? onStartMission(industryName, mission, mode)
