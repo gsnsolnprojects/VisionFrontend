@@ -1,30 +1,30 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams, matchPath } from "react-router-dom";
-import { BookOpen, CreditCard, FileBarChart, FlaskConical, GraduationCap, Images, LayoutDashboard, Menu, Settings, type LucideIcon } from "lucide-react";
+import { BookOpen, ChevronDown, CreditCard, FileBarChart, FlaskConical, FolderOpen, GraduationCap, Images, LayoutDashboard, Menu, Settings, Sparkles, type LucideIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { liveProjectFilter } from "@/lib/liveProjects";
 import { useProfile } from "@/hooks/useProfile";
-import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSidebar } from "./sidebar-context";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { guidedMissionForSample } from "@/components/dashboard/IndustryPicker";
+import { getLevels, type LevelProgress } from "@/lib/api/levels";
+import { getSamples, type SampleDataset } from "@/lib/api/samples";
 import { cn } from "@/lib/utils";
 
 /**
- * Sidebar for Playground workspaces: the overview, the three steps of the current mission
- * project (the one open now, else the last one opened, else the newest; switch projects in the
- * project page's mission bar), resources and the plan card. Other workspaces keep AppSidebar's
- * menu. With `preview` (a company that hasn't chosen a plan yet): only Overview, Learning centre,
- * Plan & billing and Settings, and the plan card asks them to choose Playground.
+ * Sidebar for Playground workspaces: the overview, one group for each Level 1 the student has
+ * started and each project of theirs, resources and the plan card. A group opens to the same four
+ * steps, which lead to that level or project. Other workspaces keep AppSidebar's menu. With `preview`
+ * (a company that hasn't chosen a plan yet): only Overview, Learning centre, Plan & billing and
+ * Settings, and the plan card asks them to choose Playground.
  */
 
 interface Project {
   id: string;
   name: string;
 }
-
-type Step = "label" | "train" | "test" | "report";
 
 interface Item {
   label: string;
@@ -34,6 +34,17 @@ interface Item {
   soon?: boolean;
 }
 
+interface Group {
+  key: string;
+  kicker: string;
+  name: string;
+  Icon: LucideIcon;
+  active: boolean;
+  items: Item[];
+}
+
+const sameProject = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
 const lastProjectKey = (userId?: string) => `visionm_playground_last_project_${userId ?? "anon"}`;
 
 export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void; preview?: boolean }> = ({ onNavigate, preview = false }) => {
@@ -41,18 +52,20 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void; preview?: bo
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { profile, user } = useProfile();
-  const { toast } = useToast();
   const { isOpen, toggleSidebar } = useSidebar();
   const isMobile = useIsMobile();
   const [projects, setProjects] = useState<Project[]>([]);
-  const [lastId, setLastId] = useState<string | null>(null);
+  const [levels, setLevels] = useState<LevelProgress[]>([]);
+  const [samples, setSamples] = useState<SampleDataset[]>([]);
+  /** The open group; opening another closes it */
+  const [openKey, setOpenKey] = useState<string | null>(null);
 
   const routeProjectId = matchPath("/dataset/:id", location.pathname)?.params.id ?? null;
-  const step: Step | null = routeProjectId
-    ? (["train", "test", "report"].includes(searchParams.get("step") ?? "")
-        ? (searchParams.get("step") as Step)
-        : "label")
-    : null;
+  const routeSampleId =
+    matchPath("/level-1/:sampleId", location.pathname)?.params.sampleId ??
+    matchPath("/practice/:sampleId", location.pathname)?.params.sampleId ??
+    null;
+  const stepParam = searchParams.get("step");
 
   useEffect(() => {
     if (!profile?.company_id) return;
@@ -66,17 +79,18 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void; preview?: bo
   }, [profile?.company_id, location.pathname]);
 
   useEffect(() => {
-    try {
-      setLastId(localStorage.getItem(lastProjectKey(user?.id)));
-    } catch {
-      setLastId(null);
-    }
-  }, [user?.id]);
+    if (preview) return;
+    getLevels()
+      .then(({ levels: list }) => setLevels(list))
+      .catch(() => undefined);
+    getSamples()
+      .then(({ datasets }) => setSamples(datasets))
+      .catch(() => undefined);
+  }, [preview, location.pathname]);
 
   // Remember the project being worked on
   useEffect(() => {
     if (!routeProjectId) return;
-    setLastId(routeProjectId);
     try {
       localStorage.setItem(lastProjectKey(user?.id), routeProjectId);
     } catch {
@@ -84,45 +98,71 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void; preview?: bo
     }
   }, [routeProjectId, user?.id]);
 
-  const current = useMemo(
-    () =>
-      projects.find((p) => p.id === routeProjectId) ??
-      projects.find((p) => p.id === lastId) ??
-      projects[0] ??
-      null,
-    [projects, routeProjectId, lastId]
-  );
-
   const go = (path: string) => {
     navigate(path);
     onNavigate?.();
   };
 
-  const openStep = (target: Step) => {
-    if (!current) {
-      toast({ title: "Start a mission first", description: "Pick an industry and a challenge on the overview." });
-      go("/dashboard");
-      return;
-    }
-    go(target === "label" ? `/dataset/${current.id}` : `/dataset/${current.id}?step=${target}`);
-  };
-
   const onOverview = location.pathname === "/dashboard" && !searchParams.get("view");
-  const projectSteps: Item[] = [
-    { label: "Dataset & labels", Icon: Images, active: step === "label", onClick: () => openStep("label") },
-    { label: "Train a model", Icon: GraduationCap, active: step === "train", onClick: () => openStep("train") },
-    { label: "Test & evaluate", Icon: FlaskConical, active: step === "test", onClick: () => openStep("test") },
-    {
-      label: "Reports",
-      Icon: FileBarChart,
-      active: location.pathname === "/reports" || step === "report",
-      onClick: () => go("/reports"),
-    },
-  ];
-  const workspace: Item[] = [
-    { label: "Overview", Icon: LayoutDashboard, active: onOverview, onClick: () => go("/dashboard") },
-    ...(preview ? [] : projectSteps),
-  ];
+
+  /** The four steps of a level or project; `isOn` says whether that step's page is open now */
+  const stepItems = (paths: [string, string, string, string], isOn: (i: number) => boolean): Item[] =>
+    [
+      { label: "Dataset & labels", Icon: Images },
+      { label: "Train a model", Icon: GraduationCap },
+      { label: "Test & evaluate", Icon: FlaskConical },
+      { label: "Reports", Icon: FileBarChart },
+    ].map((item, i) => ({ ...item, active: isOn(i), onClick: () => go(paths[i]) }));
+
+  const groups: Group[] = useMemo(() => {
+    if (preview) return [];
+    // Level 1 belongs to a GSN sample. The one open now shows even before its progress has come back.
+    const levelOne = new Map<string, string>();
+    for (const row of levels) {
+      if (row.level !== 1 || !row.sample) continue;
+      const sample = samples.find((d) => sameProject(d.project, row.sample ?? ""));
+      if (sample) levelOne.set(sample.id, row.mission);
+    }
+    const openSample = routeSampleId ? samples.find((d) => d.id === routeSampleId) : null;
+    if (openSample && !levelOne.has(openSample.id)) {
+      levelOne.set(openSample.id, guidedMissionForSample(openSample.project)?.mission.title ?? openSample.name);
+    }
+    const levelOneStep = ["dataset", "training", "test", "report"].indexOf(stepParam === "practice" ? "dataset" : stepParam ?? "dataset");
+    const projectStep = ["label", "train", "test", "report"].indexOf(stepParam ?? "label");
+    return [
+      ...[...levelOne.entries()].map(([id, mission]) => ({
+        key: `level-1-${id}`,
+        kicker: "Level 1",
+        name: mission,
+        Icon: Sparkles,
+        active: routeSampleId === id,
+        items: stepItems(
+          [`/level-1/${id}?step=dataset`, `/level-1/${id}?step=training`, `/level-1/${id}?step=test`, `/level-1/${id}?step=report`],
+          (i) => routeSampleId === id && levelOneStep === i
+        ),
+      })),
+      ...projects.map((p) => ({
+        key: `project-${p.id}`,
+        kicker: levels.some((l) => l.level === 2 && l.projectId === p.id) ? "Level 2" : "Project",
+        name: p.name,
+        Icon: FolderOpen,
+        active: routeProjectId === p.id,
+        items: stepItems(
+          [`/dataset/${p.id}`, `/dataset/${p.id}?step=train`, `/dataset/${p.id}?step=test`, `/dataset/${p.id}?step=report`],
+          (i) => routeProjectId === p.id && projectStep === i
+        ),
+      })),
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview, levels, samples, projects, routeSampleId, routeProjectId, stepParam]);
+
+  // The level or project on screen stays open as the student moves around in it
+  const activeKey = groups.find((g) => g.active)?.key ?? null;
+  useEffect(() => {
+    if (activeKey) setOpenKey(activeKey);
+  }, [activeKey]);
+
+  const overview: Item = { label: "Overview", Icon: LayoutDashboard, active: onOverview, onClick: () => go("/dashboard") };
   const resources: Item[] = [
     {
       label: "Learning centre",
@@ -182,6 +222,58 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void; preview?: bo
     );
   };
 
+  const renderGroup = (group: Group) => {
+    const open = isOpen && openKey === group.key;
+    const button = (
+      <button
+        key={group.key}
+        type="button"
+        aria-expanded={open}
+        onClick={() => {
+          if (!isOpen) {
+            toggleSidebar();
+            setOpenKey(group.key);
+            return;
+          }
+          setOpenKey(open ? null : group.key);
+        }}
+        className={cn(
+          "flex w-full items-center gap-3 rounded-lg text-left text-sm transition-colors hover:bg-muted hover:text-foreground",
+          isOpen ? "px-3 py-2" : "h-10 justify-center",
+          group.active ? "font-medium text-foreground" : "text-muted-foreground"
+        )}
+      >
+        <group.Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+        {isOpen && (
+          <>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{group.kicker}</span>
+              <span className="block truncate" title={group.name}>
+                {group.name}
+              </span>
+            </span>
+            <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", open && "rotate-180")} aria-hidden="true" />
+          </>
+        )}
+      </button>
+    );
+    return (
+      <div key={group.key}>
+        {isOpen ? (
+          button
+        ) : (
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>{button}</TooltipTrigger>
+            <TooltipContent side="right">
+              {group.kicker}: {group.name}
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {open && <div className="ml-5 mt-1 space-y-1 border-l pl-2">{group.items.map(renderItem)}</div>}
+      </div>
+    );
+  };
+
   return (
     <aside
       className={cn(
@@ -218,7 +310,8 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void; preview?: bo
               {isOpen && (
                 <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Workspace</p>
               )}
-              {workspace.map(renderItem)}
+              {renderItem(overview)}
+              {groups.map(renderGroup)}
             </div>
 
             <div className="space-y-1">
