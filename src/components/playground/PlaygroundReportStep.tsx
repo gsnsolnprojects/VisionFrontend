@@ -89,8 +89,8 @@ export const PlaygroundReportStep: React.FC<{ projectId: string; onGoToTest: () 
       <div>
         <h2 className="text-3xl font-bold tracking-tight text-foreground">Your results, on paper.</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Reports from your tests, with every photo and what the model found. Each one is kept for 24 hours, so download
-          the ones you want to keep.
+          Reports from your tests: a summary, a sample photo of each defect and a link to the full list of photos. Each
+          one is kept for 24 hours, so download the ones you want to keep.
         </p>
       </div>
 

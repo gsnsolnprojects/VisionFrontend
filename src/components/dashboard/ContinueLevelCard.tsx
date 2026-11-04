@@ -55,7 +55,7 @@ const STEP_NEXT: Record<string, string> = {
   label: "Draw a box around the defect on at least 20 photos. The model learns only from your boxes, so this decides how good it gets. Photos with no defect can be marked as good.",
   train: "Pick a model size and start training. The model studies your labelled photos again and again until it can spot the defect by itself. It keeps going if you leave, so you can come back to it.",
   test: "Run the model on photos it never learned from, and compare what it found with the labels. This shows how good it really is, and which defects it misses.",
-  report: "Turn your test into a report that shows each photo, what the model found and what the labels say. In a factory, this is how results get shared with the team. Reports are kept for 24 hours, so download the ones you want.",
+  report: "Turn your test into a report with the totals, a sample photo of each defect and a link to the full list of photos. In a factory, this is how results get shared with the team. Reports are kept for 24 hours, so download the ones you want.",
 };
 
 /** The project page's ?step= for a Level 2 step (Level 1 has its own page) */
