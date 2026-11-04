@@ -185,6 +185,8 @@ interface SavedPractice {
   autoRunId: string | null;
 }
 const SAVED_DAYS = 14;
+/** A photo labelled at least this well without a hint counts towards the No Hints Used badge */
+const CLEAN_PHOTO_SCORE = 0.5;
 const savedKey = (userId: string, datasetId: string, attempt: string) => `vm.labelPractice.v2.${userId}.${datasetId}.${attempt}`;
 
 function loadSaved(key: string, photoIds: string[]): SavedPractice | null {
@@ -742,8 +744,8 @@ export const PlaygroundLabelPractice: React.FC<{
   files: PracticeFile[];
   /** Practice finished: go on to training on GSN's labels */
   onContinue: () => void;
-  /** Practice finished, with the average match over the checked photos (0-1) */
-  onFinished?: (score: number | null) => void;
+  /** Practice finished, with the average match over the checked photos (0-1) and how many were labelled well without a hint */
+  onFinished?: (score: number | null, cleanPhotos: number) => void;
   continueLabel?: string;
 }> = ({ datasetId, files, onContinue, onFinished, continueLabel = "Continue" }) => {
   const { user } = useProfile();
@@ -1005,7 +1007,7 @@ export const PlaygroundLabelPractice: React.FC<{
   useEffect(() => {
     if (phase === "done") {
       markPracticeDone().catch(() => undefined);
-      onFinished?.(averageScore);
+      onFinished?.(averageScore, checkedStates.filter((s) => !s.hinted && (s.score ?? 0) >= CLEAN_PHOTO_SCORE).length);
     }
     // Once per finish: the score and the callback can't change on the finished screen
     // eslint-disable-next-line react-hooks/exhaustive-deps

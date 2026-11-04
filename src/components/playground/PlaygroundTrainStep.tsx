@@ -17,6 +17,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, apiUrl, getAuthHeaders } from "@/lib/api/config";
 import { getLearningProgress } from "@/lib/api/dashboard";
+import { notifyProgressSaved } from "@/lib/api/badges";
 import { getLevels, saveLevelProgress } from "@/lib/api/levels";
 import { TRAINING_JOURNEY } from "./trainingJourney";
 import { getModelQuota, type ModelQuota } from "@/lib/api/models";
@@ -198,6 +199,7 @@ export const PlaygroundTrainStep: React.FC<{
           noGpu: !!s.noGpuAvailable,
         };
         setJob(next);
+        if (next.status === "completed") notifyProgressSaved();
         if (next.status === "completed" || next.status === "failed" || next.status === "cancelled") {
           try {
             localStorage.removeItem(jobKey(projectId));

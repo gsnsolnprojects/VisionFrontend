@@ -515,7 +515,7 @@ const LevelOnePage: React.FC = () => {
   const finishWithoutTest = () => {
     const rest: StepId[] = ["training", "test", "report"];
     setCompleted((prev) => [...new Set([...prev, ...rest])]);
-    void saveLevelSteps(mission, rest);
+    void saveLevelSteps(mission, rest, ["test", "report"]);
     goTo("report");
   };
   const finishAndGo = (id: StepId, next: StepId) => {
@@ -607,9 +607,9 @@ const LevelOnePage: React.FC = () => {
             files={files}
             continueLabel="Next: how training works"
             onContinue={() => goTo("training")}
-            onFinished={(score) => {
+            onFinished={(score, cleanPhotos) => {
               markDone("practice");
-              saveLevelProgress({ mission, step: "practice", practiceScore: score ?? undefined });
+              saveLevelProgress({ mission, step: "practice", practiceScore: score ?? undefined, cleanPhotos });
             }}
           />
         </div>

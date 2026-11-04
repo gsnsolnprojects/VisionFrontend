@@ -5,6 +5,7 @@ import { AppHeader } from "./AppHeader";
 import { AppSidebar } from "./AppSidebar";
 import { AppBreadcrumbs } from "./Breadcrumbs";
 import { BreadcrumbProvider } from "./breadcrumb-context";
+import { BadgeAwardHost } from "@/components/playground/BadgeAward";
 import { PlanRequiredBanner } from "./PlanRequiredBanner";
 import { PlanAccessProvider } from "@/contexts/PlanAccessProvider";
 import { usePlanAccess } from "@/contexts/plan-access-context";
@@ -248,6 +249,7 @@ const AppShellContent = () => {
             <AppBreadcrumbs className="mb-3" />
             <PlanRequiredBanner />
             <Outlet />
+            {workspaceKind === "playground" && <BadgeAwardHost />}
           </div>
         </main>
       </div>

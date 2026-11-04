@@ -38,9 +38,9 @@ const readDone = (userId?: string): Set<string> => {
 };
 
 const PRACTICE = [
-  { industry: "automotive", title: "Missing screw detective", text: "Terminal blocks with missing screws and bars.", Icon: Plug },
-  { industry: "electronics", title: "PCB defect detective", text: "Circuit boards with six kinds of defect.", Icon: Cpu },
-  { industry: "pharma", title: "Blister pack inspector", text: "Blister packs with empty or damaged pockets.", Icon: Pill },
+  { industry: "automotive", title: "Terminal Block Inspection", text: "Terminal blocks with missing screws and bars.", Icon: Plug },
+  { industry: "electronics", title: "PCB Defect Inspection", text: "Circuit boards with six kinds of defect.", Icon: Cpu },
+  { industry: "pharma", title: "Blister Pack Inspection", text: "Blister packs with empty or damaged pockets.", Icon: Pill },
 ];
 
 /** The two-question check at the end of a lesson */

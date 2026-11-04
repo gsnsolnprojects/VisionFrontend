@@ -70,7 +70,7 @@ const INDUSTRIES: Industry[] = [
     art: 1,
     recommended: true,
     guided: {
-      title: "PCB defect detective",
+      title: "PCB Defect Inspection",
       sample: "PCB",
       finds: "missing holes, shorts, open circuits, spurs and more",
       photoNoun: "circuit board",
@@ -85,7 +85,7 @@ const INDUSTRIES: Industry[] = [
     Icon: Plug,
     art: 0,
     guided: {
-      title: "Missing screw detective",
+      title: "Terminal Block Inspection",
       sample: "Terminals",
       finds: "missing screws, missing bars and blackened parts",
       photoNoun: "terminal",
@@ -99,7 +99,7 @@ const INDUSTRIES: Industry[] = [
     Icon: Pill,
     art: 2,
     guided: {
-      title: "Blister pack inspector",
+      title: "Blister Pack Inspection",
       sample: "Blister Pack",
       finds: "empty and damaged pockets",
       photoNoun: "blister pack",

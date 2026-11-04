@@ -43,14 +43,20 @@ export function useFirstTimeTour(name: string, ready: boolean): [boolean, (open:
         }
         // Lets the page's photos and lists appear first. Counts as seen only once it opens, as the
         // student may already have moved on
-        timer = window.setTimeout(() => {
+        const openWhenFree = () => {
+          // A badge's award card goes first
+          if (document.querySelector("[data-badge-award]")) {
+            timer = window.setTimeout(openWhenFree, 500);
+            return;
+          }
           setOpen(true);
           try {
             localStorage.setItem(seenKey, "1");
           } catch {
             // as above
           }
-        }, 1200);
+        };
+        timer = window.setTimeout(openWhenFree, 1200);
       })
       .catch(() => undefined);
     return () => {

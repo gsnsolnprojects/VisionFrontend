@@ -4,13 +4,11 @@ import { motion } from "framer-motion";
 import {
   ArrowDown,
   ArrowRight,
-  Award,
   BarChart3,
   Check,
   FileText,
   FlaskConical,
   GraduationCap,
-  Lock,
   PenLine,
   Trophy,
   X,
@@ -19,9 +17,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { useProfile } from "@/hooks/useProfile";
 import { apiRequest } from "@/lib/api/config";
-import type { LearningProgress } from "@/lib/api/dashboard";
+import { getBadges, onProgressSaved, type EarnedBadge } from "@/lib/api/badges";
 import type { LevelProgress } from "@/lib/api/levels";
 import { IndustryArt } from "@/components/landing/IndustryArt";
+import { BADGES, BadgeMedal, badgeInfo } from "@/components/playground/badges";
 import { fadeInUpVariants, staggerContainerVariants } from "@/utils/animations";
 import { cn } from "@/lib/utils";
 
@@ -139,43 +138,57 @@ export const JourneyMap: React.FC<{ levels: LevelProgress[] }> = ({ levels }) =>
   );
 };
 
-const stepDone = (levels: LevelProgress[], ...steps: string[]) =>
-  levels.some((l) => steps.some((s) => l.completedSteps.includes(s)));
+const SHOWN_BADGES = 5;
 
-/** What the student has done so far; the rest stay grey, to show what's ahead */
-export const BadgeShelf: React.FC<{ levels: LevelProgress[]; progress: LearningProgress | null }> = ({ levels, progress }) => {
-  const badges: { Icon: LucideIcon; label: string; how: string; earned: boolean }[] = [
-    { Icon: PenLine, label: "First labels", how: "Label your first photos", earned: stepDone(levels, "practice", "label") },
-    { Icon: GraduationCap, label: "First model trained", how: "Train your own model", earned: (progress?.models ?? 0) > 0 || stepDone(levels, "train") },
-    { Icon: FlaskConical, label: "First test", how: "Test a model", earned: (progress?.predictions ?? 0) > 0 || stepDone(levels, "test") },
-    { Icon: FileText, label: "First report", how: "Make a report", earned: stepDone(levels, "report") },
-    { Icon: Award, label: "Level 1 complete", how: "Finish Level 1", earned: levels.some((l) => l.level === 1 && l.finishedAt) },
-    { Icon: Trophy, label: "Level 2 complete", how: "Finish Level 2", earned: levels.some((l) => l.level === 2 && l.finishedAt) },
-  ];
-  const earned = badges.filter((b) => b.earned).length;
+/** The count, the latest badges (or the first ones to earn) and the way to the whole collection */
+export const BadgeShelf: React.FC = () => {
+  const navigate = useNavigate();
+  const [earned, setEarned] = useState<EarnedBadge[] | null>(null);
+
+  useEffect(() => {
+    const look = () =>
+      getBadges()
+        .then(({ badges }) => setEarned(badges))
+        .catch(() => setEarned((prev) => prev ?? []));
+    void look();
+    return onProgressSaved(look);
+  }, []);
+
+  if (!earned) return null;
+  const earnedInfos = earned.flatMap((b) => badgeInfo(b.id) ?? []);
+  const earnedIds = new Set(earnedInfos.map((b) => b.id));
+  const shown = [...earnedInfos.slice(-SHOWN_BADGES).reverse(), ...BADGES.filter((b) => !earnedIds.has(b.id))].slice(0, SHOWN_BADGES);
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-sm font-semibold text-foreground">Your badges</h3>
-        <p className="text-xs text-muted-foreground">
-          {earned} of {badges.length} earned
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-foreground">
+          Your badges <span className="ml-1 font-normal text-muted-foreground">{earnedInfos.length} of {BADGES.length} earned</span>
+        </h3>
+        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => navigate("/achievements")}>
+          View all badges <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+        </Button>
       </div>
-      <ul className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        {badges.map(({ Icon, label, how, earned: has }) => (
-          <li key={label} className={cn("rounded-xl border p-3 text-center", has ? "border-success/40 bg-success/10" : "bg-background/40")}>
-            <span
-              className={cn(
-                "mx-auto flex h-10 w-10 items-center justify-center rounded-full",
-                has ? "bg-success text-white" : "bg-muted text-muted-foreground"
-              )}
-            >
-              {has ? <Icon className="h-5 w-5" aria-hidden="true" /> : <Lock className="h-4 w-4" aria-hidden="true" />}
-            </span>
-            <p className={cn("mt-2 text-sm font-medium", has ? "text-foreground" : "text-muted-foreground")}>{label}</p>
-            {!has && <p className="mt-0.5 text-xs text-muted-foreground">{how}</p>}
-          </li>
-        ))}
+      <div
+        className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={BADGES.length}
+        aria-valuenow={earnedInfos.length}
+        aria-label="Badges earned"
+      >
+        <div className="h-full rounded-full bg-success transition-all duration-500" style={{ width: `${(earnedInfos.length / BADGES.length) * 100}%` }} />
+      </div>
+      <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {shown.map((badge) => {
+          const has = earnedIds.has(badge.id);
+          return (
+            <li key={badge.id} className={cn("rounded-xl border p-3 text-center", !has && "bg-background/40")}>
+              <BadgeMedal badge={badge} earned={has} size={52} className="mx-auto" />
+              <p className={cn("mt-2 text-sm font-medium", has ? "text-foreground" : "text-muted-foreground")}>{badge.name}</p>
+              {!has && <p className="mt-0.5 text-xs text-muted-foreground">{badge.how}</p>}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

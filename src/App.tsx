@@ -8,6 +8,7 @@ import Auth from "@/pages/Auth";
 import Dashboard from "@/pages/Dashboard";
 import DatasetManager from "@/pages/DatasetManager";
 import LearningCentrePage from "@/pages/LearningCentrePage";
+import AchievementsPage from "@/pages/AchievementsPage";
 import PlaygroundReportsPage from "@/pages/PlaygroundReportsPage";
 import LabelPracticePage from "@/pages/LabelPracticePage";
 import LevelOnePage from "@/pages/LevelOnePage";
@@ -60,6 +61,7 @@ const APP_PATHS = [
   "/account/preferences",
   "/admin",
   "/learn",
+  "/achievements",
   "/reports",
   "/practice/:sampleId",
   "/level-1/:sampleId",
@@ -166,6 +168,7 @@ const ProtectedRoutes = () => {
         {/* Superadmin panel (GSN platform admin only) */}
         <Route path="/admin" element={<AdminPage />} />
         <Route path="/learn" element={<LearningCentrePage />} />
+        <Route path="/achievements" element={<AchievementsPage />} />
         <Route path="/reports" element={<PlaygroundReportsPage />} />
         <Route path="/practice/:sampleId" element={<LabelPracticePage />} />
         <Route path="/level-1/:sampleId" element={<LevelOnePage />} />

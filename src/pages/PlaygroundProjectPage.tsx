@@ -551,7 +551,7 @@ export const PlaygroundProjectPage: React.FC = () => {
     { label: "Industry explorer", done: true },
     { label: "Label investigator", done: counts.labelled > 0 },
     { label: "Model builder", done: hasModel },
-    { label: "Result detective", done: hasPrediction },
+    { label: "Result Review", done: hasPrediction },
   ];
   const levelDone = (id: string) => !!level && (level.completedSteps.includes(id) || justDone.includes(id));
   const labelDone = levelDone("label") || (!!level && !isSample && counts.ownLabelled >= MIN_LABELLED);
@@ -810,7 +810,7 @@ export const PlaygroundProjectPage: React.FC = () => {
               datasetId={selectedId}
               files={files}
               onContinue={() => goToStep("label")}
-              onFinished={(score) => saveLevelProgress({ mission: missionName, step: "practice", practiceScore: score ?? undefined })}
+              onFinished={(score, cleanPhotos) => saveLevelProgress({ mission: missionName, step: "practice", practiceScore: score ?? undefined, cleanPhotos })}
             />
           )
         ) : (

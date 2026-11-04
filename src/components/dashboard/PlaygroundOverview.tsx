@@ -83,7 +83,7 @@ export const PlaygroundOverview: React.FC<PlaygroundOverviewProps> = ({ projects
             <h2 className="mb-3 text-sm font-semibold text-foreground">Your journey</h2>
             <JourneyMap levels={liveLevels} />
           </div>
-          <BadgeShelf levels={liveLevels} progress={progress} />
+          <BadgeShelf />
         </motion.section>
       )}
 
