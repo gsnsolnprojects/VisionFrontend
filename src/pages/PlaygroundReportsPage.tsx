@@ -118,7 +118,7 @@ const PlaygroundReportsPage: React.FC = () => {
   const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Dashboard", href: "/dashboard" }, { label: "Reports" }]);
+    setBreadcrumbs([{ label: "Overview", href: "/dashboard" }, { label: "Reports" }]);
     return () => setBreadcrumbs(null);
   }, [setBreadcrumbs]);
 

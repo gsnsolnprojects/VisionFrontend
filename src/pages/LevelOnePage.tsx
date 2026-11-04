@@ -378,7 +378,7 @@ const LevelOnePage: React.FC = () => {
 
   const { setItems: setBreadcrumbs } = useBreadcrumbs();
   useEffect(() => {
-    setBreadcrumbs([{ label: "Dashboard", href: "/dashboard" }, { label: "Level 1" }, ...(mission ? [{ label: mission }] : [])]);
+    setBreadcrumbs([{ label: "Overview", href: "/dashboard" }, { label: "Level 1" }, ...(mission ? [{ label: mission }] : [])]);
     return () => setBreadcrumbs(null);
   }, [mission, setBreadcrumbs]);
 

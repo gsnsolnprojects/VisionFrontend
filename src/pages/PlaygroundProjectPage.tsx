@@ -105,6 +105,8 @@ const LEVEL_GUIDE = {
 };
 
 const baseOf = (name: string) => name.replace(/\.[^./]+$/, "");
+/** An extra training photo, made from one of the student's own */
+const isCopy = (f: { storedName: string }) => /_aug_\d+\.[^.]+$/i.test(f.storedName);
 
 const splitOf = (folder: string | null): { label: string; kind: "training" | "test" | "other" } => {
   if (folder === "train" || folder === "val") return { label: folder === "train" ? "Training" : "Validation", kind: "training" };
@@ -136,7 +138,7 @@ export const PlaygroundProjectPage: React.FC = () => {
   const [allProjects, setAllProjects] = useState<{ id: string; name: string; description: string | null }[]>([]);
   const [versions, setVersions] = useState<DatasetVersion[] | null>(null);
   const [labelling, setLabelling] = useState(false);
-  /** The version more training photos are being made from, while they are */
+  /** The dataset more training photos are being added to, while they are */
   const [augmentingFrom, setAugmentingFrom] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [files, setFiles] = useState<ImageFile[]>([]);
@@ -211,31 +213,6 @@ export const PlaygroundProjectPage: React.FC = () => {
     if (project) void loadVersions(project.name).catch(() => setVersions([]));
   }, [project, loadVersions]);
 
-  // While more training photos are being made: check every 5 s, then open the new version
-  useEffect(() => {
-    if (!project) return;
-    if (!augmentingFrom) {
-      // Started before this page loaded: follow it too
-      const running = versions?.find((v) => v.isAugmented && v.status === "processing");
-      if (running?.augmentedFromVersion) setAugmentingFrom(running.augmentedFromVersion);
-      return;
-    }
-    const made = versions?.find((v) => v.isAugmented && v.augmentedFromVersion === augmentingFrom);
-    if (made?.status === "ready") {
-      setAugmentingFrom(null);
-      setSelectedId(made.datasetId);
-      toast({ title: "More training photos ready", description: `${made.version} is selected: train on it in step 2.` });
-      return;
-    }
-    if (made?.status === "failed" || made?.augmentationStatus === "failed") {
-      setAugmentingFrom(null);
-      toast({ title: "Couldn't make more photos", description: "Please try again.", variant: "destructive" });
-      return;
-    }
-    const timer = window.setTimeout(() => void loadVersions(project.name).catch(() => undefined), 5000);
-    return () => window.clearTimeout(timer);
-  }, [augmentingFrom, versions, project, loadVersions, toast]);
-
   // Top trail: Dashboard > mission > step (instead of the project id from the address)
   const { setItems: setBreadcrumbs } = useBreadcrumbs();
   useEffect(() => {
@@ -243,7 +220,7 @@ export const PlaygroundProjectPage: React.FC = () => {
     const mission = (project.description ?? "").includes(" · ") ? (project.description ?? "").split(" · ")[1] : project.name;
     const stepLabel = { label: "Upload & label", train: "Train", test: "Test & evaluate", report: "Report", practice: "Learn to label" }[step];
     setBreadcrumbs([
-      { label: "Dashboard", href: "/dashboard" },
+      { label: "Overview", href: "/dashboard" },
       { label: mission, href: `/dataset/${project.id}` },
       { label: stepLabel },
     ]);
@@ -301,6 +278,32 @@ export const PlaygroundProjectPage: React.FC = () => {
     }
   }, [toast]);
 
+  // While more training photos are being added: check every 5 s, then show them
+  useEffect(() => {
+    if (!project) return;
+    if (!augmentingFrom) {
+      // Started before this page loaded: follow it too
+      const running = versions?.find((v) => !v.isAugmented && v.augmentationStatus === "running");
+      if (running) setAugmentingFrom(running.datasetId);
+      return;
+    }
+    const target = versions?.find((v) => v.datasetId === augmentingFrom);
+    if (target?.augmentationStatus === "succeeded") {
+      setAugmentingFrom(null);
+      setSelectedId(target.datasetId);
+      void loadFiles(target.datasetId);
+      toast({ title: "More training photos ready", description: "They're in your dataset. Train on it in step 2." });
+      return;
+    }
+    if (!target || target.augmentationStatus === "failed") {
+      setAugmentingFrom(null);
+      toast({ title: "Couldn't make more photos", description: "Please try again.", variant: "destructive" });
+      return;
+    }
+    const timer = window.setTimeout(() => void loadVersions(project.name).catch(() => undefined), 5000);
+    return () => window.clearTimeout(timer);
+  }, [augmentingFrom, versions, project, loadVersions, loadFiles, toast]);
+
   useEffect(() => {
     setFilter("all");
     setPage(1);
@@ -314,15 +317,16 @@ export const PlaygroundProjectPage: React.FC = () => {
   );
 
   const counts = useMemo(() => {
-    let training = 0, validation = 0, test = 0, unlabelled = 0;
+    let training = 0, validation = 0, test = 0, unlabelled = 0, copies = 0;
     for (const f of files) {
+      if (isCopy(f)) copies += 1;
       const kind = splitOf(f.folder).kind;
       if (kind === "training") training += 1;
       if (f.folder === "val") validation += 1;
       if (kind === "test") test += 1;
       if (!isLabelled(f)) unlabelled += 1;
     }
-    return { all: files.length, training, validation, test, unlabelled, labelled: files.length - unlabelled };
+    return { all: files.length, training, validation, test, unlabelled, labelled: files.length - unlabelled, copies, ownLabelled: files.length - unlabelled - copies };
   }, [files, isLabelled]);
 
   const visible = useMemo(() => {
@@ -432,14 +436,17 @@ export const PlaygroundProjectPage: React.FC = () => {
   // write them on the way in, so the student doesn't have to press Save Annotations first
   const writeLabels = useCallback(async () => {
     if (!dataset || isSample || dataset.isAugmented || !project) return;
-    await apiRequest(`/dataset/${encodeURIComponent(dataset.datasetId)}/convert-annotations-to-labels`, {
+    const result = await apiRequest<{ copiesRemoved?: number }>(`/dataset/${encodeURIComponent(dataset.datasetId)}/convert-annotations-to-labels`, {
       method: "POST",
       body: JSON.stringify({ modelType: "YOLO" }),
       maxRetries: 1,
     });
+    if (result?.copiesRemoved) {
+      toast({ title: "Extra photos removed", description: "Your labels changed, so make more training photos again in step 1." });
+    }
     await loadVersions(project.name);
     await loadFiles(dataset.datasetId);
-  }, [dataset, isSample, project, loadVersions, loadFiles]);
+  }, [dataset, isSample, project, loadVersions, loadFiles, toast]);
 
   const [preparing, setPreparing] = useState(false);
   const preparedFor = useRef<string | null>(null);
@@ -464,8 +471,8 @@ export const PlaygroundProjectPage: React.FC = () => {
     ? ""
     : [
         !isSample && counts.all > 0 && "upload",
-        !isSample && counts.labelled >= 20 && "label",
-        dataset.isAugmented && dataset.status === "ready" && "augment",
+        !isSample && counts.ownLabelled >= 20 && "label",
+        ((dataset.isAugmented && dataset.status === "ready") || counts.copies > 0) && "augment",
       ]
         .filter(Boolean)
         .join(",");
@@ -483,8 +490,7 @@ export const PlaygroundProjectPage: React.FC = () => {
   // A sample you label yourself keeps GSN's photos, and extra photos are made from another version: no adding to either
   const canUpload = !isSample && !dataset?.labelledSampleOf && !dataset?.isAugmented && ownDatasetsAllowed;
 
-  // "Make more training photos": augment the company's own labelled dataset, up to 500 photos
-  const augmentedChild = versions?.find((v) => v.isAugmented && v.augmentedFromVersion === dataset?.version) ?? null;
+  // "Make more training photos": copies added to the company's own labelled dataset, up to 500 photos
   const makeMorePhotos = async (target: number) => {
     if (!dataset) return;
     try {
@@ -495,9 +501,13 @@ export const PlaygroundProjectPage: React.FC = () => {
         body: JSON.stringify({ versionName: `${dataset.version}-more-photos`.slice(0, 50), options: { targetTrainTotal: target } }),
         maxRetries: 1,
       });
-      // The server has just removed any earlier set: forget it, or it would count as the new one
-      setVersions((prev) => prev?.filter((v) => !(v.isAugmented && v.augmentedFromVersion === dataset.version)) ?? prev);
-      setAugmentingFrom(dataset.version);
+      // The last read still says how the previous run ended, which would look like this one finishing
+      setVersions((prev) =>
+        prev
+          ?.filter((v) => !v.isAugmented)
+          .map((v) => (v.datasetId === dataset.datasetId ? { ...v, augmentationStatus: "running" } : v)) ?? prev
+      );
+      setAugmentingFrom(dataset.datasetId);
       toast({ title: "Making more training photos", description: "This takes a few minutes. You can stay on this page." });
       if (project) void loadVersions(project.name);
     } catch (err) {
@@ -534,7 +544,7 @@ export const PlaygroundProjectPage: React.FC = () => {
   };
   const showDropZone = canUpload && (!!dataset || !ownDataset);
   // Labelling comes before training: while there aren't enough labelled photos, Next opens the next photo to label
-  const firstToLabel = !isSample && !dataset?.isAugmented && counts.labelled < MIN_LABELLED ? files.find((f) => !isLabelled(f)) : undefined;
+  const firstToLabel = !isSample && !dataset?.isAugmented && counts.ownLabelled < MIN_LABELLED ? files.find((f) => !isLabelled(f)) : undefined;
 
   const badges = [
     { label: "Industry explorer", done: true },
@@ -543,7 +553,7 @@ export const PlaygroundProjectPage: React.FC = () => {
     { label: "Result detective", done: hasPrediction },
   ];
   const levelDone = (id: string) => !!level && (level.completedSteps.includes(id) || justDone.includes(id));
-  const labelDone = levelDone("label") || (!!level && !isSample && counts.labelled >= MIN_LABELLED);
+  const labelDone = levelDone("label") || (!!level && !isSample && counts.ownLabelled >= MIN_LABELLED);
   const trainDone = levelDone("train") || level?.training?.status === "completed";
   const testDone = levelDone("test");
   const reportDone = levelDone("report");
@@ -902,29 +912,25 @@ export const PlaygroundProjectPage: React.FC = () => {
               A few photos rarely train a good model. Make varied copies of your labelled photos (flipped, rotated,
               brighter or darker), with the labels moved to match. Each copy stays in the same set as its photo, so the model is never tested on a photo it learned from.
             </p>
-            {augmentingFrom === dataset.version || augmentedChild?.status === "processing" ? (
+            {augmentingFrom === dataset.datasetId ? (
               <p className="mt-3 flex items-center gap-2 text-sm text-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" /> Making photos... this takes a few minutes.
               </p>
-            ) : counts.labelled < 20 ? (
-              <p className="mt-3 text-sm text-muted-foreground">Label at least 20 photos first ({counts.labelled} so far).</p>
+            ) : counts.ownLabelled < 20 ? (
+              <p className="mt-3 text-sm text-muted-foreground">Label at least 20 photos first ({counts.ownLabelled} so far).</p>
             ) : (
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {[100, 250, 500]
                   // Copies are made of labelled photos only
-                  .filter((n) => n > counts.labelled)
+                  .filter((n) => n > counts.ownLabelled)
                   .map((n) => (
                     <Button key={n} size="sm" variant="outline" onClick={() => void makeMorePhotos(n)}>
                       Up to {n} photos
                     </Button>
                   ))}
-                {augmentedChild?.status === "ready" && (
-                  <Button size="sm" variant="ghost" onClick={() => setSelectedId(augmentedChild.datasetId)}>
-                    Open {augmentedChild.version}
-                  </Button>
-                )}
                 <span className="text-xs text-muted-foreground">
-                  The number is the total in the new set, your photos included. Making a new set replaces the previous one.
+                  {counts.copies > 0 ? `This dataset has ${counts.ownLabelled} of your labelled photos and ${counts.copies} copies. ` : ""}
+                  The number is the total, your photos included. They're added to this dataset, replacing any copies made before.
                 </span>
               </div>
             )}
@@ -1013,6 +1019,9 @@ export const PlaygroundProjectPage: React.FC = () => {
                           </p>
                         ) : (
                           <div className="flex gap-1.5">
+                            {isCopy(f) ? (
+                              <p className="flex h-8 min-w-0 flex-1 items-center text-xs text-muted-foreground">Extra copy</p>
+                            ) : (
                             <Button
                               variant={done ? "outline" : "default"}
                               size="sm"
@@ -1022,6 +1031,7 @@ export const PlaygroundProjectPage: React.FC = () => {
                               <PenLine className="h-3.5 w-3.5" />
                               {done ? "Edit labels" : "Label"}
                             </Button>
+                            )}
                             <Button
                               variant="outline"
                               size="sm"
@@ -1068,7 +1078,7 @@ export const PlaygroundProjectPage: React.FC = () => {
               {toDelete === "dataset"
                 ? dataset?.isAugmented
                   ? `All ${counts.all} photos in this set of extra training photos go. Your own photos and labels stay.`
-                  : `All ${counts.all} photos and their labels go, with any extra training photos made from them. Your project and trained models stay${level ? ", and Level 2 starts again from upload" : ""}. This can't be undone.`
+                  : `All ${counts.all} photos and their labels go, extra copies included. Your project and trained models stay${level ? ", and Level 2 starts again from upload" : ""}. This can't be undone.`
                 : `${toDelete?.originalName ?? "This photo"} and its labels go. This can't be undone.`}
             </AlertDialogDescription>
           </AlertDialogHeader>

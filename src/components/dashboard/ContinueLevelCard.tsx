@@ -25,14 +25,14 @@ const STEP_NAMES: Record<string, string> = {
 };
 
 const STEP_NEXT: Record<string, string> = {
-  dataset: "Look through the sample photos and their labels.",
-  practice: "Try labelling real inspection photos.",
-  training: "See how a model gets trained.",
-  upload: "Upload your own photos.",
-  label: "Label at least 20 of your photos.",
-  train: "Train your model.",
-  test: "Test the model on photos it has never seen.",
-  report: "Make your report.",
+  dataset: "Look through GSN's real inspection photos and see how each defect is marked. You'll also see why photos are split into sets for learning, checking and testing.",
+  practice: "Draw boxes around the defects on real photos, and your boxes are checked against GSN's labels. Do as many as you like, even one or two.",
+  training: "Learn what happens when a model trains and what each setting means, so you're ready to train your own in Level 2.",
+  upload: "Add photos of the part you want to inspect, some with the defect and some without. You'll need at least 20, and more is better.",
+  label: "Draw a box around the defect on at least 20 photos. The model learns only from your boxes, so this decides how good it gets. Photos with no defect can be marked as good.",
+  train: "Pick a model size and start training. The model studies your labelled photos again and again until it can spot the defect by itself. It keeps going if you leave, so you can come back to it.",
+  test: "Run the model on photos it never learned from, and compare what it found with the labels. This shows how good it really is, and which defects it misses.",
+  report: "Turn your test into a report that shows each photo, what the model found and what the labels say. In a factory, this is how results get shared with the team. Reports are kept for 24 hours, so download the ones you want.",
 };
 
 /** The project page's ?step= for a Level 2 step (Level 1 has its own page) */
@@ -44,14 +44,21 @@ const PAGE_STEP: Record<string, string | null> = {
   report: "report",
 };
 
-const nextLine = (level: LevelProgress) => {
+/** What the student does next, in a heading and a few plain lines */
+const nextUp = (level: LevelProgress) => {
   const status = level.training?.status;
-  if (status === "queued" || status === "running") return "Your model is still training. Check how far it has got.";
-  if (status === "failed" || status === "cancelled") return "Your last training run didn't finish. Try it again.";
-  const next = STEP_NEXT[level.nextStep ?? ""] ?? "";
+  if (status === "queued" || status === "running") {
+    return { title: "Your model is training", text: "It keeps going while you're away. Open it to see how far it has got. Next, you'll test it on photos it never learned from." };
+  }
+  if (status === "failed" || status === "cancelled") {
+    return { title: "Next: Train again", text: "Your last training run didn't finish. Open it to see why and start it again." };
+  }
+  const step = level.nextStep ?? "";
+  const text = STEP_NEXT[step] ?? "";
+  const title = `Next: ${STEP_NAMES[step] ?? step}`;
   return status === "completed" && !level.completedSteps.includes("test")
-    ? `Your model finished training. Next: ${next.charAt(0).toLowerCase()}${next.slice(1)}`
-    : next;
+    ? { title, text: `Your model finished training. ${text}` }
+    : { title, text };
 };
 
 export const ContinueLevelCard: React.FC<{
@@ -64,6 +71,8 @@ export const ContinueLevelCard: React.FC<{
   const level = levels.find((l) => !l.finishedAt && l.nextStep && (l.level === 1 || projectIds.includes(l.projectId ?? "")));
 
   if (!level) return null;
+
+  const next = nextUp(level);
 
   const resume = () => {
     const mission: Mission = { title: level.mission, sample: level.sample ?? undefined };
@@ -92,7 +101,8 @@ export const ContinueLevelCard: React.FC<{
           <h2 id="continue-heading" className="mt-1 text-lg font-semibold text-foreground">
             {level.mission}
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground">{nextLine(level)}</p>
+          <p className="mt-3 text-sm font-medium text-foreground">{next.title}</p>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{next.text}</p>
         </div>
         <Button className="gap-1.5" onClick={resume}>
           Continue

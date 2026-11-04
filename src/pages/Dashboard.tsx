@@ -128,16 +128,16 @@ const Dashboard = () => {
         { label: "Projects", href: "/dashboard/projects" },
       ]);
     } else {
-      // Default: just show Dashboard
+      // Default: just show Dashboard (Playground calls it Overview, as its sidebar does)
       setBreadcrumbs([
-        { label: "Dashboard", href: "/dashboard" },
+        { label: isPlaygroundWorkspace ? "Overview" : "Dashboard", href: "/dashboard" },
       ]);
     }
 
     return () => {
       setBreadcrumbs(null);
     };
-  }, [activeView, setBreadcrumbs]);
+  }, [activeView, setBreadcrumbs, isPlaygroundWorkspace]);
 
   // Handle invite token from URL (only after session is ready)
   useEffect(() => {
@@ -1314,7 +1314,11 @@ const Dashboard = () => {
           <PageHeader
             title={`Welcome, ${displayName}`}
             titleBadge={userRole ? <RoleBadge role={userRole} /> : null}
-            description="Manage your projects, datasets, and simulation workspace from this dashboard."
+            description={
+              isPlaygroundWorkspace
+                ? "Carry on where you left off, or pick a level to learn AI inspection step by step."
+                : "Manage your projects, datasets, and simulation workspace from this dashboard."
+            }
           />
         </motion.div>
       )}

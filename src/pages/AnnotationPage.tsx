@@ -21,7 +21,7 @@ export const AnnotationPage: React.FC = () => {
   const isCustomer = !!company && (company.name ?? "").trim().toLowerCase() !== "gsn";
   useEffect(() => {
     if (!isCustomer) return;
-    setBreadcrumbs([{ label: "Dashboard", href: "/dashboard" }, { label: "Label photos" }]);
+    setBreadcrumbs([{ label: "Overview", href: "/dashboard" }, { label: "Label photos" }]);
     return () => setBreadcrumbs(null);
   }, [isCustomer, setBreadcrumbs]);
 

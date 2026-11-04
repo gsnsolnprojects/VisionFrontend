@@ -114,7 +114,7 @@ const LearningCentrePage: React.FC = () => {
   }, [user?.id]);
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Dashboard", href: "/dashboard" }, { label: "Learning centre" }]);
+    setBreadcrumbs([{ label: "Overview", href: "/dashboard" }, { label: "Learning centre" }]);
     return () => setBreadcrumbs(null);
   }, [setBreadcrumbs]);
 

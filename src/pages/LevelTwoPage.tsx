@@ -86,7 +86,7 @@ const LevelTwoPage: React.FC = () => {
 
   const { setItems: setBreadcrumbs } = useBreadcrumbs();
   useEffect(() => {
-    setBreadcrumbs([{ label: "Dashboard", href: "/dashboard" }, { label: "Level 2" }]);
+    setBreadcrumbs([{ label: "Overview", href: "/dashboard" }, { label: "Level 2" }]);
     return () => setBreadcrumbs(null);
   }, [setBreadcrumbs]);
 

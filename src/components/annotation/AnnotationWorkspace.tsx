@@ -389,9 +389,10 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         }
 
         loadImages(
-          imagesData.images.map((img) =>
-            normalizeDatasetImage(img as unknown as Record<string, unknown>)
-          )
+          imagesData.images
+            .map((img) => normalizeDatasetImage(img as unknown as Record<string, unknown>))
+            // A student's extra photos are copies made from their labels: nothing to label on them
+            .filter((img) => !simpleTools || !/_aug_\d+\.[^.]+$/i.test(img.filename ?? ""))
         );
         console.log("[AnnotationWorkspace] Loaded", imagesData.images.length, "images");
 
@@ -921,7 +922,8 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       } catch {
         setAugmentDatasetVersion(null);
       }
-      setShowAugmentDialog(true);
+      // Playground makes extra photos from the project page
+      if (!simpleTools) setShowAugmentDialog(true);
     } catch (error) {
       console.error("Failed to save and convert:", error);
       setSaveStatus("error");
@@ -932,7 +934,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       });
       setTimeout(() => setSaveStatus("idle"), 3000);
     }
-  }, [annotations, datasetId, categories, hasCategories, markSaved, toast, annotationShapeMode, batchImages]);
+  }, [annotations, datasetId, categories, hasCategories, markSaved, toast, annotationShapeMode, batchImages, simpleTools]);
 
   // Handle image selection with unsaved changes confirmation.
   // Waits for any in-flight save (e.g. a click-to-mask save still saving in the background)
