@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Clock, Download, FileText, FlaskConical, Loader2, Trash2 } from "lucide-react";
+import { Clock, Download, FileText, FlaskConical, HelpCircle, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, apiUrl, getAuthHeaders } from "@/lib/api/config";
+import { GuidedTour, useFirstTimeTour } from "./GuidedTour";
+import { LEVEL_TWO_REPORT_TOUR } from "./levelTwoGuides";
 
 /**
  * Step 4 of a Playground project: the PDF reports made from this project's tests. Reports are
@@ -28,10 +30,11 @@ const timeLeft = (iso: string) => {
   return h > 0 ? `${h} h ${m} min left` : `${m} min left`;
 };
 
-export const PlaygroundReportStep: React.FC<{ projectId: string; onGoToTest: () => void }> = ({ projectId, onGoToTest }) => {
+export const PlaygroundReportStep: React.FC<{ projectId: string; onGoToTest: () => void; guided?: boolean }> = ({ projectId, onGoToTest, guided = false }) => {
   const { toast } = useToast();
   const [reports, setReports] = useState<Report[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [showTour, setShowTour] = useFirstTimeTour("l2_report", guided && !!reports?.length);
 
   const load = useCallback(async () => {
     try {
@@ -86,15 +89,23 @@ export const PlaygroundReportStep: React.FC<{ projectId: string; onGoToTest: () 
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight text-foreground">Your results, on paper.</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Reports from your tests: a summary, a sample photo of each defect and a link to the full list of photos. Each
-          one is kept for 24 hours, so download the ones you want to keep.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">Your results, on paper.</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Reports from your tests: a summary, a sample photo of each defect and a link to the full list of photos. Each
+            one is kept for 24 hours, so download the ones you want to keep.
+          </p>
+        </div>
+        {guided && !!reports?.length && (
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowTour(true)}>
+            <HelpCircle className="h-4 w-4" aria-hidden="true" /> Show guide
+          </Button>
+        )}
       </div>
+      {guided && <GuidedTour steps={LEVEL_TWO_REPORT_TOUR} open={showTour} onClose={() => setShowTour(false)} />}
 
-      <section className="rounded-2xl border bg-card p-5 md:p-6" aria-labelledby="reports-heading">
+      <section data-tour="report-list" className="rounded-2xl border bg-card p-5 md:p-6" aria-labelledby="reports-heading">
         <h3 id="reports-heading" className="text-lg font-semibold text-foreground">
           Reports
         </h3>
@@ -111,7 +122,7 @@ export const PlaygroundReportStep: React.FC<{ projectId: string; onGoToTest: () 
           </div>
         ) : (
           <ul className="mt-4 space-y-3">
-            {reports.map((r) => (
+            {reports.map((r, i) => (
               <li key={r.id} className="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 items-start gap-3">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#171f1b] text-[#e9ff65]">
@@ -130,7 +141,7 @@ export const PlaygroundReportStep: React.FC<{ projectId: string; onGoToTest: () 
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-2">
-                  <Button size="sm" className="gap-1.5" onClick={() => void download(r)} disabled={busyId === r.id}>
+                  <Button data-tour={i === 0 ? "report-download" : undefined} size="sm" className="gap-1.5" onClick={() => void download(r)} disabled={busyId === r.id}>
                     {busyId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
                     Download PDF
                   </Button>

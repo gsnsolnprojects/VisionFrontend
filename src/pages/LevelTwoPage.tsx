@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, Loader2, Lock, PenLine } from "lucide-react";
+import { ArrowRight, HelpCircle, Loader2, Lock, PenLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LoadingState } from "@/components/pages/LoadingState";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
+import { GuidedTour, useFirstTimeTour } from "@/components/playground/GuidedTour";
+import { LEVEL_TWO_START_TOUR } from "@/components/playground/levelTwoGuides";
 import { PhotoDropZone } from "@/components/playground/PhotoDropZone";
 import { StepGuide } from "@/components/playground/StepGuide";
 import { BILLING_ROUTE, usePlanAccess } from "@/contexts/plan-access-context";
@@ -90,6 +92,14 @@ const LevelTwoPage: React.FC = () => {
     return () => setBreadcrumbs(null);
   }, [setBreadcrumbs]);
 
+  // Only when the form is on the page: not for a plan without this level, or when the project slot is in use
+  const projectLimitNow = limits?.projects;
+  const canStart =
+    !!projects &&
+    !!planAccess.data?.access?.features?.trainOnOwnDatasets &&
+    !(typeof projectLimitNow === "number" && Math.max(projects.length, planAccess.data?.usage?.projects ?? 0) >= projectLimitNow);
+  const [showTour, setShowTour] = useFirstTimeTour("l2_start", canStart);
+
   if (!projects || (planAccess.loading && !planAccess.data)) return <LoadingState message="Opening Level 2..." />;
 
   const companyName = company?.name ?? "";
@@ -156,13 +166,21 @@ const LevelTwoPage: React.FC = () => {
 
   return (
     <motion.div className="mx-auto max-w-3xl space-y-6 p-4 md:p-6" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Level 2</p>
-        <h1 className="mt-1 text-3xl font-bold tracking-tight text-foreground">Your own inspection</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Build your own model on your own photos. You can leave and continue any time.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Level 2</p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight text-foreground">Your own inspection</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Build your own model on your own photos. You can leave and continue any time.
+          </p>
+        </div>
+        {canStart && (
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowTour(true)}>
+            <HelpCircle className="h-4 w-4" aria-hidden="true" /> Show guide
+          </Button>
+        )}
       </div>
+      <GuidedTour steps={LEVEL_TWO_START_TOUR} open={showTour} onClose={() => setShowTour(false)} />
 
       <ol className="flex flex-wrap gap-2" aria-label="Steps in this level">
         {LEVEL_STEPS.map((step, i) => (
@@ -214,7 +232,7 @@ const LevelTwoPage: React.FC = () => {
         </section>
       ) : (
         <section className="space-y-5 rounded-2xl border bg-card p-5 md:p-6" aria-labelledby="upload-heading">
-          <div>
+          <div data-tour="l2-name">
             <Label htmlFor="project-name" className="text-sm font-medium text-foreground">
               Name your project
             </Label>
@@ -239,17 +257,21 @@ const LevelTwoPage: React.FC = () => {
             </h2>
             <p className="mt-0.5 text-sm text-muted-foreground">Your first upload makes this your project.</p>
           </div>
-          <StepGuide
-            what="Pick one defect to look for, for example a scratch or a missing part, and take clear photos of it."
-            why="You'll need at least 20 photos, and more is better. Include some good parts too, so the model learns the difference."
-          />
-          {problem ? (
-            <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Name your project above to add photos.</p>
-          ) : (
-            <PhotoDropZone uploading={busy === "upload"} maxMB={maxMB} spaceLeft={maxImages} onPhotos={(images) => void uploadPhotos(images)} />
-          )}
+          <div data-tour="l2-scope">
+            <StepGuide
+              what="Pick one defect to look for, for example a scratch or a missing part, and take clear photos of it."
+              why="You'll need at least 20 photos, and more is better. Include some good parts too, so the model learns the difference."
+            />
+          </div>
+          <div data-tour="l2-upload">
+            {problem ? (
+              <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Name your project above to add photos.</p>
+            ) : (
+              <PhotoDropZone uploading={busy === "upload"} maxMB={maxMB} spaceLeft={maxImages} onPhotos={(images) => void uploadPhotos(images)} />
+            )}
+          </div>
           {samples.length > 0 && (
-            <div className="rounded-xl border bg-secondary/30 p-4">
+            <div data-tour="l2-gsn" className="rounded-xl border bg-secondary/30 p-4">
               <p className="text-sm font-medium text-foreground">No photos of your own?</p>
               <p className="mt-1 text-sm text-muted-foreground">
                 Use GSN&apos;s photos and label them yourself. This counts as your project too.

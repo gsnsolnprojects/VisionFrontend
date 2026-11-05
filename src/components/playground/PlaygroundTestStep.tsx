@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { HelpCircle, AlertTriangle, Check, Clock, FileText, FlaskConical, ImagePlus, Loader2, Play, Sparkles, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GuidedTour, useFirstTimeTour, type TourStep } from "./GuidedTour";
+import { LEVEL_TWO_RESULTS_TOUR, LEVEL_TWO_TEST_TOUR } from "./levelTwoGuides";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, apiUrl, getAuthHeaders } from "@/lib/api/config";
 import { saveLevelProgress } from "@/lib/api/levels";
@@ -146,6 +147,8 @@ export const PlaygroundTestStep: React.FC<{
   classNames: string[];
   /** Level 1: GSN's model on the sample's held-out photos, with no project and no predictions used */
   learning?: { modelName: string; mAP50: number | null };
+  /** in Level 2: walks the student through their own test, with the guides written for it */
+  guided?: boolean;
   onTestFinished?: () => void;
 }> = ({
   projectId,
@@ -160,6 +163,7 @@ export const PlaygroundTestStep: React.FC<{
   testFiles: allTestFiles,
   classNames,
   learning,
+  guided = false,
   onTestFinished,
 }) => {
   const { toast } = useToast();
@@ -442,8 +446,9 @@ export const PlaygroundTestStep: React.FC<{
 
   const busy = run?.status === "queued" || run?.status === "running";
   const selectedModel = models?.find((m) => m.modelId === modelId);
-  const [showTour, setShowTour] = useFirstTimeTour("test", !!learning && !run && models !== null);
-  const [showResultsTour, setShowResultsTour] = useFirstTimeTour("test_results", !!learning && !!results?.length);
+  const hasGuide = !!learning || guided;
+  const [showTour, setShowTour] = useFirstTimeTour(learning ? "test" : "l2_test", hasGuide && !run && models !== null);
+  const [showResultsTour, setShowResultsTour] = useFirstTimeTour(learning ? "test_results" : "l2_test_results", hasGuide && !!results?.length);
   const canStart = !!modelId && !busy && !starting && (source === "test" ? testFiles.length > 0 : uploads.length > 0);
 
   return (
@@ -458,14 +463,14 @@ export const PlaygroundTestStep: React.FC<{
             where it slips.
           </p>
         </div>
-        {learning && (
+        {hasGuide && (
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => (results?.length ? setShowResultsTour(true) : setShowTour(true))}>
             <HelpCircle className="h-4 w-4" aria-hidden="true" /> Show guide
           </Button>
         )}
       </div>
-      {learning && <GuidedTour steps={TEST_TOUR} open={showTour} onClose={() => setShowTour(false)} />}
-      {learning && <GuidedTour steps={RESULTS_TOUR} open={showResultsTour} onClose={() => setShowResultsTour(false)} />}
+      {hasGuide && <GuidedTour steps={learning ? TEST_TOUR : LEVEL_TWO_TEST_TOUR} open={showTour} onClose={() => setShowTour(false)} />}
+      {hasGuide && <GuidedTour steps={learning ? RESULTS_TOUR : LEVEL_TWO_RESULTS_TOUR} open={showResultsTour} onClose={() => setShowResultsTour(false)} />}
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
         <section className="space-y-5 rounded-2xl border bg-card p-5 md:p-6" aria-labelledby="test-setup">

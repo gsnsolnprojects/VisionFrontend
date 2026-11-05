@@ -105,6 +105,7 @@ export const AnnotationPage: React.FC = () => {
         onClose={handleClose}
         initialImageFilename={initialImageFilename}
         batchId={batchId}
+        guided={searchParams.get("level") === "2"}
       />
     </div>
   );

@@ -39,7 +39,9 @@ import type {
 import { mapApiRecordToAnnotation, annotationToWritePayload } from "@/lib/utils/mapApiAnnotation";
 import { validatePolygonNormalized, polygonToBoundingBox } from "@/lib/utils/polygonUtils";
 import { isMongoObjectId, annotationsMatchGeometry } from "@/lib/utils/annotationSync";
-import { Loader2, Info, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import { GuidedTour, useFirstTimeTour } from "@/components/playground/GuidedTour";
+import { LEVEL_TWO_LABELLING_TOUR } from "@/components/playground/levelTwoGuides";
+import { HelpCircle, Loader2, Info, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAugmentationStatus, type AugmentationStatusState } from "@/hooks/useAugmentationStatus";
 import { Progress } from "@/components/ui/progress";
@@ -79,6 +81,8 @@ interface AnnotationWorkspaceProps {
   // "augment this?" prompt to just the images from this add-photos batch instead of the
   // whole dataset — see batchImages below.
   batchId?: string;
+  /** Opened from a Level 2 project: walks the student through labelling their own photos */
+  guided?: boolean;
 }
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -113,6 +117,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   onClose,
   initialImageFilename,
   batchId,
+  guided = false,
 }) => {
   // Playground (customer) companies train detection models only, so they get a simpler tool:
   // boxes only, no click-to-mask/polygons, no label-file import/export
@@ -170,6 +175,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   
   // Phase 3: Check if categories exist (defined early to avoid initialization errors)
   const hasCategories = categories.length > 0;
+  const [showTour, setShowTour] = useFirstTimeTour("l2_labelling", guided && !loading && !!currentImage);
   // Images from the add-photos batch that brought the user here, if any — scopes the
   // post-save augment prompt to just this batch instead of the whole dataset.
   const batchImages = useMemo(
@@ -1889,6 +1895,8 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // The guide uses the arrow keys and Esc itself
+      if (document.querySelector("[data-guided-tour]")) return;
       const target = e.target as HTMLElement | null;
       const activeElement = document.activeElement as HTMLElement | null;
       const isTypingInInput =
@@ -2156,6 +2164,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         role="region"
         aria-label="Annotation workspace"
       >
+      {guided && <GuidedTour steps={LEVEL_TWO_LABELLING_TOUR} open={showTour} onClose={() => setShowTour(false)} />}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">Annotation Workspace</h3>
@@ -2201,6 +2210,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           )}
           {/* Phase 5: Save Annotations button (triggers YOLO conversion) */}
           <Button
+            data-tour="label-save"
             variant="default"
             size="sm"
             onClick={async () => {
@@ -2247,6 +2257,11 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
               Reload (Updated elsewhere)
             </Button>
           )}
+          {guided && (
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowTour(true)}>
+              <HelpCircle className="h-4 w-4" aria-hidden="true" /> Show guide
+            </Button>
+          )}
           <AnnotationProgress
             current={currentIndex}
             total={total}
@@ -2274,7 +2289,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       )}
 
       {/* Navigation controls */}
-      <div className="flex items-center justify-between text-sm">
+      <div data-tour="label-nav" className="flex items-center justify-between text-sm">
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
@@ -2300,7 +2315,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
 
       <div className="grid grid-cols-[minmax(0,220px)_minmax(0,1fr)_minmax(0,220px)] gap-4">
         {/* Left sidebar: categories */}
-        <div className="border rounded-md p-3 space-y-3" role="complementary" aria-label="Category selection">
+        <div data-tour="label-categories" className="border rounded-md p-3 space-y-3" role="complementary" aria-label="Category selection">
           <h4 className="text-sm font-medium">Categories</h4>
           <CategorySelector
             categories={categories}
@@ -2420,6 +2435,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           </div>
           <div
             ref={imageContainerRef}
+            data-tour="label-canvas"
             className={`relative w-full aspect-video border rounded-md bg-muted flex ${
               zoomLevel > 1
                 ? "overflow-auto items-start justify-start"
@@ -2569,7 +2585,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
         </div>
 
         {/* Right sidebar: tools + stats */}
-        <div className="border rounded-md p-3 space-y-3">
+        <div data-tour="label-tools" className="border rounded-md p-3 space-y-3">
           <h4 className="text-sm font-medium">Tools</h4>
           <AnnotationToolbar
             annotationShapeMode={annotationShapeMode}

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, ChevronDown, Gauge, Layers, Loader2, Play, Rabbit, Sparkles, Trash2, Turtle } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Gauge, HelpCircle, Layers, Loader2, Play, Rabbit, Sparkles, Trash2, Turtle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +19,8 @@ import { apiRequest, apiUrl, getAuthHeaders } from "@/lib/api/config";
 import { getLearningProgress } from "@/lib/api/dashboard";
 import { notifyProgressSaved } from "@/lib/api/badges";
 import { getLevels, saveLevelProgress } from "@/lib/api/levels";
+import { GuidedTour, useFirstTimeTour } from "./GuidedTour";
+import { LEVEL_TWO_TRAIN_TOUR } from "./levelTwoGuides";
 import { TRAINING_JOURNEY } from "./trainingJourney";
 import { getModelQuota, type ModelQuota } from "@/lib/api/models";
 import type { PlanLimits } from "@/lib/api/subscription";
@@ -117,7 +119,9 @@ export const PlaygroundTrainStep: React.FC<{
   onTestModel: () => void;
   /** the level's mission, which remembers the training run */
   missionName: string;
-}> = ({ projectId, companyName, projectName, datasetId, isSample, classNames, counts, limits, onTestModel, missionName }) => {
+  /** in Level 2: walks the student through training */
+  guided?: boolean;
+}> = ({ projectId, companyName, projectName, datasetId, isSample, classNames, counts, limits, onTestModel, missionName, guided = false }) => {
   const { toast } = useToast();
   const [size, setSize] = useState(SIZES[0].key);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -130,6 +134,7 @@ export const PlaygroundTrainStep: React.FC<{
   const [modelToDelete, setModelToDelete] = useState<TrainedModel | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const pollTimer = useRef<number | null>(null);
+  const [showTour, setShowTour] = useFirstTimeTour("l2_train", guided && models !== null);
 
   const runLimit = typeof limits?.trainingRunsPerMonth === "number" ? limits.trainingRunsPerMonth : null;
   const runsLeft = runLimit === null || runsUsed === null ? null : Math.max(0, runLimit - runsUsed);
@@ -313,12 +318,20 @@ export const PlaygroundTrainStep: React.FC<{
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight text-foreground">Train. Watch. Learn.</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Training means showing the computer your labelled photos many times until it can spot the defects by itself.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">Train. Watch. Learn.</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Training means showing the computer your labelled photos many times until it can spot the defects by itself.
+          </p>
+        </div>
+        {guided && (
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowTour(true)}>
+            <HelpCircle className="h-4 w-4" aria-hidden="true" /> Show guide
+          </Button>
+        )}
       </div>
+      {guided && <GuidedTour steps={LEVEL_TWO_TRAIN_TOUR} open={showTour} onClose={() => setShowTour(false)} />}
 
       <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
         {/* Setup */}
@@ -332,7 +345,7 @@ export const PlaygroundTrainStep: React.FC<{
             </span>
           </div>
 
-          <dl className="mt-4 divide-y text-sm">
+          <dl data-tour="train-numbers" className="mt-4 divide-y text-sm">
             {[
               ["Photos it learns from", counts.training],
               ["Photos it checks itself on", counts.validation],
@@ -359,7 +372,7 @@ export const PlaygroundTrainStep: React.FC<{
             </div>
           </dl>
 
-          <fieldset className="mt-5">
+          <fieldset data-tour="train-size" className="mt-5">
             <legend className="mb-2 text-sm font-medium text-foreground">Pick a model size</legend>
             <div className="grid gap-3 sm:grid-cols-2">
               {SIZES.filter((s) => !quota?.sizes || quota.sizes.includes(s.letter)).map(({ key, name, Icon, blurb }) => (
@@ -384,7 +397,7 @@ export const PlaygroundTrainStep: React.FC<{
             </div>
           </fieldset>
 
-          <div className="mt-5 rounded-xl border p-4">
+          <div data-tour="train-settings" className="mt-5 rounded-xl border p-4">
             <button
               type="button"
               className="flex w-full items-center justify-between gap-3 text-left"
@@ -474,7 +487,7 @@ export const PlaygroundTrainStep: React.FC<{
             )}
           </div>
 
-          <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
+          <div data-tour="train-allowance" className="mt-5 grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-xl bg-secondary/40 p-3">
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Gauge className="h-3.5 w-3.5" /> Training runs left
@@ -496,6 +509,7 @@ export const PlaygroundTrainStep: React.FC<{
           {blockedReason && !busy && <p className="mt-4 text-sm text-destructive">{blockedReason}</p>}
 
           <Button
+            data-tour="train-start"
             className="mt-5 w-full gap-2"
             size="lg"
             onClick={() => void start()}
@@ -597,7 +611,7 @@ export const PlaygroundTrainStep: React.FC<{
       </div>
 
       {/* Models */}
-      <section className="rounded-2xl border bg-card p-5 md:p-6" aria-labelledby="models-heading">
+      <section data-tour="train-models" className="rounded-2xl border bg-card p-5 md:p-6" aria-labelledby="models-heading">
         <h3 id="models-heading" className="text-lg font-semibold text-foreground">
           Your trained models
         </h3>

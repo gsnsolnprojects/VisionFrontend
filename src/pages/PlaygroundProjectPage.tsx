@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, Check, ChevronDown, Circle, Compass, Loader2, Lock, PenLine, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Circle, Compass, HelpCircle, Loader2, Lock, PenLine, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -37,6 +37,8 @@ import { PlaygroundTrainStep } from "@/components/playground/PlaygroundTrainStep
 import { PlaygroundTestStep } from "@/components/playground/PlaygroundTestStep";
 import { PlaygroundReportStep } from "@/components/playground/PlaygroundReportStep";
 import { PlaygroundLabelPractice } from "@/components/playground/PlaygroundLabelPractice";
+import { GuidedTour, useFirstTimeTour } from "@/components/playground/GuidedTour";
+import { LEVEL_TWO_DATA_TOUR } from "@/components/playground/levelTwoGuides";
 import { PhotoDropZone } from "@/components/playground/PhotoDropZone";
 import { StepGuide } from "@/components/playground/StepGuide";
 import { getSamples } from "@/lib/api/samples";
@@ -430,7 +432,7 @@ export const PlaygroundProjectPage: React.FC = () => {
 
   const openLabelling = (file: ImageFile) => {
     if (!selectedId) return;
-    navigate(`/annotation/${encodeURIComponent(selectedId)}?image=${encodeURIComponent(file.storedName || file.originalName)}`);
+    navigate(`/annotation/${encodeURIComponent(selectedId)}?image=${encodeURIComponent(file.storedName || file.originalName)}${level ? "&level=2" : ""}`);
   };
 
   // Boxes are saved as they're drawn, but training and extra photos read the label files:
@@ -481,6 +483,8 @@ export const PlaygroundProjectPage: React.FC = () => {
     if (!levelMission || !doneSteps) return;
     for (const done of doneSteps.split(",")) saveLevelProgress({ mission: levelMission, step: done });
   }, [levelMission, doneSteps]);
+
+  const [showDataTour, setShowDataTour] = useFirstTimeTour("l2_data", !!level && step === "label" && !!dataset && !isSample && !loadingFiles);
 
   if (!project || versions === null) return <LoadingState message="Loading your project..." />;
 
@@ -597,7 +601,13 @@ export const PlaygroundProjectPage: React.FC = () => {
         ) : (
           <div />
         )}
+        {level && step === "label" && dataset && !isSample && (
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowDataTour(true)}>
+            <HelpCircle className="h-4 w-4" aria-hidden="true" /> Show guide
+          </Button>
+        )}
       </div>
+      <GuidedTour steps={LEVEL_TWO_DATA_TOUR} open={showDataTour && step === "label"} onClose={() => setShowDataTour(false)} />
 
       {/* Mission bar: which project this is, and a switcher to the company's other projects */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-secondary/40 px-4 py-3 md:px-5">
@@ -791,6 +801,7 @@ export const PlaygroundProjectPage: React.FC = () => {
             limits={limits}
             onTestModel={() => goToStep("test")}
             missionName={missionName}
+            guided={!!level}
           />
         ) : (
           <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">
@@ -820,7 +831,7 @@ export const PlaygroundProjectPage: React.FC = () => {
         )
       )}
 
-      {step === "report" && <PlaygroundReportStep projectId={project.id} onGoToTest={() => goToStep("test")} />}
+      {step === "report" && <PlaygroundReportStep projectId={project.id} onGoToTest={() => goToStep("test")} guided={!!level} />}
 
       {step === "test" && (
         dataset && selectedId ? (
@@ -840,6 +851,7 @@ export const PlaygroundProjectPage: React.FC = () => {
             preferUpload={searchParams.get("try") === "1"}
             testFiles={testFiles}
             classNames={classNames}
+            guided={!!level}
           />
         ) : (
           <p className="rounded-2xl border bg-card p-6 text-sm text-muted-foreground">
@@ -852,7 +864,7 @@ export const PlaygroundProjectPage: React.FC = () => {
       {step === "label" && (
       <section className="rounded-2xl border bg-card p-5 md:p-6" aria-labelledby="dataset-heading">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
+          <div data-tour="l2-dataset">
             <h2 id="dataset-heading" className="text-xl font-semibold text-foreground">
               {!dataset
                 ? missionName
@@ -884,7 +896,7 @@ export const PlaygroundProjectPage: React.FC = () => {
         </div>
 
         {showDropZone && (
-          <div className="mt-5">
+          <div data-tour="l2-add" className="mt-5">
             <PhotoDropZone uploading={uploading} maxMB={maxMB} spaceLeft={spaceLeft} onPhotos={(images) => void uploadImages(images)} />
           </div>
         )}
@@ -907,7 +919,7 @@ export const PlaygroundProjectPage: React.FC = () => {
         )}
 
         {dataset && !isSample && !dataset.isAugmented && ownDatasetsAllowed && (
-          <div className="mt-5 rounded-xl border bg-secondary/30 p-4">
+          <div data-tour="l2-more" className="mt-5 rounded-xl border bg-secondary/30 p-4">
             <p className="text-sm font-medium text-foreground">Make more training photos</p>
             <p className="mt-1 text-sm text-muted-foreground">
               A few photos rarely train a good model. Make varied copies of your labelled photos (flipped, rotated,
@@ -941,7 +953,7 @@ export const PlaygroundProjectPage: React.FC = () => {
         {dataset && (
           <>
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filter images">
+              <div data-tour="l2-filters" className="flex flex-wrap gap-2" role="tablist" aria-label="Filter images">
                 {filters.map((f) => (
                   <button
                     key={f.id}
@@ -962,12 +974,12 @@ export const PlaygroundProjectPage: React.FC = () => {
                 ))}
               </div>
               {firstToLabel ? (
-                <Button className="gap-1.5" onClick={() => openLabelling(firstToLabel)}>
+                <Button data-tour="l2-next" className="gap-1.5" onClick={() => openLabelling(firstToLabel)}>
                   Next: label your photos
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               ) : (
-                <Button className="gap-1.5" onClick={() => goToStep("train")} disabled={level ? !labelDone : counts.labelled === 0}>
+                <Button data-tour="l2-next" className="gap-1.5" onClick={() => goToStep("train")} disabled={level ? !labelDone : counts.labelled === 0}>
                   Next: train a model
                   <ArrowRight className="h-4 w-4" />
                 </Button>
@@ -998,7 +1010,7 @@ export const PlaygroundProjectPage: React.FC = () => {
                   const split = splitOf(f.folder);
                   const done = isLabelled(f);
                   return (
-                    <article key={f.id} className="overflow-hidden rounded-xl border bg-background/40">
+                    <article key={f.id} data-tour={i === 0 ? "l2-first-photo" : undefined} className="overflow-hidden rounded-xl border bg-background/40">
                       <div className="relative aspect-[4/3] bg-[#171f1b]">
                         <LabelledThumbnail datasetId={selectedId!} file={f} boxes={boxes[f.id]} classNames={classNames} />
                         <span

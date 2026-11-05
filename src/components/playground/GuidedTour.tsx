@@ -71,6 +71,8 @@ export function useFirstTimeTour(name: string, ready: boolean): [boolean, (open:
 const GAP = 14;
 const EDGE = 16;
 const POPUP_WIDTH = 380;
+/** The app's top bar stays on screen, so an element scrolled under it couldn't be seen */
+const PAGE_HEADER = 80;
 
 const findTarget = (step?: TourStep) => (step?.target ? document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`) : null);
 const isShown = (step: TourStep) => !step.target || !!findTarget(step);
@@ -102,6 +104,13 @@ export const GuidedTour: React.FC<{ steps: TourStep[]; open: boolean; onClose: (
     if (!step) return;
     const el = findTarget(step);
     el?.scrollIntoView({ block: "center" });
+    // On a short screen the popup would cover a tall element: move it up to leave room underneath
+    if (el && popupRef.current) {
+      const box = el.getBoundingClientRect();
+      const short = box.bottom + GAP + popupRef.current.offsetHeight + EDGE - window.innerHeight;
+      const spare = box.top - PAGE_HEADER;
+      if (short > 0 && spare > 0) window.scrollBy(0, Math.min(short, spare));
+    }
     measure();
     const settle = [120, 300, 600].map((ms) => window.setTimeout(measure, ms));
     window.addEventListener("resize", measure);
@@ -174,7 +183,7 @@ export const GuidedTour: React.FC<{ steps: TourStep[]; open: boolean; onClose: (
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[200]" role="dialog" aria-modal="true" aria-labelledby="tour-title">
+    <div data-guided-tour className="fixed inset-0 z-[200]" role="dialog" aria-modal="true" aria-labelledby="tour-title">
       {/* Keeps clicks away from the page while the guide is open */}
       <div className={cn("absolute inset-0", !rect && "bg-black/60")} />
       {rect && (
