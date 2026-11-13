@@ -13,6 +13,8 @@ export type AnnotationState = "draft" | "reviewed" | "approved" | "rejected";
 export interface Image {
   id: string;
   filename: string;
+  /** The name the photo was uploaded with; filename is the stored name, often an id */
+  originalName?: string | null;
   url: string;
   thumbnailUrl?: string;
   folder?: string;

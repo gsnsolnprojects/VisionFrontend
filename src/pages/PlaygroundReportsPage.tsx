@@ -203,8 +203,8 @@ const PlaygroundReportsPage: React.FC = () => {
               <span className="text-[#e9ff65]">ready to share.</span>
             </h1>
             <p className="mt-4 max-w-lg text-sm leading-relaxed text-[#bec9b0]">
-              Every report shows each photo and what the model found on it. Download the PDF to read or share, or the
-              spreadsheet to sort and count the results yourself.
+              Every report has a summary of what the model found, a sample photo of each defect and a link to the full
+              list of photos. Download the PDF to read or share, or the CSV to sort and count the results yourself.
             </p>
           </div>
           <div className="rounded-xl border border-[#485840] p-5">

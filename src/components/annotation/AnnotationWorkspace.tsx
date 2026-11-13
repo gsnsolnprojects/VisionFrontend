@@ -93,6 +93,7 @@ function normalizeDatasetImage(raw: Record<string, unknown>): Image {
   return {
     id,
     filename: String(raw.filename ?? raw.name ?? ""),
+    originalName: raw.originalName != null ? String(raw.originalName) : null,
     url: String(raw.url ?? ""),
     thumbnailUrl:
       raw.thumbnailUrl != null

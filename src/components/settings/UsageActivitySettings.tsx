@@ -32,6 +32,8 @@ interface Session {
   minutes: number | null;
   waitMinutes?: number | null;
   status: string;
+  /** Its project, test or dataset was deleted: kept here as history */
+  deleted?: boolean;
 }
 
 interface UsageResponse {
@@ -306,7 +308,12 @@ export const UsageActivitySettings: React.FC = () => {
                         <td className="px-3 py-2 whitespace-nowrap">{when(s.startedAt ?? s.queuedAt)}</td>
                         <td className="px-3 py-2 whitespace-nowrap">{when(s.endedAt)}</td>
                         <td className="px-3 py-2 whitespace-nowrap">{duration(s.minutes)}</td>
-                        <td className="px-3 py-2 capitalize">{s.status.replace(/_/g, " ")}</td>
+                        <td className="px-3 py-2 capitalize">
+                          {s.status.replace(/_/g, " ")}
+                          {s.deleted && s.status !== "deleted" && (
+                            <span className="block text-xs normal-case text-muted-foreground">Deleted later</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

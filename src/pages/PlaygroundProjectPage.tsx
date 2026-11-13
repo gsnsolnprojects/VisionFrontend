@@ -216,6 +216,17 @@ export const PlaygroundProjectPage: React.FC = () => {
     if (project) void loadVersions(project.name).catch(() => setVersions([]));
   }, [project, loadVersions]);
 
+  // Remember the project being worked on, so Close in the labelling tool comes back here. The
+  // sidebar does the same, but on a narrow screen it isn't on the page until opened.
+  useEffect(() => {
+    if (!project?.id) return;
+    try {
+      localStorage.setItem(`visionm_playground_last_project_${user?.id ?? "anon"}`, project.id);
+    } catch {
+      // a convenience only
+    }
+  }, [project?.id, user?.id]);
+
   // Top trail: Dashboard > mission > step (instead of the project id from the address)
   const { setItems: setBreadcrumbs } = useBreadcrumbs();
   useEffect(() => {
