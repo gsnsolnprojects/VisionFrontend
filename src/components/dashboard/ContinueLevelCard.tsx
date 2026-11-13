@@ -70,7 +70,19 @@ const PAGE_STEP: Record<string, string | null> = {
 /** What the student does next, in a heading and a few plain lines */
 const nextUp = (level: LevelProgress) => {
   const status = level.training?.status;
-  if (status === "queued" || status === "running") {
+  if (status === "queued") {
+    const minutes = level.training?.queuedAt
+      ? Math.max(0, Math.floor((Date.now() - new Date(level.training.queuedAt).getTime()) / 60000))
+      : null;
+    const waited = minutes === null ? "" : minutes < 1 ? " It has just joined the line." : ` It has waited ${minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`} so far.`;
+    return level.training?.noGpuAvailable
+      ? {
+          title: "Your training is waiting for a GPU",
+          text: `AWS has no GPU free in Mumbai right now, so it hasn't started yet.${waited} We try every 2 minutes and it starts by itself; the bell at the top tells you when.`,
+        }
+      : { title: "Your training is about to start", text: `It's in line for a training computer.${waited} The bell at the top tells you when it starts.` };
+  }
+  if (status === "running") {
     return { title: "Your model is training", text: "It keeps going while you're away. Open it to see how far it has got. Next, you'll test it on photos it never learned from." };
   }
   if (status === "failed" || status === "cancelled") {

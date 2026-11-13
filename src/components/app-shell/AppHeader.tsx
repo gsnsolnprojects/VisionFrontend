@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Bell, Building2, Menu, CheckCircle2, XCircle, Sun, Moon } from "lucide-react";
 import { UserMenu } from "./UserMenu";
+import { PlaygroundBell } from "./PlaygroundBell";
 import { JoinCompanyDialog } from "@/components/JoinCompanyDialog";
 import { JoinRequestsSidePanel } from "@/components/JoinRequestsSidePanel";
 import { useProfile } from "@/hooks/useProfile";
@@ -414,8 +415,16 @@ export const AppHeader: React.FC = () => {
                 )}
               </Button>
 
+              {/* Playground: training updates (and join requests for the admin) */}
+              {sessionReady && !loading && isPlaygroundWorkspace && profile?.email && (
+                <PlaygroundBell
+                  joinRequestCount={hasPermission("manageWorkspaceUsers") ? pendingRequestCount : 0}
+                  onOpenJoinRequests={hasPermission("manageWorkspaceUsers") ? () => setShowRequestsPanel(true) : undefined}
+                />
+              )}
+
               {/* Notification Bell Icon - Workspace Admin Only */}
-              {sessionReady && !loading && hasPermission("manageWorkspaceUsers") && profile?.email && (
+              {sessionReady && !loading && !isPlaygroundWorkspace && hasPermission("manageWorkspaceUsers") && profile?.email && (
                 <Button
                   variant="ghost"
                   size="icon"

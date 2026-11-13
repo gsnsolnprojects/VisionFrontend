@@ -16,7 +16,15 @@ export interface LevelProgress {
   /** best label practice score, 0-1 */
   practiceScore: number | null;
   trainingJobId: string | null;
-  training: { status: string } | null;
+  /** The level's training run: queued (waiting for a GPU), running, or done */
+  training: {
+    status: string;
+    queuedAt?: string;
+    startedAt?: string | null;
+    completedAt?: string | null;
+    /** Queued, and AWS has no GPU free right now */
+    noGpuAvailable?: boolean;
+  } | null;
   finishedAt: string | null;
   startedAt?: string;
   updatedAt: string;

@@ -22,6 +22,7 @@ import { getLevels, saveLevelProgress } from "@/lib/api/levels";
 import { GuidedTour, useFirstTimeTour } from "./GuidedTour";
 import { LEVEL_TWO_TRAIN_TOUR } from "./levelTwoGuides";
 import { TRAINING_JOURNEY } from "./trainingJourney";
+import { TrainingWaitCard } from "./TrainingWaitCard";
 import { getModelQuota, type ModelQuota } from "@/lib/api/models";
 import type { PlanLimits } from "@/lib/api/subscription";
 import { cn } from "@/lib/utils";
@@ -44,6 +45,11 @@ interface JobState {
   error: string | null;
   /** Queued, and AWS has no GPU computer free right now */
   noGpu: boolean;
+  /** While it waits: since when, the next try, and about how long once a GPU is found */
+  queuedAt: string | null;
+  nextTryAt: string | null;
+  startupMinutes: number | null;
+  trainMinutes: number | null;
 }
 
 interface TrainedModel {
@@ -192,6 +198,10 @@ export const PlaygroundTrainStep: React.FC<{
           finalMetrics?: { mAP50?: number };
           error?: string | { message?: string } | null;
           noGpuAvailable?: boolean;
+          queuedAt?: string;
+          gpuNextTryAt?: string;
+          startupMinutes?: number;
+          estimatedTrainingMinutes?: number;
         }>(`/train/${encodeURIComponent(jobId)}/status`, { maxRetries: 1 });
         const next: JobState = {
           jobId,
@@ -202,6 +212,10 @@ export const PlaygroundTrainStep: React.FC<{
           mAP50: s.finalMetrics?.mAP50 ?? s.metrics?.mAP50 ?? null,
           error: typeof s.error === "string" ? s.error : s.error?.message ?? null,
           noGpu: !!s.noGpuAvailable,
+          queuedAt: s.queuedAt ?? null,
+          nextTryAt: s.gpuNextTryAt ?? null,
+          startupMinutes: s.startupMinutes ?? null,
+          trainMinutes: s.estimatedTrainingMinutes ?? null,
         };
         setJob(next);
         if (next.status === "completed") notifyProgressSaved();
@@ -278,7 +292,7 @@ export const PlaygroundTrainStep: React.FC<{
         // ignore
       }
       saveLevelProgress({ mission: missionName, trainingJobId: jobId });
-      setJob({ jobId, status: "queued", currentEpoch: 0, totalEpochs: 0, percent: 0, mAP50: null, error: null, noGpu: false });
+      setJob({ jobId, status: "queued", currentEpoch: 0, totalEpochs: 0, percent: 0, mAP50: null, error: null, noGpu: false, queuedAt: new Date().toISOString(), nextTryAt: null, startupMinutes: null, trainMinutes: null });
       loadAllowance();
       void poll(jobId);
     } catch (err) {
@@ -524,28 +538,29 @@ export const PlaygroundTrainStep: React.FC<{
               : "We're setting up the training computers. Meanwhile, read how training works and test a ready-made model in step 3."}
           </p>
 
-          {busy && job && (
+          {busy && job && job.status === "queued" && (
+            <TrainingWaitCard
+              noGpu={job.noGpu}
+              queuedAt={job.queuedAt}
+              nextTryAt={job.nextTryAt}
+              startupMinutes={job.startupMinutes}
+              trainMinutes={job.trainMinutes}
+            />
+          )}
+          {busy && job && job.status !== "queued" && (
             <div className="mt-4 rounded-xl border bg-secondary/40 p-4" role="status">
               <div className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="font-medium text-foreground">
-                  {job.status === "queued"
-                    ? job.noGpu
-                      ? "No GPU available right now"
-                      : "Waiting for a training computer"
-                    : job.totalEpochs
-                      ? `Epoch ${job.currentEpoch} of ${job.totalEpochs}`
-                      : "Getting started"}
+                  {job.totalEpochs ? `Epoch ${job.currentEpoch} of ${job.totalEpochs}` : "Getting started"}
                 </span>
                 <span className="font-semibold tabular-nums text-foreground">{Math.round(job.percent)}%</span>
               </div>
               <Progress value={job.percent} className="mt-2 h-3 bg-background" indicatorClassName="bg-ring" aria-label="Training progress" />
               <p className="mt-2 text-xs text-muted-foreground">
-                {job.status === "queued"
-                  ? job.noGpu
-                    ? "AWS, where our training computers run, has no GPU free right now, so your training hasn't started yet. Nothing is wrong with your photos. We keep trying every minute and it starts by itself. This can take a while; you can leave this page and come back."
-                    : "It starts by itself as soon as one is free. This can take a while; you can leave this page and come back."
-                  : job.mAP50 !== null
-                    ? `Current score ${percent(job.mAP50)}: ${scoreWords(job.mAP50).toLowerCase()}. You can leave this page and come back.`
+                {job.mAP50 !== null
+                  ? `Current score ${percent(job.mAP50)}: ${scoreWords(job.mAP50).toLowerCase()}. You can leave this page and come back.`
+                  : job.trainMinutes
+                    ? `Training takes about ${job.trainMinutes} min. You can leave this page and come back: training keeps going.`
                     : "You can leave this page and come back: training keeps going."}
               </p>
             </div>
