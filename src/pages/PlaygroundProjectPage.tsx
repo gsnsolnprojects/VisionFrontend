@@ -285,8 +285,8 @@ export const PlaygroundProjectPage: React.FC = () => {
       );
       setLabelled(new Set(json.labeledBaseNames ?? []));
     } catch (err) {
+      // Keep what's on screen: an empty list would look like the photos were gone
       toast({ title: "Couldn't load images", description: (err as Error).message, variant: "destructive" });
-      setFiles([]);
     } finally {
       setLoadingFiles(false);
     }
@@ -318,12 +318,26 @@ export const PlaygroundProjectPage: React.FC = () => {
     return () => window.clearTimeout(timer);
   }, [augmentingFrom, versions, project, loadVersions, loadFiles, toast]);
 
+  const emptyRetries = useRef(0);
   useEffect(() => {
     setFilter("all");
     setPage(1);
     setBoxes({});
+    emptyRetries.current = 0;
     if (selectedId) void loadFiles(selectedId);
   }, [selectedId, loadFiles]);
+
+  // The server says this dataset has photos but the page has none (e.g. it was read while extra
+  // photos were being made): read them again, a few times, rather than show "0 images"
+  const selectedTotal = versions?.find((v) => v.datasetId === selectedId)?.totalImages ?? 0;
+  useEffect(() => {
+    if (!selectedId || loadingFiles || files.length > 0 || selectedTotal <= 0 || emptyRetries.current >= 5) return;
+    const timer = window.setTimeout(() => {
+      emptyRetries.current += 1;
+      void loadFiles(selectedId);
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [selectedId, loadingFiles, files.length, selectedTotal, loadFiles]);
 
   const isLabelled = useCallback(
     (f: ImageFile) => labelled.has(baseOf(f.storedName)) || labelled.has(baseOf(f.originalName)),
@@ -888,7 +902,9 @@ export const PlaygroundProjectPage: React.FC = () => {
                       : "My images"}
             </h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              {dataset
+              {dataset && augmentingFrom === dataset.datasetId
+                ? "Making extra training photos… the counts update when they're ready."
+                : dataset
                 ? `${counts.all} images · ${counts.labelled} labelled · ${counts.test} held-out test`
                 : "No images yet. Add your own to get started."}
             </p>
