@@ -10,6 +10,7 @@ import { AdminUsersTab } from "@/components/admin/AdminUsersTab";
 import { AdminCompaniesTab } from "@/components/admin/AdminCompaniesTab";
 import { AdminRevenueTab } from "@/components/admin/AdminRevenueTab";
 import { AdminJobsTab } from "@/components/admin/AdminJobsTab";
+import { AdminGpuTab } from "@/components/admin/AdminGpuTab";
 import { AdminSampleLibraryTab } from "@/components/admin/AdminSampleLibraryTab";
 import { AdminPublishTab } from "@/components/admin/AdminPublishTab";
 
@@ -19,6 +20,7 @@ const TABS = [
   { value: "companies", label: "Companies" },
   { value: "revenue", label: "Revenue" },
   { value: "jobs", label: "Jobs & activity" },
+  { value: "gpu", label: "GPU" },
   { value: "samples", label: "Sample library" },
   { value: "publish", label: "Publish to live" },
 ] as const;
@@ -74,6 +76,9 @@ export const AdminPage: React.FC = () => {
         </TabsContent>
         <TabsContent value="jobs">
           <AdminJobsTab />
+        </TabsContent>
+        <TabsContent value="gpu">
+          <AdminGpuTab />
         </TabsContent>
         <TabsContent value="samples">
           <AdminSampleLibraryTab />

@@ -165,6 +165,84 @@ export const getAdminJobs = (type: "training" | "inference") =>
 
 export const getAdminAudit = () => apiRequest<{ entries: AdminAuditEntry[] }>("/admin/audit");
 
+// ---- GPU training server: where (AWS region / zone), when and how long ----
+
+export interface AdminGpuTraining {
+  id: string;
+  company: string | null;
+  project: string | null;
+  model: string;
+  status: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface AdminGpuSession {
+  id: string;
+  region: string | null;
+  regionName: string | null;
+  zone: string | null;
+  instanceType: string | null;
+  instanceId: string | null;
+  startedAt: string;
+  stoppedAt: string | null;
+  running: boolean;
+  minutes: number;
+  costInr: number;
+  trainings: AdminGpuTraining[];
+}
+
+export interface AdminGpuZoneTotal {
+  zone: string | null;
+  region: string | null;
+  regionName: string | null;
+  switchOns: number;
+  minutes: number;
+  costInr: number;
+  trainings: number;
+}
+
+export interface AdminGpuAttempt {
+  at: string;
+  region: string;
+  zone: string;
+  result: "started" | "full" | "error";
+  instanceId: string;
+  waiting: number;
+  message: string;
+}
+
+export interface AdminGpuRegionScore {
+  region: string;
+  name: string;
+  isOurs: boolean;
+  checks: number;
+  average: number | null;
+  easyPercent: number | null;
+  latest: number | null;
+}
+
+export interface AdminGpuUsage {
+  days: number;
+  regions: { region: string; name: string; inrPerHour: number }[];
+  totals: { switchOns: number; minutes: number; costInr: number; trainings: number };
+  sessions: AdminGpuSession[];
+  zones: AdminGpuZoneTotal[];
+  dispatch: {
+    summary: { zone: string | null; region: string; regionName: string; tries: number; started: number; full: number; errors: number }[];
+    recent: AdminGpuAttempt[];
+  };
+  availability: {
+    easyScore: number;
+    firstCheckAt: string | null;
+    lastCheckAt: string | null;
+    regions: AdminGpuRegionScore[];
+    checks: { at: string; scores: Record<string, number> }[];
+  };
+}
+
+export const getAdminGpuUsage = (days: number) => apiRequest<AdminGpuUsage>(`/admin/gpu?days=${days}`);
+
 // ---- Playground sample dataset library ----
 
 export interface SampleLibraryDatasetInfo {
