@@ -17,6 +17,8 @@ export interface TourStep {
   target?: string;
   title: string;
   text: string;
+  /** A picture or short animation shown above the text */
+  visual?: React.ReactNode;
 }
 
 /**
@@ -71,6 +73,8 @@ export function useFirstTimeTour(name: string, ready: boolean): [boolean, (open:
 const GAP = 14;
 const EDGE = 16;
 const POPUP_WIDTH = 380;
+/** A step with a picture gets a wider popup, so the picture is big enough to see */
+const VISUAL_POPUP_WIDTH = 440;
 /** The app's top bar stays on screen, so an element scrolled under it couldn't be seen */
 const PAGE_HEADER = 80;
 
@@ -85,11 +89,17 @@ export const GuidedTour: React.FC<{ steps: TourStep[]; open: boolean; onClose: (
   const popupRef = useRef<HTMLDivElement>(null);
   const nextRef = useRef<HTMLButtonElement>(null);
 
+  const stepsRef = useRef(steps);
+  stepsRef.current = steps;
   useEffect(() => {
     if (!open) return;
-    setShown(steps.filter(isShown));
+    setShown(stepsRef.current.filter(isShown));
     setIndex(0);
-  }, [open, steps]);
+  }, [open]);
+  // Steps updated while the guide is open (e.g. a picture that has loaded) keep the student's place
+  useEffect(() => {
+    setShown((prev) => prev.map((p) => steps.find((s) => s.title === p.title) ?? p));
+  }, [steps]);
 
   const step = open ? shown[index] : undefined;
   const isLast = index === shown.length - 1;
@@ -126,11 +136,19 @@ export const GuidedTour: React.FC<{ steps: TourStep[]; open: boolean; onClose: (
     if (popupRef.current) setPopupHeight(popupRef.current.offsetHeight);
     nextRef.current?.focus({ preventScroll: true });
   }, [step]);
+  // A picture in the popup can change its height after it opens
+  useEffect(() => {
+    const el = popupRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setPopupHeight(el.offsetHeight));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [step]);
 
   const goNext = useCallback(() => {
     // Looks again: something that has loaded since (like the labels list) joins the guide
     const fresh = steps.filter(isShown);
-    const at = shown[index] ? fresh.indexOf(shown[index]) : -1;
+    const at = shown[index] ? fresh.findIndex((s) => s.title === shown[index].title) : -1;
     if (at >= fresh.length - 1) {
       onClose();
       return;
@@ -153,7 +171,7 @@ export const GuidedTour: React.FC<{ steps: TourStep[]; open: boolean; onClose: (
 
   if (!step) return null;
 
-  const width = Math.min(POPUP_WIDTH, window.innerWidth - EDGE * 2);
+  const width = Math.min(step.visual ? VISUAL_POPUP_WIDTH : POPUP_WIDTH, window.innerWidth - EDGE * 2);
   const height = popupHeight || 220;
   let style: React.CSSProperties = {
     width,
@@ -218,6 +236,12 @@ export const GuidedTour: React.FC<{ steps: TourStep[]; open: boolean; onClose: (
         <h2 id="tour-title" className="mt-2 pr-6 text-lg font-bold tracking-tight">
           {step.title}
         </h2>
+        {step.visual && (
+          // A new step starts its animation afresh
+          <div key={index} className="mt-3">
+            {step.visual}
+          </div>
+        )}
         <p className="mt-2 text-sm leading-relaxed text-[#bec9b0]">{step.text}</p>
         <div className="mt-4 h-1 overflow-hidden rounded-full bg-white/10" aria-hidden>
           <div className="h-full rounded-full bg-[#e9ff65] transition-all duration-300" style={{ width: `${((index + 1) / shown.length) * 100}%` }} />

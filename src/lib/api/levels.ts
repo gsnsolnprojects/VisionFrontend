@@ -53,7 +53,16 @@ export const saveLevelSteps = async (mission: string, steps: string[], skippedSt
   notifyProgressSaved();
 };
 
-export const saveLevelProgress = (body: { mission: string; step?: string; practiceScore?: number; cleanPhotos?: number; trainingJobId?: string }) => {
+export const saveLevelProgress = (body: {
+  mission: string;
+  step?: string;
+  practiceScore?: number;
+  cleanPhotos?: number;
+  /** Practice photos labelled, and how many there were */
+  practicePhotos?: number;
+  practiceTotal?: number;
+  trainingJobId?: string;
+}) => {
   apiRequest("/playground/levels/progress", { method: "POST", body: JSON.stringify(body), maxRetries: 1 })
     .then(notifyProgressSaved)
     .catch(() => undefined);

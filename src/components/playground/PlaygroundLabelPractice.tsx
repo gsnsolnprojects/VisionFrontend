@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  Check,
   CheckCircle2,
   Hand,
   HelpCircle,
@@ -16,6 +18,7 @@ import {
   Trash2,
   Undo2,
   Wand2,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GuidedTour, useFirstTimeTour, type TourStep } from "./GuidedTour";
@@ -231,9 +234,23 @@ function matchBoxes(truth: Box[], mine: Box[]) {
   };
 }
 
+/**
+ * The student's boxes by name and number within each kind, in the order drawn (mouse bite 1, mouse bite 2,
+ * short 1), so each can be told apart in the list, on the photo and in the feedback
+ */
+function numberedNames(boxes: Box[], classNames: string[]): string[] {
+  const seen = new Map<number, number>();
+  return boxes.map((b) => {
+    const n = (seen.get(b.c) ?? 0) + 1;
+    seen.set(b.c, n);
+    return `${nice(classNames[b.c] ?? `class ${b.c}`)} ${n}`;
+  });
+}
+
 /** What the student got right and wrong on one photo, and the share of boxes right */
 function checkPhoto(truth: Box[], mine: Box[], classNames: string[]): { feedback: Feedback[]; score: number } {
   const name = (c: number) => nice(classNames[c] ?? `class ${c}`);
+  const mineNames = numberedNames(mine, classNames);
   const { matched, missed, extra } = matchBoxes(truth, mine);
   const feedback: Feedback[] = [];
   let good = 0;
@@ -241,22 +258,31 @@ function checkPhoto(truth: Box[], mine: Box[], classNames: string[]): { feedback
     const tb = truth[t];
     const mb = mine[m];
     if (tb.c !== mb.c) {
-      feedback.push({ verdict: "name", mine: m, text: `Right place, wrong name: this is a ${name(tb.c)}, not a ${name(mb.c)}.` });
+      feedback.push({ verdict: "name", mine: m, text: `Right place, wrong name: ${mineNames[m]} is a ${name(tb.c)}, not a ${name(mb.c)}.` });
     } else if (overlap >= GOOD_IOU) {
       good += 1;
-      feedback.push({ verdict: "good", mine: m, text: `Great match: ${name(tb.c)}.` });
+      feedback.push({ verdict: "good", mine: m, text: `Great match: ${mineNames[m]}.` });
     } else {
       const ratio = (mb.w * mb.h) / Math.max(1e-6, tb.w * tb.h);
-      if (ratio > 1.5) feedback.push({ verdict: "big", mine: m, text: `Box too big: draw it tighter around the ${name(tb.c)}.` });
-      else if (ratio < 0.67) feedback.push({ verdict: "small", mine: m, text: `Box too small: cover the whole ${name(tb.c)}.` });
-      else feedback.push({ verdict: "off", mine: m, text: `Box is off to one side: move it over the ${name(tb.c)}.` });
+      if (ratio > 1.5) feedback.push({ verdict: "big", mine: m, text: `${mineNames[m]}: box too big, draw it tighter around the ${name(tb.c)}.` });
+      else if (ratio < 0.67) feedback.push({ verdict: "small", mine: m, text: `${mineNames[m]}: box too small, cover the whole ${name(tb.c)}.` });
+      else feedback.push({ verdict: "off", mine: m, text: `${mineNames[m]}: box is off to one side, move it over the ${name(tb.c)}.` });
     }
   }
   for (const t of missed) feedback.push({ verdict: "missed", text: `Missed one: there's a ${name(truth[t].c)} you haven't boxed.` });
-  for (const m of extra) feedback.push({ verdict: "extra", mine: m, text: "Extra box: GSN didn't label anything here." });
+  for (const m of extra) feedback.push({ verdict: "extra", mine: m, text: `Extra box: ${mineNames[m]}. GSN didn't label anything here.` });
+  // In the order the boxes were drawn, like the list of boxes; GSN's missed ones last
+  feedback.sort((a, b) => (a.mine ?? Infinity) - (b.mine ?? Infinity));
   const total = truth.length + extra.length;
   return { feedback, score: total === 0 ? 1 : good / total };
 }
+
+/** One shared empty list, so a photo without labels doesn't count as changed on every render */
+const NO_BOXES: Box[] = [];
+
+/** The way on, lit up once a photo is finished: filled in lime, with a soft pulsing glow */
+const NEXT_GLOW =
+  "border-[#c5d94a] bg-[#e9ff65] font-semibold text-[#171f1b] hover:bg-[#e9ff65]/90 hover:text-[#171f1b] motion-safe:animate-next-glow";
 
 const VERDICT_STYLE: Record<Verdict, string> = {
   good: "border-success/40 bg-success/10",
@@ -357,9 +383,11 @@ const BoxLayer: React.FC<{
   onSelect?: (i: number) => void;
   /** Write each box's label name above it */
   named?: boolean;
+  /** A name written just below each box (the student's numbered names, kept apart from GSN's names above) */
+  tags?: string[];
   /** 1 / zoom, so lines and names keep the same size on screen when zoomed in */
   scale?: number;
-}> = ({ boxes, w, h, classNames, dashed, colors, selected, onSelect, named, scale = 1 }) => {
+}> = ({ boxes, w, h, classNames, dashed, colors, selected, onSelect, named, tags, scale = 1 }) => {
   const stroke = (Math.max(w, h) / 260) * scale;
   const fontSize = (Math.max(w, h) / 55) * scale;
   return (
@@ -381,6 +409,26 @@ const BoxLayer: React.FC<{
             {nice(classNames[b.c] ?? `class ${b.c}`)}
           </text>
         ))}
+      {tags &&
+        boxes.map((b, i) =>
+          tags[i] ? (
+            <text
+              key={`tag-${i}`}
+              x={b.x * w + stroke}
+              // Below the box, or inside its bottom edge when it reaches the bottom of the photo
+              y={Math.min((b.y + b.h) * h + fontSize + stroke, h - stroke * 1.5)}
+              fontSize={fontSize}
+              fontWeight={700}
+              fill={colors?.[i] ?? colorOf(b.c)}
+              stroke="#171f1b"
+              strokeWidth={fontSize / 5}
+              paintOrder="stroke"
+              style={{ pointerEvents: "none" }}
+            >
+              {tags[i]}
+            </text>
+          ) : null
+        )}
       {boxes.map((b, i) => (
         <rect
           key={i}
@@ -441,7 +489,26 @@ const DrawingCanvas: React.FC<{
   onDraw: (box: Box) => void;
   /** Tried to draw before picking a label */
   onNeedLabel: () => void;
-}> = ({ datasetId, fileId, boxes, truth, showTruth, verdictColors, classNames, drawClass, selected, onSelect, onDraw, onNeedLabel }) => {
+  /** How each box is doing, checked as it's drawn */
+  feedback: Feedback[];
+  /** How many boxes GSN labelled on this photo */
+  truthCount: number;
+}> = ({
+  datasetId,
+  fileId,
+  boxes,
+  truth,
+  showTruth,
+  verdictColors,
+  classNames,
+  drawClass,
+  selected,
+  onSelect,
+  onDraw,
+  onNeedLabel,
+  feedback,
+  truthCount,
+}) => {
   const { photo, failed } = usePhoto(datasetId, fileId);
   const surface = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
@@ -455,6 +522,33 @@ const DrawingCanvas: React.FC<{
 
   // Each photo starts zoomed out to fit
   useEffect(() => setView({ zoom: 1, x: 0, y: 0 }), [fileId]);
+
+  // The result for one box, shown right by it for a few seconds: after it's drawn, picked, or given
+  // another label, so a student sees at once whether it's right without looking for the list
+  const [bubble, setBubble] = useState<{ index: number; key: number } | null>(null);
+  const prevBoxes = useRef(boxes);
+  useEffect(() => {
+    // Another photo: its boxes aren't new
+    prevBoxes.current = boxes;
+    setBubble(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileId]);
+  useEffect(() => {
+    const prev = prevBoxes.current;
+    prevBoxes.current = boxes;
+    if (boxes.length > prev.length) setBubble({ index: boxes.length - 1, key: Date.now() });
+    else if (boxes.length < prev.length) setBubble(null);
+    else if (selected !== null && prev[selected] && boxes[selected] && prev[selected].c !== boxes[selected].c)
+      setBubble({ index: selected, key: Date.now() });
+  }, [boxes, selected]);
+  useEffect(() => {
+    if (selected !== null) setBubble({ index: selected, key: Date.now() });
+  }, [selected]);
+  useEffect(() => {
+    if (!bubble) return;
+    const timer = window.setTimeout(() => setBubble(null), 3500);
+    return () => window.clearTimeout(timer);
+  }, [bubble]);
 
   /** Zoom by `factor`, keeping the photo point at (fx, fy) of the frame (0-1) in place */
   const zoomBy = (factor: number, fx = 0.5, fy = 0.5) => setView((v) => zoomView(v, v.zoom * factor, fx, fy));
@@ -595,11 +689,25 @@ const DrawingCanvas: React.FC<{
               classNames={classNames}
               scale={scale}
               colors={verdictColors ?? undefined}
+              tags={numberedNames(boxes, classNames)}
               selected={selected}
               onSelect={moving ? undefined : (i) => onSelect(i)}
             />
             {draftBox && <BoxLayer boxes={[draftBox]} w={photo.w} h={photo.h} classNames={classNames} scale={scale} />}
           </svg>
+          {boxes.length > 0 && (
+            <p className="pointer-events-none absolute left-2 top-2 rounded-md bg-black/70 px-2 py-1 text-xs font-semibold text-white">
+              {feedback.filter((f) => f.verdict === "good").length} of {truthCount} correct
+            </p>
+          )}
+          {bubble && boxes[bubble.index] && (
+            <BoxBubble
+              key={bubble.key}
+              box={boxes[bubble.index]}
+              view={view}
+              feedback={feedback.find((f) => f.mine === bubble.index)}
+            />
+          )}
         </div>
       </div>
 
@@ -659,7 +767,77 @@ const DrawingCanvas: React.FC<{
           </button>
         </div>
       </div>
+      <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[11px] text-white/70">
+        <span>Box colours:</span>
+        {(
+          [
+            ["#22c55e", "right"],
+            ["#f59e0b", "needs a fix"],
+            ["#ef4444", "extra"],
+          ] as const
+        ).map(([color, label]) => (
+          <span key={label} className="inline-flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-sm border-2" style={{ borderColor: color }} />
+            {label}
+          </span>
+        ))}
+      </p>
     </div>
+  );
+};
+
+const BUBBLE_STYLE: Record<"good" | "fix" | "extra", { bg: string; flash: string; Icon: typeof Check }> = {
+  good: { bg: "#15803d", flash: "#22c55e", Icon: Check },
+  fix: { bg: "#b45309", flash: "#f59e0b", Icon: AlertTriangle },
+  extra: { bg: "#b91c1c", flash: "#ef4444", Icon: X },
+};
+
+/** A box's result in a speech bubble by the box (above it, or below when it's near the top), with a flash around it */
+const BoxBubble: React.FC<{ box: Box; view: View; feedback?: Feedback }> = ({ box, view, feedback }) => {
+  if (!feedback) return null;
+  const tone = feedback.verdict === "good" ? "good" : feedback.verdict === "extra" ? "extra" : "fix";
+  const { bg, flash, Icon } = BUBBLE_STYLE[tone];
+  // The box in 0-1 units of the frame, as zoomed
+  const left = (box.x - view.x) * view.zoom;
+  const top = (box.y - view.y) * view.zoom;
+  const width = box.w * view.zoom;
+  const height = box.h * view.zoom;
+  const above = top > 0.2;
+  // Lined up with the box's left edge, centre or right edge, so the bubble stays on the photo
+  const mid = left + width / 2;
+  const [anchor, shiftX] =
+    mid < 0.35 ? [Math.max(0, left), "0%"] : mid > 0.65 ? [Math.min(1, left + width), "-100%"] : [mid, "-50%"];
+  return (
+    <>
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute rounded-sm border-2"
+        style={{ left: `${left * 100}%`, top: `${top * 100}%`, width: `${width * 100}%`, height: `${height * 100}%`, borderColor: flash }}
+        initial={{ opacity: 1, scale: 1 }}
+        animate={{ opacity: 0, scale: 1.8 }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+      />
+      <div
+        className="pointer-events-none absolute z-10"
+        style={{
+          left: `${anchor * 100}%`,
+          top: `${(above ? top : top + height) * 100}%`,
+          transform: above ? `translate(${shiftX}, calc(-100% - 10px))` : `translate(${shiftX}, 10px)`,
+        }}
+      >
+        <motion.p
+          role="status"
+          className="flex w-max max-w-[260px] items-start gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium leading-snug text-white shadow-lg"
+          style={{ background: bg }}
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.2 }}
+        >
+          <Icon className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {feedback.text}
+        </motion.p>
+      </div>
+    </>
   );
 };
 
@@ -744,8 +922,11 @@ export const PlaygroundLabelPractice: React.FC<{
   files: PracticeFile[];
   /** Practice finished: go on to training on GSN's labels */
   onContinue: () => void;
-  /** Practice finished, with the average match over the checked photos (0-1) and how many were labelled well without a hint */
-  onFinished?: (score: number | null, cleanPhotos: number) => void;
+  /**
+   * Practice finished, with the average match over the checked photos (0-1), how many were labelled
+   * well without a hint, how many were labelled at all, and how many practice photos there were
+   */
+  onFinished?: (score: number | null, cleanPhotos: number, photos: number, total: number) => void;
   continueLabel?: string;
 }> = ({ datasetId, files, onContinue, onFinished, continueLabel = "Continue" }) => {
   const { user } = useProfile();
@@ -845,7 +1026,7 @@ export const PlaygroundLabelPractice: React.FC<{
 
   const current = practice[index] ?? null;
   const state = current ? states[current.id] ?? emptyPhoto() : emptyPhoto();
-  const currentTruth = current ? truth[current.id] ?? [] : [];
+  const currentTruth = current ? truth[current.id] ?? NO_BOXES : NO_BOXES;
 
   const update = useCallback(
     (change: (s: PhotoState) => PhotoState) => {
@@ -919,6 +1100,10 @@ export const PlaygroundLabelPractice: React.FC<{
   // Every box is checked as it's drawn
   const liveFeedback = useMemo(() => checkPhoto(currentTruth, state.boxes, classNames).feedback, [currentTruth, state.boxes, classNames]);
   const correctNow = liveFeedback.filter((f) => f.verdict === "good").length;
+  const boxNames = useMemo(() => numberedNames(state.boxes, classNames), [state.boxes, classNames]);
+  // The photo is finished once it has as many boxes as GSN's (when it's checked): the way on lights up
+  const photoDone = state.checked || (state.boxes.length > 0 && state.boxes.length >= currentTruth.length);
+  const lastPhoto = index >= practice.length - 1;
 
   const verdictColors = useMemo(() => {
     if (!state.boxes.length) return null;
@@ -1007,7 +1192,12 @@ export const PlaygroundLabelPractice: React.FC<{
   useEffect(() => {
     if (phase === "done") {
       markPracticeDone().catch(() => undefined);
-      onFinished?.(averageScore, checkedStates.filter((s) => !s.hinted && (s.score ?? 0) >= CLEAN_PHOTO_SCORE).length);
+      onFinished?.(
+        averageScore,
+        checkedStates.filter((s) => !s.hinted && (s.score ?? 0) >= CLEAN_PHOTO_SCORE).length,
+        checkedCount,
+        practice.length
+      );
     }
     // Once per finish: the score and the callback can't change on the finished screen
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1216,6 +1406,8 @@ export const PlaygroundLabelPractice: React.FC<{
               setSelected(null);
             }}
             onNeedLabel={() => setNudge((n) => n + 1)}
+            feedback={liveFeedback}
+            truthCount={currentTruth.length}
           />
         </div>
 
@@ -1295,7 +1487,7 @@ export const PlaygroundLabelPractice: React.FC<{
                   >
                     <button type="button" className="flex min-w-0 items-center gap-2 text-left" onClick={() => setSelected(i)}>
                       <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: colorOf(b.c) }} />
-                      <span className="truncate">{nice(classNames[b.c] ?? "")}</span>
+                      <span className="truncate">{boxNames[i]}</span>
                     </button>
                     <button
                       type="button"
@@ -1304,7 +1496,7 @@ export const PlaygroundLabelPractice: React.FC<{
                         setBoxes(state.boxes.filter((_, j) => j !== i));
                         setSelected(null);
                       }}
-                      aria-label={`Remove box ${i + 1}`}
+                      aria-label={`Remove ${boxNames[i]}`}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -1354,8 +1546,14 @@ export const PlaygroundLabelPractice: React.FC<{
             <Button variant="outline" size="sm" className="flex-1 gap-1" disabled={index === 0} onClick={() => goTo(index - 1)}>
               <ArrowLeft className="h-4 w-4" /> Previous
             </Button>
-            <Button variant="outline" size="sm" className="flex-1 gap-1" disabled={index >= practice.length - 1} onClick={() => goTo(index + 1)}>
-              Next <ArrowRight className="h-4 w-4" />
+            <Button
+              variant="outline"
+              size="sm"
+              className={cn("flex-1 gap-1", photoDone && !lastPhoto && NEXT_GLOW)}
+              disabled={lastPhoto}
+              onClick={() => goTo(index + 1)}
+            >
+              {photoDone && !lastPhoto ? "Next photo" : "Next"} <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -1396,7 +1594,7 @@ export const PlaygroundLabelPractice: React.FC<{
           >
             <Wand2 className="h-4 w-4" /> {autoRun && !autoError ? "See auto-label results" : "Auto-label the rest"}
           </Button>
-          <Button data-tour="practice-finish" className="gap-1.5" onClick={finish}>
+          <Button data-tour="practice-finish" className={cn("gap-1.5", photoDone && lastPhoto && NEXT_GLOW)} onClick={finish}>
             {Object.values(states).some((s) => s.boxes.length > 0) ? "Finish practice" : "Skip practice"} <ArrowRight className="h-4 w-4" />
           </Button>
         </div>

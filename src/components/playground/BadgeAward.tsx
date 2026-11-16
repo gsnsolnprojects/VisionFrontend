@@ -5,15 +5,19 @@ import { motion, useReducedMotion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getBadges, markBadgesSeen, onProgressSaved, type EarnedBadge } from "@/lib/api/badges";
-import { BADGES, BadgeMedal, badgeInfo } from "./badges";
+import { BADGES, BadgeMedal, TIER_LABEL, TierTag, badgeInfo } from "./badges";
 
 /**
  * Shows the award card when a badge has been earned, one card per badge. It looks whenever progress
  * is saved or the page changes, so a training that finished while the student was away still gets
  * its card. A card counts as shown once it's closed; until then it comes back on the next look.
+ * A badge that goes up a tier (bronze to silver, say) gets a card again.
  */
 
 const SPARKS = 12;
+
+/** One card per badge and tier, so an upgrade gets its own */
+const cardKey = (b: EarnedBadge) => `${b.id}:${b.tier ?? ""}`;
 
 /** A short burst around the medal when a whole level is finished */
 const Sparks: React.FC = () => (
@@ -41,15 +45,16 @@ export const BadgeAwardHost: React.FC = () => {
   const [queue, setQueue] = useState<EarnedBadge[]>([]);
   const [earnedCount, setEarnedCount] = useState(0);
   const continueRef = useRef<HTMLButtonElement>(null);
+  // By badge and tier, so an upgrade gets its own card
   const shownIds = useRef(new Set<string>());
 
   const look = useCallback(() => {
     getBadges()
       .then(({ badges }) => {
         setEarnedCount(badges.filter((b) => badgeInfo(b.id)).length);
-        const fresh = badges.filter((b) => !b.seen && badgeInfo(b.id) && !shownIds.current.has(b.id));
+        const fresh = badges.filter((b) => !b.seen && badgeInfo(b.id) && !shownIds.current.has(cardKey(b)));
         if (!fresh.length) return;
-        fresh.forEach((b) => shownIds.current.add(b.id));
+        fresh.forEach((b) => shownIds.current.add(cardKey(b)));
         setQueue((prev) => [...prev, ...fresh]);
       })
       .catch(() => undefined);
@@ -91,7 +96,7 @@ export const BadgeAwardHost: React.FC = () => {
       aria-labelledby="badge-award-title"
     >
       <motion.div
-        key={current.id}
+        key={cardKey(current)}
         initial={reduceMotion ? false : { opacity: 0, y: 16, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         className="relative w-full max-w-md overflow-hidden rounded-2xl border border-[#485840] bg-[#171f1b] p-6 text-center text-[#f5f5ee] shadow-2xl md:p-8"
@@ -104,18 +109,24 @@ export const BadgeAwardHost: React.FC = () => {
             animate={{ scale: 1, rotate: 0 }}
             transition={{ type: "spring", stiffness: 260, damping: 15 }}
           >
-            <BadgeMedal badge={info} size={info.milestone ? 124 : 104} />
+            <BadgeMedal badge={info} tier={current.tier} size={info.milestone ? 124 : 104} />
           </motion.span>
         </div>
         <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#e9ff65]">
-          {info.milestone ? "Level complete" : "Badge earned"}
+          {info.milestone
+            ? "Level complete"
+            : current.tier && current.upgradedFrom
+              ? `Upgraded to ${TIER_LABEL[current.tier]}`
+              : "Badge earned"}
         </p>
         <h2 id="badge-award-title" className="mt-1.5 text-2xl font-bold tracking-tight">
           {info.name}
         </h2>
+        {current.tier && <TierTag tier={current.tier} className="mt-2" />}
         {current.detail && <p className="mt-1 text-sm font-medium text-[#e9ff65]">{current.detail}</p>}
         <p className="mt-3 text-sm leading-relaxed text-[#bec9b0]">{info.learned}</p>
-        {info.next && <p className="mt-2 text-sm font-medium text-[#f5f5ee]">{info.next}</p>}
+        {current.next && <p className="mt-2 text-sm font-medium text-[#f5f5ee]">{current.next}.</p>}
+        {info.next && !current.upgradedFrom && <p className="mt-2 text-sm font-medium text-[#f5f5ee]">{info.next}</p>}
         <p className="mt-4 text-xs text-[#bec9b0]">
           {earnedCount} of {BADGES.length} badges earned
         </p>

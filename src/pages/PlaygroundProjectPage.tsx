@@ -846,7 +846,9 @@ export const PlaygroundProjectPage: React.FC = () => {
               datasetId={selectedId}
               files={files}
               onContinue={() => goToStep("label")}
-              onFinished={(score, cleanPhotos) => saveLevelProgress({ mission: missionName, step: "practice", practiceScore: score ?? undefined, cleanPhotos })}
+              onFinished={(score, cleanPhotos, practicePhotos, practiceTotal) =>
+                saveLevelProgress({ mission: missionName, step: "practice", practiceScore: score ?? undefined, cleanPhotos, practicePhotos, practiceTotal })
+              }
             />
           )
         ) : (

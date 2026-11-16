@@ -158,14 +158,19 @@ export const LEVEL_TWO_TEST_TOUR: TourStep[] = [
 
 export const LEVEL_TWO_RESULTS_TOUR: TourStep[] = [
   {
+    target: "result-summary",
+    title: "Found, missed and extra",
+    text: "Found: real defects it spotted. Missed: a bad part would slip through. Extra: a good part would be thrown away. On the held-out photos, these are your model's real results.",
+  },
+  {
     target: "result-first",
     title: "Look for patterns, not single mistakes",
     text: "One error tells you little. Are the misses all small defects? All dark photos? All one kind of defect? A pattern tells you exactly what to add. A box shows only if the model is at least 0.25 sure, so a miss may be a weak guess.",
   },
   {
     target: "result-compare",
-    title: "This list isn't the whole answer",
-    text: "These lines show which kinds of defect were found, not where. Both can say \"scratch\" while the box sits on the wrong spot, so check the photo too. And if the labels look wrong here, the mistake may be in your labelling.",
+    title: "Check the photo, not just the lines",
+    text: "Dashed boxes are your labels, coloured boxes the model's. A box only counts as found if it covers most of the defect. Click a photo to see it large. If a label itself looks wrong, the mistake may be in your labelling.",
   },
   {
     title: "From result to fix",

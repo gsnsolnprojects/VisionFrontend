@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { HelpCircle, AlertTriangle, Check, Clock, FileText, FlaskConical, ImagePlus, Loader2, Play, Sparkles, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GuidedTour, useFirstTimeTour, type TourStep } from "./GuidedTour";
+import { ReadResultsDemo, TestResultsView, type NamedBox, type ResultItem } from "./TestResultsView";
 import { LEVEL_TWO_RESULTS_TOUR, LEVEL_TWO_TEST_TOUR } from "./levelTwoGuides";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, apiUrl, getAuthHeaders } from "@/lib/api/config";
@@ -48,14 +49,20 @@ const TEST_TOUR: TourStep[] = [
 ];
 const RESULTS_TOUR: TourStep[] = [
   {
-    target: "result-first",
-    title: "One photo, one result",
-    text: "Each box drawn on the photo is something the model found, with its confidence. Look for defects it missed, and for boxes where nothing's wrong.",
+    target: "result-summary",
+    title: "How did the model do?",
+    text: "Found: real defects it spotted. Missed: real defects it didn't see, so a bad part would slip through. Extra: boxes where nothing's wrong, so a good part would be thrown away.",
   },
   {
-    target: "result-compare",
-    title: "Compare with the right answers",
-    text: "Model found is what the model said. Labelled in the dataset is what GSN marked. Where they differ, the model got something wrong. In a real project, those are the kinds of photos you'd add and label before training again.",
+    target: "result-first",
+    title: "Reading a photo",
+    text: "Each photo shows GSN's right answers and the model's boxes, coloured by how it did. The badge in the corner sums it up. Click a photo to see it large.",
+    visual: <ReadResultsDemo />,
+  },
+  {
+    target: "result-filters",
+    title: "Jump to the mistakes",
+    text: "Show only the photos where it missed something or added an extra box. Mistakes show what a model still needs to learn.",
   },
   {
     target: "result-actions",
@@ -86,6 +93,8 @@ interface ResultImage {
   instanceCount?: number;
   /** the photo's own name when the run used a shortened one */
   originalName?: string;
+  /** where the model put each box, in 0-1 units of the photo */
+  boxes?: { name: string | null; conf: number; x: number; y: number; w: number; h: number }[];
 }
 
 interface TestFile {
@@ -99,34 +108,6 @@ type Source = "test" | "upload";
 const baseOf = (name: string) => name.split(/[/\\]/).pop()!.replace(/\.[^.]+$/, "");
 const nice = (name: string) => name.replace(/_/g, " ");
 const runKey = (projectId: string) => `visionm_playground_test_${projectId}`;
-
-/** An annotated result photo (the server draws the model's boxes on it) */
-const ResultPhoto: React.FC<{ url: string; alt: string }> = ({ url, alt }) => {
-  const [src, setSrc] = useState<string | null>(null);
-  useEffect(() => {
-    let objectUrl: string | null = null;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(apiUrl(url.replace(/^\/api\//, "")), { headers: await getAuthHeaders() });
-        if (!res.ok) return;
-        objectUrl = URL.createObjectURL(await res.blob());
-        if (!cancelled) setSrc(objectUrl);
-      } catch {
-        // leave the placeholder
-      }
-    })();
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [url]);
-  return src ? (
-    <img src={src} alt={alt} className="h-full w-full object-contain" />
-  ) : (
-    <div className="h-full w-full animate-pulse bg-muted" />
-  );
-};
 
 export const PlaygroundTestStep: React.FC<{
   projectId: string;
@@ -180,12 +161,20 @@ export const PlaygroundTestStep: React.FC<{
   const [uploads, setUploads] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
   const [starting, setStarting] = useState(false);
-  const [run, setRun] = useState<{ id: string; source: Source; status: string; percent: number; autoCloseAt: string | null } | null>(
-    null
-  );
+  /** The test on this page; modelId is the model it tested (missing for a test saved before this was kept) */
+  const [run, setRun] = useState<{
+    id: string;
+    source: Source;
+    status: string;
+    percent: number;
+    autoCloseAt: string | null;
+    modelId?: string;
+  } | null>(null);
   const [finishing, setFinishing] = useState<"close" | "report" | null>(null);
   const [results, setResults] = useState<ResultImage[] | null>(null);
   const [truth, setTruth] = useState<Record<string, Set<string>>>({});
+  // The right answers' boxes for each held-out photo, by its name without the extension
+  const [truthBoxes, setTruthBoxes] = useState<Record<string, NamedBox[]>>({});
   const fileInput = useRef<HTMLInputElement>(null);
   const pollTimer = useRef<number | null>(null);
 
@@ -238,7 +227,7 @@ export const PlaygroundTestStep: React.FC<{
     if (!testFiles.length) return;
     let cancelled = false;
     const ids = testFiles.slice(0, 200).map((f) => f.id);
-    apiRequest<{ classes: { index: number; name: string }[]; labels: Record<string, { c: number }[]> }>(
+    apiRequest<{ classes: { index: number; name: string }[]; labels: Record<string, { c: number; x: number; y: number; w: number; h: number }[]> }>(
       `/dataset/${encodeURIComponent(datasetId)}/file-labels?ids=${ids.map(encodeURIComponent).join(",")}`
     )
       .then((json) => {
@@ -247,14 +236,19 @@ export const PlaygroundTestStep: React.FC<{
         for (const c of json.classes) names[c.index] = c.name;
         if (!json.classes.length) names.push(...classNames);
         const map: Record<string, Set<string>> = {};
+        const boxMap: Record<string, NamedBox[]> = {};
         for (const f of testFiles) {
           const boxes = json.labels[f.id];
           if (!boxes) continue;
           const set = new Set(boxes.map((b) => names[b.c] ?? `class ${b.c}`));
           map[baseOf(f.storedName)] = set;
           map[baseOf(f.originalName)] = set;
+          const named = boxes.map((b) => ({ name: names[b.c] ?? `class ${b.c}`, x: b.x, y: b.y, w: b.w, h: b.h }));
+          boxMap[baseOf(f.storedName)] = named;
+          boxMap[baseOf(f.originalName)] = named;
         }
         setTruth(map);
+        setTruthBoxes(boxMap);
       })
       .catch(() => undefined);
     return () => {
@@ -271,7 +265,7 @@ export const PlaygroundTestStep: React.FC<{
   }, []);
 
   const poll = useCallback(
-    async (id: string, runSource: Source) => {
+    async (id: string, runSource: Source, runModel?: string) => {
       try {
         const s = await apiRequest<{
           status: string;
@@ -290,6 +284,7 @@ export const PlaygroundTestStep: React.FC<{
           status: s.status,
           percent: s.progress?.progressPercent ?? 0,
           autoCloseAt: s.autoCloseAt ?? null,
+          modelId: runModel,
         });
         if (s.status === "completed") {
           saveLevelProgress({ mission: missionName, step: "test" });
@@ -298,13 +293,13 @@ export const PlaygroundTestStep: React.FC<{
           return;
         }
         if (s.status === "failed" || s.status === "cancelled") return;
-        pollTimer.current = window.setTimeout(() => void poll(id, runSource), 4000);
+        pollTimer.current = window.setTimeout(() => void poll(id, runSource, runModel), 4000);
       } catch (err) {
         if (/not found/i.test((err as Error).message)) {
           forgetRun();
           return;
         }
-        pollTimer.current = window.setTimeout(() => void poll(id, runSource), 8000);
+        pollTimer.current = window.setTimeout(() => void poll(id, runSource, runModel), 8000);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -324,8 +319,8 @@ export const PlaygroundTestStep: React.FC<{
 
   useEffect(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem(runKey(projectId)) || "null") as { id: string; source: Source } | null;
-      if (saved?.id) void poll(saved.id, saved.source);
+      const saved = JSON.parse(localStorage.getItem(runKey(projectId)) || "null") as { id: string; source: Source; modelId?: string } | null;
+      if (saved?.id) void poll(saved.id, saved.source, saved.modelId);
     } catch {
       // ignore
     }
@@ -371,12 +366,12 @@ export const PlaygroundTestStep: React.FC<{
       const id = String(json.inferenceId ?? json.id ?? "");
       if (!id) throw new Error("The server didn't return a test run.");
       try {
-        localStorage.setItem(runKey(projectId), JSON.stringify({ id, source }));
+        localStorage.setItem(runKey(projectId), JSON.stringify({ id, source, modelId }));
       } catch {
         // ignore
       }
-      setRun({ id, source, status: "queued", percent: 0, autoCloseAt: null });
-      void poll(id, source);
+      setRun({ id, source, status: "queued", percent: 0, autoCloseAt: null, modelId });
+      void poll(id, source, modelId);
     } catch (err) {
       toast({ title: "Test didn't start", description: (err as Error).message, variant: "destructive" });
     } finally {
@@ -399,6 +394,36 @@ export const PlaygroundTestStep: React.FC<{
       return { ...r, found, labelled, ownName, shownName: photoName(ownName, i + 1) };
     });
   }, [results, truth, run?.source, testFiles]);
+
+  // The same results, ready for the results view: the right answers' boxes and the photo in the
+  // dataset for a held-out photo, so our own boxes can be drawn on it
+  const resultItems = useMemo<ResultItem[]>(() => {
+    const idByBase: Record<string, string> = {};
+    if (run?.source === "test") {
+      for (const f of testFiles) {
+        idByBase[baseOf(f.storedName)] = f.id;
+        idByBase[baseOf(f.originalName)] = f.id;
+      }
+    }
+    return shown.map((r) => {
+      const base = baseOf(r.originalName ?? r.filename);
+      const foundCounts: Record<string, number> = {};
+      for (const c of r.byClass ?? []) {
+        const name = c.class ?? c.className ?? `class ${c.classId}`;
+        if ((c.count ?? 1) > 0) foundCounts[nice(name)] = (foundCounts[nice(name)] ?? 0) + (c.count ?? 1);
+      }
+      return {
+        key: r.filename,
+        shownName: r.shownName,
+        url: r.url,
+        fileId: run?.source === "test" ? idByBase[base] : undefined,
+        foundCounts,
+        modelBoxes: r.boxes?.map((b) => ({ name: b.name ?? "defect", conf: b.conf, x: b.x, y: b.y, w: b.w, h: b.h })),
+        truthBoxes: run?.source === "test" ? truthBoxes[base] : undefined,
+        labelledKinds: r.labelled,
+      };
+    });
+  }, [shown, run?.source, testFiles, truthBoxes]);
 
   const closeTest = async () => {
     if (!run) return;
@@ -449,7 +474,15 @@ export const PlaygroundTestStep: React.FC<{
   const hasGuide = !!learning || guided;
   const [showTour, setShowTour] = useFirstTimeTour(learning ? "test" : "l2_test", hasGuide && !run && models !== null);
   const [showResultsTour, setShowResultsTour] = useFirstTimeTour(learning ? "test_results" : "l2_test_results", hasGuide && !!results?.length);
-  const canStart = !!modelId && !busy && !starting && (source === "test" ? testFiles.length > 0 : uploads.length > 0);
+  // The held-out photos' results for this model are on screen: testing them again would give the same
+  // answers. Closing the test (or making its report) lets them be tested again
+  const heldOutDone = run?.status === "completed" && run.source === "test" && !!results && (!run.modelId || run.modelId === modelId);
+  useEffect(() => {
+    if (heldOutDone && !learning && source === "test") setSource("upload");
+  }, [heldOutDone, learning, source]);
+  const canStart =
+    !!modelId && !busy && !starting && (source === "test" ? testFiles.length > 0 && !heldOutDone : uploads.length > 0);
+  const testedBefore = !!results;
 
   return (
     <div className="space-y-6">
@@ -529,8 +562,11 @@ export const PlaygroundTestStep: React.FC<{
                 {
                   id: "test" as Source,
                   title: `Held-out test photos (${testFiles.length})`,
-                  text: "Kept aside while training, and we know the right answers, so you get a score.",
-                  disabled: testFiles.length === 0,
+                  text:
+                    heldOutDone && !learning
+                      ? "Already tested with this model ✓ Its results are below."
+                      : "Kept aside while training, and we know the right answers, so you get a score.",
+                  disabled: testFiles.length === 0 || (heldOutDone && !learning),
                 },
                 ...(learning
                   ? []
@@ -617,9 +653,24 @@ export const PlaygroundTestStep: React.FC<{
           </div>
 
           <Button data-tour="test-run" className="w-full gap-2" size="lg" onClick={() => void startTest()} disabled={!canStart}>
-            {starting || busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-            {busy ? "Testing..." : "Run the test"}
+            {starting || busy ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : learning && heldOutDone ? (
+              <Check className="h-4 w-4" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+            {busy ? "Testing..." : learning && heldOutDone ? "Test complete" : testedBefore ? "Run a new test" : "Run the test"}
           </Button>
+          {heldOutDone && (
+            <p className="text-center text-xs text-muted-foreground">
+              {learning
+                ? "Your results are below. To test again, close this test first."
+                : source === "upload" && uploads.length === 0
+                  ? "Add your own photos to run a new test."
+                  : null}
+            </p>
+          )}
           {!learning && <p className="text-center text-xs text-muted-foreground">Each photo counts towards your 1,000 predictions a month.</p>}
         </section>
 
@@ -723,30 +774,7 @@ export const PlaygroundTestStep: React.FC<{
               {results.length === 0 ? (
                 <p className="mt-4 text-sm text-muted-foreground">No result photos came back.</p>
               ) : (
-                <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {shown.map((r, i) => (
-                    <article key={r.filename} data-tour={i === 0 ? "result-first" : undefined} className="overflow-hidden rounded-xl border bg-background/40">
-                      <div className="relative aspect-[4/3] bg-[#171f1b]">
-                        <ResultPhoto url={r.url} alt={`Model result for ${r.shownName}`} />
-                      </div>
-                      <div data-tour={i === 0 ? "result-compare" : undefined} className="space-y-1 p-3 text-xs">
-                        <p className="truncate font-medium text-foreground" title={r.shownName}>
-                          {r.shownName}
-                        </p>
-                        <p className="text-foreground">
-                          <span className="text-muted-foreground">Model found: </span>
-                          {r.found.size ? [...r.found].map(nice).join(", ") : "nothing"}
-                        </p>
-                        {r.labelled && (
-                          <p className="text-foreground">
-                            <span className="text-muted-foreground">Labelled in the dataset: </span>
-                            {r.labelled.size ? [...r.labelled].map(nice).join(", ") : "nothing"}
-                          </p>
-                        )}
-                      </div>
-                    </article>
-                  ))}
-                </div>
+                <TestResultsView items={resultItems} datasetId={datasetId} />
               )}
             </>
           )}

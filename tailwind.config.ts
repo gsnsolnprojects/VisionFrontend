@@ -82,11 +82,17 @@ export default {
           "50%": { boxShadow: "0 0 0 14px hsl(var(--primary) / 0.22)" },
           "100%": { boxShadow: "0 0 0 0 hsl(var(--primary) / 0)" },
         },
+        // A soft lime glow that grows and fades, for the way on once a step is finished
+        "next-glow": {
+          "0%, 100%": { boxShadow: "0 0 0 0 rgba(233, 255, 101, 0.7)" },
+          "50%": { boxShadow: "0 0 0 8px rgba(233, 255, 101, 0)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "highlight-pulse": "highlight-pulse 2s ease-in-out 2",
+        "next-glow": "next-glow 1.8s ease-out infinite",
       },
     },
   },

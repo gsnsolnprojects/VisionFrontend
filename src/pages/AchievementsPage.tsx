@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
-import { BADGES, BADGE_GROUPS, BadgeMedal } from "@/components/playground/badges";
+import { BADGES, BADGE_GROUPS, BadgeMedal, TIER_LABEL, TIER_ORDER, TierTag } from "@/components/playground/badges";
 import { getBadges, type EarnedBadge } from "@/lib/api/badges";
 import { cn } from "@/lib/utils";
 
@@ -81,9 +81,12 @@ const AchievementsPage: React.FC = () => {
                 const got = byId.get(badge.id);
                 return (
                   <li key={badge.id} className={cn("flex items-start gap-4 rounded-xl border p-4", got ? "bg-card" : "bg-background/40")}>
-                    <BadgeMedal badge={badge} earned={!!got} size={64} />
+                    <BadgeMedal badge={badge} earned={!!got} tier={got?.tier} size={64} />
                     <div className="min-w-0">
-                      <p className={cn("font-semibold", got ? "text-foreground" : "text-muted-foreground")}>{badge.name}</p>
+                      <p className={cn("flex flex-wrap items-center gap-2 font-semibold", got ? "text-foreground" : "text-muted-foreground")}>
+                        {badge.name}
+                        {got?.tier && <TierTag tier={got.tier} />}
+                      </p>
                       {got ? (
                         <>
                           <p className="mt-0.5 text-sm text-muted-foreground">{badge.learned}</p>
@@ -92,9 +95,15 @@ const AchievementsPage: React.FC = () => {
                             Earned {new Date(got.earnedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                             {got.mission && ` · ${got.mission}`}
                           </p>
+                          {got.next && <p className="mt-1.5 text-xs font-medium text-foreground">Next: {got.next}.</p>}
                         </>
                       ) : (
                         <p className="mt-0.5 text-sm text-muted-foreground">{badge.how}</p>
+                      )}
+                      {badge.tiers && (
+                        <p className="mt-1.5 text-xs text-muted-foreground">
+                          {TIER_ORDER.map((t, i) => `${TIER_LABEL[t]}: ${badge.tiers![i]}`).join(" · ")}
+                        </p>
                       )}
                     </div>
                   </li>

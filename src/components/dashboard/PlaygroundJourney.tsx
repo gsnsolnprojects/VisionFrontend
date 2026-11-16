@@ -157,6 +157,7 @@ export const BadgeShelf: React.FC = () => {
   if (!earned) return null;
   const earnedInfos = earned.flatMap((b) => badgeInfo(b.id) ?? []);
   const earnedIds = new Set(earnedInfos.map((b) => b.id));
+  const tierOf = new Map(earned.map((b) => [b.id, b.tier]));
   const shown = [...earnedInfos.slice(-SHOWN_BADGES).reverse(), ...BADGES.filter((b) => !earnedIds.has(b.id))].slice(0, SHOWN_BADGES);
   return (
     <div>
@@ -183,7 +184,7 @@ export const BadgeShelf: React.FC = () => {
           const has = earnedIds.has(badge.id);
           return (
             <li key={badge.id} className={cn("rounded-xl border p-3 text-center", !has && "bg-background/40")}>
-              <BadgeMedal badge={badge} earned={has} size={52} className="mx-auto" />
+              <BadgeMedal badge={badge} earned={has} tier={tierOf.get(badge.id)} size={52} className="mx-auto" />
               <p className={cn("mt-2 text-sm font-medium", has ? "text-foreground" : "text-muted-foreground")}>{badge.name}</p>
               {!has && <p className="mt-0.5 text-xs text-muted-foreground">{badge.how}</p>}
             </li>

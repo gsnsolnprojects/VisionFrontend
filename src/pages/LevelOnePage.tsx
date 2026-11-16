@@ -11,6 +11,28 @@ import { PlaygroundLabelPractice } from "@/components/playground/PlaygroundLabel
 import { PlaygroundReportStep } from "@/components/playground/PlaygroundReportStep";
 import { PlaygroundTestStep } from "@/components/playground/PlaygroundTestStep";
 import { GuidedTour, useFirstTimeTour, type TourStep } from "@/components/playground/GuidedTour";
+import {
+  DefectKinds,
+  LabelDrawing,
+  SplitAnimation,
+  TestReveal,
+  TrainingPasses,
+  ValidationChart,
+} from "@/components/playground/DatasetTourVisuals";
+import { useTourExample } from "@/components/playground/tourVisualHelpers";
+import {
+  AugmentFan,
+  BatchAnimation,
+  EpochsChart,
+  ImageSizeCompare,
+  LearningRateValleys,
+  ModelScoresCard,
+  ModelSizeCompare,
+  OverlapHit,
+  PrecisionExample,
+  RecallExample,
+  TrainingStages,
+} from "@/components/playground/TrainingTourVisuals";
 import { StepGuide } from "@/components/playground/StepGuide";
 import { TRAINING_JOURNEY } from "@/components/playground/trainingJourney";
 import { apiRequest } from "@/lib/api/config";
@@ -90,32 +112,32 @@ const DATASET_TOUR: TourStep[] = [
   {
     target: "first-photo",
     title: "A photo and its labels",
-    text: "Each coloured box marks a defect. A box with the name of the defect is called a label. It's how we tell the model: this is what you should look for, and this is where it is.",
+    text: "A box around a defect, with the defect's name, is a label. It tells the model what to look for, and where.",
   },
   {
     target: "label-list",
     title: "The kinds of defects",
-    text: "These are the kinds of defect marked in this dataset, each with its own colour. The model learns to find only what's on this list, so anything not labelled stays invisible to it.",
+    text: "Each kind of defect has its own colour. The model learns only what's on this list.",
   },
   {
     target: "split-why",
     title: "What is a dataset split?",
-    text: "The photos are divided into three groups, and each photo is in only one of them. If a model were tested on photos it learned from, it could score well just by memorising them.",
+    text: "Each photo goes into one of three groups. The test photos are locked away, so the final score is honest.",
   },
   {
     target: "split-train",
     title: "Training photos",
-    text: "The biggest group. The model studies these again and again during training, comparing what it finds with the labels. You'll see where this happens in the How training works step.",
+    text: "The biggest group. The model studies these again and again, getting a little closer to the labels each time.",
   },
   {
     target: "split-val",
     title: "Validation photos",
-    text: "Used during training too, but the model doesn't learn from them. After each pass it tries these, to show how it's doing, and the best version of the model is kept.",
+    text: "The model doesn't learn from these. After each pass it tries them, and its best version is kept.",
   },
   {
     target: "split-test",
     title: "Held-out test photos",
-    text: "Kept away until training is over. These are the photos you'll use in the Test step. The model has never seen them, so the result shows how it would really do.",
+    text: "Kept locked until training is over. You'll use them in the Test step: the model has never seen them, so the score is honest.",
   },
   {
     target: "photo-pages",
@@ -138,57 +160,57 @@ const TRAINING_TOUR: TourStep[] = [
   {
     target: "training-stages",
     title: "The four stages of training",
-    text: "Every training run goes through these. Your photos and labels are checked, the model learns from the training photos, it tests itself on the validation photos, and its best version is saved.",
+    text: "Every training run goes through these four stages, in this order.",
   },
   {
     target: "setting-Model size",
     title: "Settings: model size",
-    text: "Before training starts, you set a few things. The first is size: a smaller model is quicker to train and to run, and a bigger one can often notice more.",
+    text: "Nano is quicker to train and to run. Small is slower, but often spots more.",
   },
   {
     target: "setting-Epochs",
     title: "Settings: epochs",
-    text: "One epoch is one full pass over the training photos. It's like reading a textbook again: a few reads help, but too many and the student memorises the book instead of understanding it.",
+    text: "One epoch is one pass over all the training photos. Too many, and the model starts memorising them.",
   },
   {
     target: "setting-Batch size",
     title: "Settings: batch size",
-    text: "The model doesn't correct itself after every photo. It looks at a small group, called a batch, and then adjusts. A bigger batch needs more computer memory.",
+    text: "The model looks at a small group of photos, a batch, then adjusts. Bigger batches need more memory.",
   },
   {
     target: "setting-Image size",
     title: "Settings: image size",
-    text: "Every photo is resized before the model sees it. Tiny defects can vanish in a small image, so a larger size helps find them, though training takes longer.",
+    text: "Every photo is resized before the model sees it. Too small, and tiny defects disappear.",
   },
   {
     target: "setting-Learning rate",
     title: "Settings: learning rate",
-    text: "How big a step the model takes each time it corrects itself. Too big and it keeps overshooting the answer; too small and it barely moves.",
+    text: "How big a step the model takes each time it corrects itself.",
   },
   {
     target: "setting-More training photos",
     title: "Settings: more training photos",
-    text: "A few photos rarely make a good model. Flipped, rotated, brighter or darker copies give it more to learn from. This is called augmentation, and you'll be able to use it in Level 2.",
+    text: "Flipped, rotated, brighter or darker copies give the model more to learn from. It's called augmentation, and you can use it in Level 2.",
   },
   {
     target: "model-card",
     title: "GSN's finished model",
-    text: "GSN has already trained a model on photos like the ones you've seen. These numbers show how it did, and you'll test it yourself in the next step.",
+    text: "GSN has already trained a model on photos like these. You'll test it yourself in the next step.",
   },
   {
     target: "score-Overall score (mAP50)",
     title: "Overall score",
-    text: "One number for how well the model finds defects and puts its box in the right place. Higher is better. It's called mAP50, and you'll see it after every training.",
+    text: "How well the model finds defects and puts its box in the right place. Higher is better. It's called mAP50.",
   },
   {
     target: "score-Precision",
     title: "Precision",
-    text: "When the model says there's a defect, how often is it right? Low precision means false alarms: good parts get thrown away.",
+    text: "When the model says there's a defect, how often is it right? Low precision means false alarms.",
   },
   {
     target: "score-Recall",
     title: "Recall",
-    text: "Of all the real defects, how many did it find? Low recall means misses: in a factory, a bad part reaches the customer.",
+    text: "Of all the real defects, how many did it find? Low recall means misses.",
   },
   {
     target: "training-next",
@@ -200,12 +222,12 @@ const TRAINING_TOUR: TourStep[] = [
 const splitLabel = (folder: string | null) =>
   folder === "test" ? "Held-out test" : folder === "val" ? "Validation" : folder === "train" ? "Training" : "Photo";
 
-const DatasetStep: React.FC<{ sampleId: string; files: SampleFile[]; onNext: () => void; onShowGuide: () => void }> = ({
-  sampleId,
-  files,
-  onNext,
-  onShowGuide,
-}) => {
+const DatasetStep: React.FC<{
+  sampleId: string;
+  files: SampleFile[];
+  onNext: () => void;
+  onShowGuide: () => void;
+}> = ({ sampleId, files, onNext, onShowGuide }) => {
   const [page, setPage] = useState(1);
   const [boxes, setBoxes] = useState<Record<string, Box[]>>({});
   const [classNames, setClassNames] = useState<string[]>([]);
@@ -525,6 +547,47 @@ const LevelOnePage: React.FC = () => {
   };
 
   const [showTour, setShowTour] = useFirstTimeTour("see_data", loaded && step === "dataset");
+  // A labelled photo for the guides' animations
+  const tourFileIds = useMemo(() => (files ?? []).map((f) => f.id), [files]);
+  const example = useTourExample(sampleId, tourFileIds);
+  // Steps 4 to 9 of the guide show a short animation, on real photos and the real split
+  const datasetTour = useMemo<TourStep[]>(() => {
+    const count = (folder: string) => (files ?? []).filter((f) => f.folder === folder).length;
+    const visuals: Record<string, React.ReactNode> = {
+      "split-why": <SplitAnimation train={count("train")} val={count("val")} test={count("test")} />,
+      "split-val": <ValidationChart />,
+      "split-test": (
+        <TestReveal datasetId={sampleId} testFileIds={(files ?? []).filter((f) => f.folder === "test").map((f) => f.id)} />
+      ),
+      ...(example && {
+        "first-photo": <LabelDrawing example={example} />,
+        "split-train": <TrainingPasses example={example} />,
+        "label-list": (
+          <DefectKinds datasetId={example.datasetId} fileIds={(files ?? []).map((f) => f.id)} classNames={example.classNames} />
+        ),
+      }),
+    };
+    return DATASET_TOUR.map((s) => (s.target && visuals[s.target] ? { ...s, visual: visuals[s.target] } : s));
+  }, [files, example, sampleId]);
+  // Every step of the training guide but the first and last shows an animation
+  const trainingTour = useMemo<TourStep[]>(() => {
+    const visuals: Record<string, React.ReactNode> = {
+      "training-stages": <TrainingStages />,
+      "setting-Model size": <ModelSizeCompare />,
+      "setting-Epochs": <EpochsChart />,
+      "setting-Batch size": <BatchAnimation />,
+      "setting-Learning rate": <LearningRateValleys />,
+      "score-Precision": <PrecisionExample />,
+      "score-Recall": <RecallExample />,
+      ...(model && { "model-card": <ModelScoresCard model={model} /> }),
+      ...(example && {
+        "setting-Image size": <ImageSizeCompare example={example} />,
+        "setting-More training photos": <AugmentFan example={example} />,
+        "score-Overall score (mAP50)": <OverlapHit example={example} />,
+      }),
+    };
+    return TRAINING_TOUR.map((s) => (s.target && visuals[s.target] ? { ...s, visual: visuals[s.target] } : s));
+  }, [model, example]);
   const [showTrainingTour, setShowTrainingTour] = useFirstTimeTour("training", loaded && step === "training");
 
   const { setItems: setBreadcrumbs } = useBreadcrumbs();
@@ -594,7 +657,7 @@ const LevelOnePage: React.FC = () => {
       {step === "dataset" && (
         <DatasetStep sampleId={sampleId} files={files} onNext={() => finishAndGo("dataset", "practice")} onShowGuide={() => setShowTour(true)} />
       )}
-      <GuidedTour steps={DATASET_TOUR} open={showTour && step === "dataset"} onClose={() => setShowTour(false)} />
+      <GuidedTour steps={datasetTour} open={showTour && step === "dataset"} onClose={() => setShowTour(false)} />
 
       {step === "practice" && (
         <div className="space-y-4">
@@ -607,9 +670,9 @@ const LevelOnePage: React.FC = () => {
             files={files}
             continueLabel="Next: how training works"
             onContinue={() => goTo("training")}
-            onFinished={(score, cleanPhotos) => {
+            onFinished={(score, cleanPhotos, practicePhotos, practiceTotal) => {
               markDone("practice");
-              saveLevelProgress({ mission, step: "practice", practiceScore: score ?? undefined, cleanPhotos });
+              saveLevelProgress({ mission, step: "practice", practiceScore: score ?? undefined, cleanPhotos, practicePhotos, practiceTotal });
             }}
           />
         </div>
@@ -623,7 +686,7 @@ const LevelOnePage: React.FC = () => {
           onShowGuide={() => setShowTrainingTour(true)}
         />
       )}
-      <GuidedTour steps={TRAINING_TOUR} open={showTrainingTour && step === "training"} onClose={() => setShowTrainingTour(false)} />
+      <GuidedTour steps={trainingTour} open={showTrainingTour && step === "training"} onClose={() => setShowTrainingTour(false)} />
 
       {step === "test" && (
         <div className="space-y-4">
