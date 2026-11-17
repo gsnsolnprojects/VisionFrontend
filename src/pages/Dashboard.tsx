@@ -40,7 +40,7 @@ import { useProfile } from "@/hooks/useProfile";
 import { PageHeader } from "@/components/pages/PageHeader";
 import { EmptyState } from "@/components/pages/EmptyState";
 import { LoadingState } from "@/components/pages/LoadingState";
-import { FolderKanban, Building2, UserPlus } from "lucide-react";
+import { FolderKanban } from "lucide-react";
 import ProfileCompletionDialog from "@/components/ProfileCompletionDialog";
 import { SimulationView } from "@/components/SimulationView";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
@@ -52,7 +52,8 @@ import { apiRequest } from "@/lib/api/config";
 import { RoleBadge } from "@/components/RoleBadge";
 import { usePlanAccess, PLAN_REQUIRED_MESSAGE, BILLING_ROUTE } from "@/contexts/plan-access-context";
 import { useWorkspaceKind } from "@/lib/workspaceKind";
-import { markBillingOpenedForSignup, shouldOpenBillingForSignup } from "@/lib/signupPlan";
+import { markBillingOpenedForSignup, rememberSignupPlan, shouldOpenBillingForSignup } from "@/lib/signupPlan";
+import { OrganisationNameDialog } from "@/components/dashboard/OrganisationNameDialog";
 
 type ViewMode = "overview" | "projects" | "simulation" | "members";
 
@@ -71,12 +72,14 @@ const Dashboard = () => {
   // Came through the sign-up link (/start): once the organisation exists and still has no plan,
   // open the subscription page with the picked plan
   useEffect(() => {
+    // The plan is also kept on the account, for an email link opened in another browser
+    rememberSignupPlan(user?.user_metadata?.signup_plan ?? null);
     if (!profile?.company_id || !planAccess.data || !shouldOpenBillingForSignup()) return;
     if (planAccess.isViewOnly && planAccess.data.billing?.canManage) {
       markBillingOpenedForSignup();
       navigate(BILLING_ROUTE, { replace: true });
     }
-  }, [profile?.company_id, planAccess.data, planAccess.isViewOnly, navigate]);
+  }, [user?.user_metadata?.signup_plan, profile?.company_id, planAccess.data, planAccess.isViewOnly, navigate]);
 
   const [projects, setProjects] = useState<any[]>([]);
   const [projectsLoaded, setProjectsLoaded] = useState(false);
@@ -331,9 +334,7 @@ const Dashboard = () => {
       newParams.delete("action");
       setSearchParams(newParams);
     } else if (action === "create-company") {
-      setDialogMode("create");
-      setShowCompanyDialog(true);
-      companyForm.resetForm();
+      setShowCompanyChoiceDialog(true);
       // Clear the action param from URL
       const newParams = new URLSearchParams(searchParams);
       newParams.delete("action");
@@ -1068,11 +1069,10 @@ const Dashboard = () => {
     if (!profile || !profile.company_id) {
       toast({
         title: "Organisation required",
-        description: "Please join an organisation or create an organisation before creating a project.",
+        description: "Please name your organisation before creating a project.",
         variant: "destructive",
       });
-      setDialogMode("create");
-      setShowCompanyDialog(true);
+      setShowCompanyChoiceDialog(true);
       return;
     }
     if (!planAllowsNewProject()) return;
@@ -1357,11 +1357,8 @@ const Dashboard = () => {
           title="Welcome to VisionM"
           description="Get started by creating an organisation to organize your projects and datasets."
           action={{
-            label: "Create Workspace",
-            onClick: () => {
-              setDialogMode("create");
-              setShowCompanyDialog(true);
-            },
+            label: "Name your organisation",
+            onClick: () => setShowCompanyChoiceDialog(true),
           }}
         />
       )}
@@ -1439,53 +1436,26 @@ const Dashboard = () => {
         />
       )}
 
-      {/* Company Choice Dialog - Create or Join */}
-      <Dialog open={showCompanyChoiceDialog} onOpenChange={setShowCompanyChoiceDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Get started with VisionM</DialogTitle>
-            <DialogDescription>
-              Create a new workspace or join an existing one to get started.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4 sm:grid-cols-2">
-            <Button
-              variant="outline"
-              className="h-auto flex-col gap-3 p-6"
-              disabled={!!pendingJoinRequest}
-              onClick={() => {
-                setShowCompanyChoiceDialog(false);
-                setDialogMode("create");
-                companyForm.resetForm();
-                setShowCompanyDialog(true);
-              }}
-            >
-              <Building2 className="h-10 w-10 text-primary" />
-              <span className="font-semibold">Create Organisation</span>
-              <span className="text-xs text-muted-foreground font-normal">
-                Start a new workspace for your team
-              </span>
-            </Button>
-            <Button
-              variant="outline"
-              className="h-auto flex-col gap-3 p-6"
-              disabled={!!pendingJoinRequest}
-              onClick={() => {
-                setShowCompanyChoiceDialog(false);
-                setDialogMode("join");
-                companyForm.resetForm();
-                setShowCompanyDialog(true);
-              }}
-            >
-              <UserPlus className="h-10 w-10 text-primary" />
-              <span className="font-semibold">Join Organisation</span>
-              <span className="text-xs text-muted-foreground font-normal">
-                Request access to an existing workspace
-              </span>
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* New account without an organisation: just its name, then the plan page */}
+      <OrganisationNameDialog
+        open={showCompanyChoiceDialog}
+        onOpenChange={setShowCompanyChoiceDialog}
+        email={user?.email ?? profile?.email ?? ""}
+        onCreated={async (savedName, typedName) => {
+          setShowCompanyChoiceDialog(false);
+          await reloadProfile();
+          toast({
+            title: "Organisation saved",
+            description:
+              savedName === typedName
+                ? `Welcome to ${savedName}.`
+                : `"${typedName}" was already in use, so yours is saved as "${savedName}".`,
+          });
+          // Then straight to the plan page (the sign-up link's last step, and needed before any work)
+          markBillingOpenedForSignup();
+          navigate(BILLING_ROUTE, { replace: true });
+        }}
+      />
 
       {/* Company Details Dialog */}
       <Dialog 

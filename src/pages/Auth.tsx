@@ -577,6 +577,8 @@ useEffect(() => {
           data: {
             name: signupForm.values.name,
             phone: fullPhone,
+            // Kept on the account so the plan page opens even if the email link is opened elsewhere
+            signup_plan: getSignupPlan(),
           },
           emailRedirectTo: verifyEmailUrl(),
         },
@@ -885,7 +887,7 @@ useEffect(() => {
       }`}
     >
       {showSignup ? <SignupJourneyPanel /> : <AuthInspectionPanel />}
-      <div className="relative flex flex-1 items-center justify-center overflow-hidden p-4 sm:p-6">
+      <div className="relative flex flex-1 items-center justify-center overflow-hidden p-4 sm:px-6 sm:py-4">
       {/* Sign-up: soft glows drifting behind the card */}
       {showSignup && (
         <div aria-hidden="true" className="pointer-events-none absolute inset-0">
@@ -905,7 +907,7 @@ useEffect(() => {
         variants={fadeInUpVariants}
         initial="hidden"
         animate="visible"
-        className="relative w-full max-w-lg space-y-4"
+        className={`relative w-full space-y-4 ${showSignup ? "max-w-xl" : "max-w-lg"}`}
       >
         {isDeactivated && (
           <Alert variant="destructive" className="w-full">
@@ -918,8 +920,8 @@ useEffect(() => {
 
         {/* SIGN UP - the client sign-up link (/start) lands here */}
         {showSignup ? (
-          <div className="rounded-3xl border border-[#e4e7dc] bg-white/90 p-6 shadow-[0_24px_70px_-30px_rgba(23,31,27,0.45)] backdrop-blur sm:p-9">
-            <div className="mb-7">
+          <div className="rounded-3xl border border-[#e4e7dc] bg-white/90 p-6 shadow-[0_24px_70px_-30px_rgba(23,31,27,0.45)] backdrop-blur sm:px-8 sm:py-6">
+            <div className="mb-4">
               <SignupSteps current={sentTo ? 1 : 0} />
             </div>
 
@@ -933,25 +935,27 @@ useEffect(() => {
                 }}
               />
             ) : (
-              <div className="space-y-5">
+              <div className="space-y-4">
                 <motion.div custom={0} variants={fieldMotion} initial="hidden" animate="visible">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-[#171f1b] px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[#e9ff65]">
                     <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
                     {forPlayground ? "Playground edition" : "Vision-M Studio"}
                   </span>
-                  <h1 className="mt-4 text-[32px] font-bold leading-tight tracking-tight text-[#171f1b]">
+                  <h1 className="mt-3 text-[26px] font-bold leading-tight tracking-tight text-[#171f1b]">
                     {forPlayground ? "Start your Playground" : "Create your account"}
                   </h1>
-                  <p className="mt-1.5 text-[15px] text-[#5d675e]">
-                    {forPlayground
-                      ? "It takes under a minute. You'll choose your plan right after."
-                      : "It takes under a minute to get started."}
+                  <p className="mt-1 text-sm text-[#5d675e]">
+                    {forPlayground ? "Takes a minute, then you pick your plan." : "Takes under a minute to get started."}{" "}
+                    Have an account?{" "}
+                    <button type="button" onClick={() => setMode("signin")} className="font-semibold text-[#171f1b] underline-offset-4 hover:underline">
+                      Sign in
+                    </button>
                   </p>
                 </motion.div>
 
-                <motion.div custom={1} variants={fieldMotion} initial="hidden" animate="visible" className="space-y-5">
+                <motion.div custom={1} variants={fieldMotion} initial="hidden" animate="visible" className="space-y-3">
                   <GoogleSignInButton
-                    className="h-12 rounded-xl border-[#dfe3d6] bg-white text-[15px] font-semibold text-[#171f1b] shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#171f1b]/30 hover:bg-white hover:shadow-md"
+                    className="h-11 rounded-xl border-[#dfe3d6] bg-white text-sm font-semibold text-[#171f1b] shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#171f1b]/30 hover:bg-white hover:shadow-md"
                     onError={(message) => toast({ title: "Google sign-in failed", description: message, variant: "destructive" })}
                   />
                   <div className="flex items-center gap-3 text-[11px] font-medium uppercase tracking-widest text-[#9aa396]">
@@ -961,7 +965,8 @@ useEffect(() => {
                   </div>
                 </motion.div>
 
-                <form onSubmit={handleSignup} className="space-y-4" noValidate>
+                <form onSubmit={handleSignup} className="space-y-3" noValidate>
+                  <div className="grid gap-3 sm:grid-cols-2">
                   <IconField id="name" label="Full name" icon={User} index={2} error={touchedError("name")}>
                     <Input
                       id="name"
@@ -986,15 +991,16 @@ useEffect(() => {
                       className={inputClass(!!touchedError("email"))}
                     />
                   </IconField>
+                  </div>
 
-                  <motion.div custom={4} variants={fieldMotion} initial="hidden" animate="visible" className="space-y-1.5">
+                  <motion.div custom={4} variants={fieldMotion} initial="hidden" animate="visible" className="space-y-1">
                     <Label htmlFor="phone" className="text-[13px] font-semibold text-[#2b3530]">
                       Phone number
                     </Label>
                     <div className="flex gap-2">
                       <Select value={countryCode} onValueChange={(value) => setCountryCode(value)}>
                         <SelectTrigger
-                          className="h-12 w-[104px] shrink-0 rounded-xl border-[#dfe3d6] bg-[#fbfbf7] text-[15px] focus:ring-4 focus:ring-[#e9ff65]/40 focus:ring-offset-0"
+                          className="h-11 w-[104px] shrink-0 rounded-xl border-[#dfe3d6] bg-[#fbfbf7] text-sm focus:ring-4 focus:ring-[#e9ff65]/40 focus:ring-offset-0"
                           aria-label="Country code"
                         >
                           <SelectValue />
@@ -1057,13 +1063,13 @@ useEffect(() => {
                     <PasswordRules password={signupForm.values.password} />
                   </motion.div>
 
-                  <motion.div custom={7} variants={fieldMotion} initial="hidden" animate="visible" className="space-y-3 pt-2">
+                  <motion.div custom={7} variants={fieldMotion} initial="hidden" animate="visible" className="space-y-2 pt-1">
                     <motion.button
                       type="submit"
                       disabled={!signupReady}
                       whileHover={signupReady ? { y: -2 } : undefined}
                       whileTap={signupReady ? { scale: 0.98 } : undefined}
-                      className="group relative flex h-12 w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-[#171f1b] text-[15px] font-semibold text-white shadow-[0_10px_30px_-12px_rgba(23,31,27,0.8)] transition-colors disabled:cursor-not-allowed disabled:bg-[#c6ccbf] disabled:shadow-none"
+                      className="group relative flex h-11 w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-[#171f1b] text-[15px] font-semibold text-white shadow-[0_10px_30px_-12px_rgba(23,31,27,0.8)] transition-colors disabled:cursor-not-allowed disabled:bg-[#c6ccbf] disabled:shadow-none"
                     >
                       {/* A light sweep across the button once everything is filled in */}
                       {signupReady && (
@@ -1102,12 +1108,6 @@ useEffect(() => {
                   </motion.div>
                 </form>
 
-                <p className="border-t border-[#eceee6] pt-5 text-center text-sm text-[#5d675e]">
-                  Already have an account?{" "}
-                  <button type="button" onClick={() => setMode("signin")} className="font-semibold text-[#171f1b] underline-offset-4 hover:underline">
-                    Sign in
-                  </button>
-                </p>
               </div>
             )}
           </div>

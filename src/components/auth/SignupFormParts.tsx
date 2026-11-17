@@ -22,7 +22,7 @@ export const IconField: React.FC<{
   error?: string | null;
   children: React.ReactNode;
 }> = ({ id, label, icon: Icon, index, error, children }) => (
-  <motion.div custom={index} variants={fieldMotion} initial="hidden" animate="visible" className="space-y-1.5">
+  <motion.div custom={index} variants={fieldMotion} initial="hidden" animate="visible" className="space-y-1">
     <Label htmlFor={id} className="text-[13px] font-semibold text-[#2b3530]">
       {label}
     </Label>
@@ -51,7 +51,7 @@ export const IconField: React.FC<{
 /** Shared look for the boxes: tall, soft, with a green ring on focus */
 export const inputClass = (invalid?: boolean) =>
   cn(
-    "h-12 rounded-xl border-[#dfe3d6] bg-[#fbfbf7] pl-10 text-[15px] shadow-none transition-all placeholder:text-[#a3ab9f]",
+    "h-11 rounded-xl border-[#dfe3d6] bg-[#fbfbf7] pl-10 text-sm shadow-none transition-all placeholder:text-[#a3ab9f]",
     "focus-visible:border-[#88a530] focus-visible:bg-white focus-visible:ring-4 focus-visible:ring-[#e9ff65]/40 focus-visible:ring-offset-0",
     invalid && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15"
   );
@@ -77,7 +77,7 @@ export const PasswordRules: React.FC<{ password: string }> = ({ password }) => {
   const met = PASSWORD_RULES.filter((r) => r.test(password)).length;
   const strength = STRENGTH[Math.max(0, met - 1)];
   return (
-    <div className="space-y-2 pt-1">
+    <div className="space-y-1.5">
       <div className="flex items-center gap-2">
         <div className="flex flex-1 gap-1" aria-hidden="true">
           {PASSWORD_RULES.map((_, i) => (

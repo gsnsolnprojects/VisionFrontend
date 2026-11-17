@@ -236,7 +236,7 @@ export const SignupJourneyPanel: React.FC = () => {
 
   return (
     <aside
-      className="relative order-first flex flex-col overflow-hidden px-6 py-5 text-[#f5f5ee] lg:order-last lg:min-h-screen lg:px-14 lg:py-10"
+      className="relative order-first flex flex-col overflow-hidden px-6 py-5 text-[#f5f5ee] lg:order-last lg:sticky lg:top-0 lg:h-screen lg:min-h-[640px] lg:px-14 lg:py-8"
       style={{ background: "rgb(23, 31, 27)", fontFamily: "Arial, Helvetica, sans-serif" }}
     >
       {/* Soft moving glow behind everything */}
@@ -259,21 +259,21 @@ export const SignupJourneyPanel: React.FC = () => {
         Vision-M<span className="ml-1 inline-block h-2 w-2 bg-[#88a530]" />
       </Link>
 
-      <div className="relative hidden flex-1 flex-col justify-center gap-7 py-8 lg:flex">
+      <div className="relative hidden min-h-0 flex-1 flex-col justify-center gap-5 py-4 lg:flex">
         <div>
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-[#e9ff65]">Vision-M Playground</p>
-          <h2 className="mt-3 text-5xl font-normal leading-[1.05] tracking-tight">
+          <h2 className="mt-2 text-4xl font-normal leading-[1.05] tracking-tight xl:text-[42px]">
             Teach a machine
             <br />
             to{" "}
             <em className="bg-[#e9ff65] px-1.5 pb-0.5 not-italic text-[#171c1b]">see defects.</em>
           </h2>
-          <p className="mt-4 max-w-md text-[15px] leading-relaxed text-[#b9c7b2]">
+          <p className="mt-3 max-w-md text-sm leading-relaxed text-[#b9c7b2]">
             Label real inspection photos, train your own model and test it, all in your browser. No code needed.
           </p>
         </div>
 
-        <div onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+        <div className="w-full max-w-[400px]" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
           {/* The app window */}
           <motion.div
             className="overflow-hidden rounded-xl border border-[#425140] bg-[#1c2620] shadow-[0_30px_80px_-20px_rgba(0,0,0,0.6)]"
@@ -298,7 +298,7 @@ export const SignupJourneyPanel: React.FC = () => {
                 </motion.span>
               </AnimatePresence>
             </div>
-            <div className="p-3">
+            <div className="p-2.5">
               <Scene stage={stage} reduced={reduced} />
               <div className="mt-2 px-1">
                 <Readout stage={stage} reduced={reduced} />
@@ -307,7 +307,7 @@ export const SignupJourneyPanel: React.FC = () => {
           </motion.div>
 
           {/* The four steps, the current one lit, with a bar filling towards the next */}
-          <ol className="mt-5 grid grid-cols-4 gap-2" aria-label="What you'll do in the Playground">
+          <ol className="mt-4 grid grid-cols-4 gap-2" aria-label="What you'll do in the Playground">
             {STAGES.map((s, i) => {
               const Icon = s.icon;
               const active = i === stage;
@@ -345,7 +345,7 @@ export const SignupJourneyPanel: React.FC = () => {
           </p>
         </div>
 
-        <ul className="grid grid-cols-3 gap-3 text-xs text-[#a4b797]">
+        <ul className="grid max-w-[560px] grid-cols-3 gap-3 text-xs text-[#a4b797] [@media(max-height:900px)]:hidden">
           {[
             { icon: Boxes, text: "Ready-made industry samples to start with" },
             { icon: Cpu, text: "Models trained on cloud GPUs" },
