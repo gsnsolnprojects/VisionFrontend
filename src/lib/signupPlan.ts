@@ -32,3 +32,31 @@ export const clearSignupPlan = () => {
     // ignore
   }
 };
+
+/** Where the verification email's link goes; carries the picked plan for another device */
+export const verifyEmailUrl = () => {
+  const plan = getSignupPlan();
+  return `${window.location.origin.replace(/\/+$/, "")}/verify-email${plan ? `?plan=${plan}` : ""}`;
+};
+
+/**
+ * Someone who came through the sign-up link (/start) is taken to the subscription page once
+ * their organisation exists. Once per browser session, so the dashboard stays usable after that.
+ */
+const OPENED_KEY = "visionm.signupPlanOpened";
+
+export const shouldOpenBillingForSignup = (): boolean => {
+  try {
+    return !!getSignupPlan() && !sessionStorage.getItem(OPENED_KEY);
+  } catch {
+    return false;
+  }
+};
+
+export const markBillingOpenedForSignup = () => {
+  try {
+    sessionStorage.setItem(OPENED_KEY, "1");
+  } catch {
+    // ignore
+  }
+};

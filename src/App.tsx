@@ -195,6 +195,8 @@ function App() {
           {/* Public pages */}
           <Route path="/" element={<LandingV2 />} />
           <Route path="/auth" element={<Auth />} />
+          {/* Sign-up link for clients: sign up, then the Playground subscription page */}
+          <Route path="/start" element={<Navigate to="/auth?mode=signup&plan=playground" replace />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/privacy" element={<PrivacyPage />} />

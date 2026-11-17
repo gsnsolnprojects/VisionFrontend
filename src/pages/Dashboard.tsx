@@ -52,6 +52,7 @@ import { apiRequest } from "@/lib/api/config";
 import { RoleBadge } from "@/components/RoleBadge";
 import { usePlanAccess, PLAN_REQUIRED_MESSAGE, BILLING_ROUTE } from "@/contexts/plan-access-context";
 import { useWorkspaceKind } from "@/lib/workspaceKind";
+import { markBillingOpenedForSignup, shouldOpenBillingForSignup } from "@/lib/signupPlan";
 
 type ViewMode = "overview" | "projects" | "simulation" | "members";
 
@@ -66,6 +67,16 @@ const Dashboard = () => {
   const isPlaygroundWorkspace =
     planAccess.data?.access?.plan === "playground" && (company?.name ?? "").trim().toLowerCase() !== "gsn";
   const workspaceKind = useWorkspaceKind();
+
+  // Came through the sign-up link (/start): once the organisation exists and still has no plan,
+  // open the subscription page with the picked plan
+  useEffect(() => {
+    if (!profile?.company_id || !planAccess.data || !shouldOpenBillingForSignup()) return;
+    if (planAccess.isViewOnly && planAccess.data.billing?.canManage) {
+      markBillingOpenedForSignup();
+      navigate(BILLING_ROUTE, { replace: true });
+    }
+  }, [profile?.company_id, planAccess.data, planAccess.isViewOnly, navigate]);
 
   const [projects, setProjects] = useState<any[]>([]);
   const [projectsLoaded, setProjectsLoaded] = useState(false);

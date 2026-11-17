@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/hooks/useProfile";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FormFieldWrapper } from "@/components/FormFieldWrapper";
-import { PasswordChecklist } from "@/components/PasswordChecklist";
 import { PasswordInput } from "@/components/PasswordInput";
 import { useFormValidation } from "@/hooks/useFormValidation";
 import {
@@ -37,8 +36,11 @@ import {
   type ResetPasswordFormData,
 } from "@/lib/validations/authSchemas";
 import { fadeInUpVariants } from "@/utils/animations";
-import { rememberSignupPlan } from "@/lib/signupPlan";
+import { getSignupPlan, rememberSignupPlan, verifyEmailUrl } from "@/lib/signupPlan";
 import { AuthInspectionPanel } from "@/components/auth/AuthInspectionPanel";
+import { SignupJourneyPanel } from "@/components/auth/SignupJourneyPanel";
+import { CheckEmail, IconField, PasswordRules, SignupSteps, fieldMotion, inputClass } from "@/components/auth/SignupFormParts";
+import { ArrowRight, Loader2, Lock, Mail, Phone, Sparkles, User } from "lucide-react";
 import { ResendVerification } from "@/components/auth/ResendVerification";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 
@@ -64,6 +66,8 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   // Email of a sign-in attempt refused because it isn't verified yet (shows the resend box)
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
+  // Email a sign-up was just sent to: shows "Check your inbox" in place of the form
+  const [sentTo, setSentTo] = useState<string | null>(null);
   const [resendCooldown, setResendCooldown] = useState<number>(0);
   
   // Plan picked on the landing page (?plan=playground), highlighted later on the Billing page
@@ -574,7 +578,7 @@ useEffect(() => {
             name: signupForm.values.name,
             phone: fullPhone,
           },
-          emailRedirectTo: `${normalizeUrl(window.location.origin)}/verify-email`,
+          emailRedirectTo: verifyEmailUrl(),
         },
       });
 
@@ -635,17 +639,8 @@ useEffect(() => {
         }
       }
 
-      toast({
-        title: "verification email sent",
-        description:
-          "Please check your email inbox and confirm your email to sign in.",
-      });
-
-      // Switch to signin form and update URL
-      setMode("signin");
-      const newParams = new URLSearchParams(searchParams);
-      newParams.set("mode", "signin");
-      setSearchParams(newParams);
+      // "Check your inbox" replaces the form
+      setSentTo(signupForm.values.email.trim());
     } catch (error: any) {
       const rawMessage: string = error?.message || "";
       let friendlyMessage = rawMessage;
@@ -875,15 +870,42 @@ useEffect(() => {
 
   // ---------------- RENDER ----------------
 
+  const showSignup = mode === "signup" && !inviteToken;
+  const forPlayground = getSignupPlan() === "playground";
+  const signupReady = isSignupFormValid() && !loading && resendCooldown <= 0;
+  const touchedError = (field: "name" | "email") =>
+    signupForm.isFieldTouched(field) ? signupForm.getFieldError(field) : null;
+  const phoneShownError =
+    signupForm.isFieldTouched("phone") ? signupForm.getFieldError("phone") || phoneError : null;
+
   return (
-    <div className="min-h-screen flex flex-col lg:grid lg:grid-cols-2 bg-gradient-to-br from-background via-background to-primary/5">
-      <AuthInspectionPanel />
-      <div className="flex flex-1 items-center justify-center p-6">
+    <div
+      className={`min-h-screen flex flex-col lg:grid lg:grid-cols-2 ${
+        showSignup ? "bg-[#f4f4ec]" : "bg-gradient-to-br from-background via-background to-primary/5"
+      }`}
+    >
+      {showSignup ? <SignupJourneyPanel /> : <AuthInspectionPanel />}
+      <div className="relative flex flex-1 items-center justify-center overflow-hidden p-4 sm:p-6">
+      {/* Sign-up: soft glows drifting behind the card */}
+      {showSignup && (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+          <motion.div
+            className="absolute -left-24 top-10 h-72 w-72 rounded-full bg-[#e9ff65]/50 blur-3xl"
+            animate={{ x: [0, 40, 0], y: [0, 30, 0] }}
+            transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+          />
+          <motion.div
+            className="absolute -bottom-20 right-0 h-80 w-80 rounded-full bg-[#9ab51f]/25 blur-3xl"
+            animate={{ x: [0, -30, 0], y: [0, -40, 0] }}
+            transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
+          />
+        </div>
+      )}
       <motion.div
         variants={fadeInUpVariants}
         initial="hidden"
         animate="visible"
-        className="w-full max-w-lg space-y-4"
+        className="relative w-full max-w-lg space-y-4"
       >
         {isDeactivated && (
           <Alert variant="destructive" className="w-full">
@@ -893,6 +915,203 @@ useEffect(() => {
             </AlertDescription>
           </Alert>
         )}
+
+        {/* SIGN UP - the client sign-up link (/start) lands here */}
+        {showSignup ? (
+          <div className="rounded-3xl border border-[#e4e7dc] bg-white/90 p-6 shadow-[0_24px_70px_-30px_rgba(23,31,27,0.45)] backdrop-blur sm:p-9">
+            <div className="mb-7">
+              <SignupSteps current={sentTo ? 1 : 0} />
+            </div>
+
+            {sentTo ? (
+              <CheckEmail
+                email={sentTo}
+                onBack={() => setSentTo(null)}
+                onSignIn={() => {
+                  setSentTo(null);
+                  setMode("signin");
+                }}
+              />
+            ) : (
+              <div className="space-y-5">
+                <motion.div custom={0} variants={fieldMotion} initial="hidden" animate="visible">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#171f1b] px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[#e9ff65]">
+                    <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                    {forPlayground ? "Playground edition" : "Vision-M Studio"}
+                  </span>
+                  <h1 className="mt-4 text-[32px] font-bold leading-tight tracking-tight text-[#171f1b]">
+                    {forPlayground ? "Start your Playground" : "Create your account"}
+                  </h1>
+                  <p className="mt-1.5 text-[15px] text-[#5d675e]">
+                    {forPlayground
+                      ? "It takes under a minute. You'll choose your plan right after."
+                      : "It takes under a minute to get started."}
+                  </p>
+                </motion.div>
+
+                <motion.div custom={1} variants={fieldMotion} initial="hidden" animate="visible" className="space-y-5">
+                  <GoogleSignInButton
+                    className="h-12 rounded-xl border-[#dfe3d6] bg-white text-[15px] font-semibold text-[#171f1b] shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#171f1b]/30 hover:bg-white hover:shadow-md"
+                    onError={(message) => toast({ title: "Google sign-in failed", description: message, variant: "destructive" })}
+                  />
+                  <div className="flex items-center gap-3 text-[11px] font-medium uppercase tracking-widest text-[#9aa396]">
+                    <span className="h-px flex-1 bg-[#e4e7dc]" />
+                    or with your email
+                    <span className="h-px flex-1 bg-[#e4e7dc]" />
+                  </div>
+                </motion.div>
+
+                <form onSubmit={handleSignup} className="space-y-4" noValidate>
+                  <IconField id="name" label="Full name" icon={User} index={2} error={touchedError("name")}>
+                    <Input
+                      id="name"
+                      autoComplete="name"
+                      value={signupForm.values.name}
+                      onChange={signupForm.handleChange("name")}
+                      onBlur={signupForm.handleBlur("name")}
+                      placeholder="Your full name"
+                      className={inputClass(!!touchedError("name"))}
+                    />
+                  </IconField>
+
+                  <IconField id="email" label="Work email" icon={Mail} index={3} error={touchedError("email")}>
+                    <Input
+                      id="email"
+                      type="email"
+                      autoComplete="email"
+                      value={signupForm.values.email}
+                      onChange={signupForm.handleChange("email")}
+                      onBlur={signupForm.handleBlur("email")}
+                      placeholder="you@company.com"
+                      className={inputClass(!!touchedError("email"))}
+                    />
+                  </IconField>
+
+                  <motion.div custom={4} variants={fieldMotion} initial="hidden" animate="visible" className="space-y-1.5">
+                    <Label htmlFor="phone" className="text-[13px] font-semibold text-[#2b3530]">
+                      Phone number
+                    </Label>
+                    <div className="flex gap-2">
+                      <Select value={countryCode} onValueChange={(value) => setCountryCode(value)}>
+                        <SelectTrigger
+                          className="h-12 w-[104px] shrink-0 rounded-xl border-[#dfe3d6] bg-[#fbfbf7] text-[15px] focus:ring-4 focus:ring-[#e9ff65]/40 focus:ring-offset-0"
+                          aria-label="Country code"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="+91">IN +91</SelectItem>
+                          <SelectItem value="+1">US +1</SelectItem>
+                          <SelectItem value="+44">UK +44</SelectItem>
+                          <SelectItem value="+61">AU +61</SelectItem>
+                          <SelectItem value="+49">DE +49</SelectItem>
+                          <SelectItem value="+33">FR +33</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <div className="group relative flex-1">
+                        <Phone
+                          className="pointer-events-none absolute left-3.5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-[#8a968c] transition-colors group-focus-within:text-[#171f1b]"
+                          aria-hidden="true"
+                        />
+                        <Input
+                          id="phone"
+                          type="tel"
+                          inputMode="numeric"
+                          autoComplete="tel-national"
+                          value={signupForm.values.phone}
+                          onChange={(e) => {
+                            // Only allow digits (0-9)
+                            const filteredValue = e.target.value.replace(/\D/g, "");
+                            signupForm.handleChange("phone")({ ...e, target: { ...e.target, value: filteredValue } });
+                          }}
+                          onBlur={signupForm.handleBlur("phone")}
+                          placeholder="98765 43210"
+                          className={inputClass(!!phoneShownError)}
+                        />
+                      </div>
+                    </div>
+                    {phoneShownError && <p className="text-xs text-destructive">{phoneShownError}</p>}
+                  </motion.div>
+
+                  <IconField
+                    id="password"
+                    label="Password"
+                    icon={Lock}
+                    index={5}
+                    error={
+                      (signupForm.isFieldTouched("password") && signupForm.getFieldError("password")) ||
+                      (passwordStrengthError ? "Password must meet all the requirements below." : null)
+                    }
+                  >
+                    <PasswordInput
+                      id="password"
+                      autoComplete="new-password"
+                      value={signupForm.values.password}
+                      onChange={signupForm.handleChange("password")}
+                      onBlur={signupForm.handleBlur("password")}
+                      placeholder="Create a strong password"
+                      className={inputClass(passwordStrengthError)}
+                    />
+                  </IconField>
+                  <motion.div custom={6} variants={fieldMotion} initial="hidden" animate="visible">
+                    <PasswordRules password={signupForm.values.password} />
+                  </motion.div>
+
+                  <motion.div custom={7} variants={fieldMotion} initial="hidden" animate="visible" className="space-y-3 pt-2">
+                    <motion.button
+                      type="submit"
+                      disabled={!signupReady}
+                      whileHover={signupReady ? { y: -2 } : undefined}
+                      whileTap={signupReady ? { scale: 0.98 } : undefined}
+                      className="group relative flex h-12 w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-[#171f1b] text-[15px] font-semibold text-white shadow-[0_10px_30px_-12px_rgba(23,31,27,0.8)] transition-colors disabled:cursor-not-allowed disabled:bg-[#c6ccbf] disabled:shadow-none"
+                    >
+                      {/* A light sweep across the button once everything is filled in */}
+                      {signupReady && (
+                        <motion.span
+                          aria-hidden="true"
+                          className="absolute inset-y-0 w-1/3 -skew-x-12 bg-gradient-to-r from-transparent via-[#e9ff65]/25 to-transparent"
+                          initial={{ left: "-40%" }}
+                          animate={{ left: "120%" }}
+                          transition={{ duration: 1.6, repeat: Infinity, repeatDelay: 1.2, ease: "easeInOut" }}
+                        />
+                      )}
+                      {loading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Creating your account...
+                        </>
+                      ) : resendCooldown > 0 ? (
+                        `Try again in ${resendCooldown}s`
+                      ) : (
+                        <>
+                          Create my account
+                          <ArrowRight className="h-4 w-4 text-[#e9ff65] transition-transform group-hover:translate-x-1" aria-hidden="true" />
+                        </>
+                      )}
+                    </motion.button>
+                    <p className="text-center text-xs text-[#8a968c]">
+                      By creating an account you agree to our{" "}
+                      <Link to="/terms" className="font-medium text-[#3d4a40] underline-offset-2 hover:underline">
+                        Terms
+                      </Link>{" "}
+                      and{" "}
+                      <Link to="/privacy" className="font-medium text-[#3d4a40] underline-offset-2 hover:underline">
+                        Privacy Policy
+                      </Link>
+                      .
+                    </p>
+                  </motion.div>
+                </form>
+
+                <p className="border-t border-[#eceee6] pt-5 text-center text-sm text-[#5d675e]">
+                  Already have an account?{" "}
+                  <button type="button" onClick={() => setMode("signin")} className="font-semibold text-[#171f1b] underline-offset-4 hover:underline">
+                    Sign in
+                  </button>
+                </p>
+              </div>
+            )}
+          </div>
+        ) : (
         <Card className="w-full shadow-lg border border-border/70">
         <CardHeader className="text-center space-y-1">
           <CardTitle className="text-3xl font-bold">{headerTitle}</CardTitle>
@@ -900,8 +1119,8 @@ useEffect(() => {
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {/* Continue with Google - sign in / sign up (invites use their magic link instead) */}
-          {(mode === "signin" || mode === "signup") && !inviteToken && (
+          {/* Continue with Google - sign in (invites use their magic link instead) */}
+          {mode === "signin" && !inviteToken && (
             <div className="space-y-4">
               <GoogleSignInButton
                 onError={(message) => toast({ title: "Google sign-in failed", description: message, variant: "destructive" })}
@@ -912,128 +1131,6 @@ useEffect(() => {
                 <span className="h-px flex-1 bg-border" />
               </div>
             </div>
-          )}
-
-          {/* SIGN UP - Hidden when invite token is present */}
-          {mode === "signup" && !inviteToken && (
-            <form onSubmit={handleSignup} className="space-y-4">
-              <FormFieldWrapper
-                label="Full Name"
-                name="name"
-                value={signupForm.values.name}
-                onChange={signupForm.handleChange("name")}
-                onBlur={signupForm.handleBlur("name")}
-                error={signupForm.getFieldError("name")}
-                touched={signupForm.isFieldTouched("name")}
-                placeholder="Your full name"
-                required
-              />
-
-              <FormFieldWrapper
-                label="Email"
-                name="email"
-                type="email"
-                value={signupForm.values.email}
-                onChange={signupForm.handleChange("email")}
-                onBlur={signupForm.handleBlur("email")}
-                error={signupForm.getFieldError("email")}
-                touched={signupForm.isFieldTouched("email")}
-                placeholder="you@example.com"
-                required
-              />
-
-              <div>
-                <Label htmlFor="phone">Phone Number</Label>
-                <div className="flex gap-2">
-                  <Select
-                    value={countryCode}
-                    onValueChange={(value) => setCountryCode(value)}
-                  >
-                    <SelectTrigger className="w-32">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="+1">US +1</SelectItem>
-                      <SelectItem value="+44">UK +44</SelectItem>
-                      <SelectItem value="+91">IN +91</SelectItem>
-                      <SelectItem value="+61">AU +61</SelectItem>
-                      <SelectItem value="+49">DE +49</SelectItem>
-                      <SelectItem value="+33">FR +33</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    value={signupForm.values.phone}
-                    onChange={(e) => {
-                      // Only allow digits (0-9)
-                      const filteredValue = e.target.value.replace(/\D/g, "");
-                      signupForm.handleChange("phone")({ ...e, target: { ...e.target, value: filteredValue } });
-                    }}
-                    onBlur={signupForm.handleBlur("phone")}
-                    placeholder=""
-                    className={signupForm.isFieldTouched("phone") && (signupForm.getFieldError("phone") || phoneError) ? "border-destructive" : ""}
-                  />
-                </div>
-                {signupForm.isFieldTouched("phone") && (signupForm.getFieldError("phone") || phoneError) && (
-                  <p className="mt-1 text-xs text-destructive">
-                    {signupForm.getFieldError("phone") || phoneError}
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <Label htmlFor="password">Password</Label>
-                <PasswordInput
-                  id="password"
-                  value={signupForm.values.password}
-                  onChange={signupForm.handleChange("password")}
-                  onBlur={signupForm.handleBlur("password")}
-                  className={(signupForm.isFieldTouched("password") && signupForm.getFieldError("password")) || passwordStrengthError ? "border-destructive" : ""}
-                />
-                {signupForm.isFieldTouched("password") && signupForm.getFieldError("password") && (
-                  <p className="mt-1 text-xs text-destructive">
-                    {signupForm.getFieldError("password")}
-                  </p>
-                )}
-                {passwordStrengthError && (
-                  <p className="mt-1 text-xs text-destructive">
-                    Password must meet all requirements to sign up.
-                  </p>
-                )}
-                <PasswordChecklist password={signupForm.values.password} />
-              </div>
-
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={loading || resendCooldown > 0 || !isSignupFormValid()}
-              >
-                {loading
-                  ? "Signing up..."
-                  : resendCooldown > 0
-                  ? `Sign Up (available in ${resendCooldown}s)`
-                  : "Sign Up"}
-              </Button>
-
-              {resendCooldown > 0 && (
-                <p className="text-xs text-center text-muted-foreground">
-                  You can request another verification email in{" "}
-                  <span className="font-semibold">{resendCooldown}s</span>.
-                </p>
-              )}
-
-              <p className="text-sm text-center text-muted-foreground">
-                Already have an account?{" "}
-                <button
-                  type="button"
-                  onClick={() => setMode("signin")}
-                  className="text-primary hover:underline"
-                >
-                  Sign in
-                </button>
-              </p>
-            </form>
           )}
 
           {/* SIGN IN */}
@@ -1156,6 +1253,7 @@ useEffect(() => {
           )}
         </CardContent>
         </Card>
+        )}
       </motion.div>
       </div>
     </div>

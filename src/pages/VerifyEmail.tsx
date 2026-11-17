@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { fadeInUpVariants } from "@/utils/animations";
 import { supabase } from "@/integrations/supabase/client";
 import { ResendVerification } from "@/components/auth/ResendVerification";
+import { rememberSignupPlan } from "@/lib/signupPlan";
 
 type VerificationStatus = "loading" | "verified" | "already_verified" | "invalid";
 
@@ -24,6 +25,11 @@ const VerifyEmail = () => {
         document.documentElement.classList.add("dark");
       }
     };
+  }, []);
+
+  // The plan picked at sign-up comes back in the email link, so it also works on another device
+  useEffect(() => {
+    rememberSignupPlan(new URLSearchParams(window.location.search).get("plan"));
   }, []);
 
   // Check verification status on mount

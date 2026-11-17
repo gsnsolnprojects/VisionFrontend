@@ -2,13 +2,14 @@ import React, { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import { cn } from "@/lib/utils";
 
 /**
  * "Continue with Google" for the sign-in and sign-up pages. Google sends the person back to
  * /dashboard signed in; first-time users then complete their profile and create or join a
  * company like any new sign-up. Needs the Google provider switched on in Supabase Auth.
  */
-export const GoogleSignInButton: React.FC<{ onError: (message: string) => void }> = ({ onError }) => {
+export const GoogleSignInButton: React.FC<{ onError: (message: string) => void; className?: string }> = ({ onError, className }) => {
   const [redirecting, setRedirecting] = useState(false);
 
   const signIn = async () => {
@@ -32,7 +33,7 @@ export const GoogleSignInButton: React.FC<{ onError: (message: string) => void }
   };
 
   return (
-    <Button type="button" variant="outline" className="w-full gap-3" onClick={signIn} disabled={redirecting}>
+    <Button type="button" variant="outline" className={cn("w-full gap-3", className)} onClick={signIn} disabled={redirecting}>
       {redirecting ? (
         <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
       ) : (

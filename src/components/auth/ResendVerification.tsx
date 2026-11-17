@@ -3,6 +3,7 @@ import { Loader2, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
+import { verifyEmailUrl } from "@/lib/signupPlan";
 
 const COOLDOWN_SECONDS = 60;
 
@@ -35,7 +36,7 @@ export const ResendVerification: React.FC<{ initialEmail?: string }> = ({ initia
     const { error } = await supabase.auth.resend({
       type: "signup",
       email: address,
-      options: { emailRedirectTo: `${window.location.origin.replace(/\/+$/, "")}/verify-email` },
+      options: { emailRedirectTo: verifyEmailUrl() },
     });
     setSending(false);
     if (error) {
