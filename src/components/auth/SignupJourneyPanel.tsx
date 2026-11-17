@@ -18,11 +18,14 @@ const STAGES = [
 
 const STAGE_MS = 3400;
 
-/** Defects on the drawn circuit board, in the board's 320 × 200 units */
+/** The board drawing is wide (480 × 200 units) so it fills the panel's width */
+const VB_W = 480;
+
+/** Defects on the drawn circuit board, in the board's units */
 const DEFECTS = [
   { x: 58, y: 44, w: 34, h: 30, name: "missing hole", score: 96 },
   { x: 186, y: 118, w: 40, h: 26, name: "short", score: 91 },
-  { x: 244, y: 4, w: 30, h: 22, name: "mouse bite", score: 88 },
+  { x: 384, y: 4, w: 30, h: 22, name: "mouse bite", score: 88 },
 ];
 
 const LIME = "#e9ff65";
@@ -30,14 +33,17 @@ const LIME = "#e9ff65";
 /** A plain circuit board with a few parts, drawn so the boxes have something to sit on */
 const Board: React.FC = () => (
   <g>
-    <rect x="6" y="6" width="308" height="188" rx="10" fill="#21402c" stroke="#3d6a48" strokeWidth="1.5" />
+    <rect x="6" y="6" width="468" height="188" rx="10" fill="#21402c" stroke="#3d6a48" strokeWidth="1.5" />
     {/* Traces */}
     <g stroke="#4f8a5c" strokeWidth="2" fill="none" opacity="0.7">
       <path d="M20 100 H110 V60 H170" />
       <path d="M20 140 H150 V130 H230" />
-      <path d="M120 170 V150 H290" />
-      <path d="M200 20 V80 H300" />
+      <path d="M120 170 V150 H310 V176 H460" />
+      <path d="M200 20 V80 H330" />
       <path d="M60 180 V120 H100" />
+      <path d="M400 113 H460 V40" />
+      <path d="M300 30 H350 V60" />
+      <path d="M440 190 V150" />
     </g>
     {/* Chips */}
     <rect x="120" y="70" width="58" height="40" rx="3" fill="#152219" stroke="#5c7a5f" />
@@ -50,6 +56,18 @@ const Board: React.FC = () => (
       ))}
     </g>
     <rect x="230" y="150" width="44" height="26" rx="3" fill="#152219" stroke="#5c7a5f" />
+    {/* A second chip and parts on the right half */}
+    <rect x="330" y="88" width="70" height="50" rx="3" fill="#152219" stroke="#5c7a5f" />
+    <g fill="#9aa69a">
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <rect key={`t2${i}`} x={336 + i * 11} y="82" width="4" height="6" />
+      ))}
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <rect key={`b2${i}`} x={336 + i * 11} y="138" width="4" height="6" />
+      ))}
+    </g>
+    <rect x="420" y="60" width="12" height="22" rx="2" fill="#b98b4a" />
+    <rect x="356" y="160" width="22" height="12" rx="2" fill="#b98b4a" />
     <rect x="30" y="20" width="22" height="12" rx="2" fill="#b98b4a" />
     <rect x="270" y="96" width="22" height="12" rx="2" fill="#b98b4a" />
     {/* Drilled holes: one is missing (the first defect) */}
@@ -58,18 +76,21 @@ const Board: React.FC = () => (
       <circle cx="98" cy="58" r="5" />
       <circle cx="40" cy="160" r="5" />
       <circle cx="290" cy="130" r="5" />
+      <circle cx="440" cy="130" r="5" />
+      <circle cx="320" cy="60" r="5" />
+      <circle cx="450" cy="176" r="5" />
     </g>
     <circle cx="75" cy="59" r="5" fill="none" stroke="#c9b27a" strokeWidth="1" strokeDasharray="2 2" opacity="0.5" />
     {/* A short between two traces (second defect) */}
     <path d="M196 131 L216 131" stroke="#d8c26a" strokeWidth="5" strokeLinecap="round" />
     {/* A bite out of the board edge (third defect) */}
-    <path d="M250 6 q9 22 18 0" fill="rgb(23,31,27)" />
+    <path d="M390 6 q9 22 18 0" fill="#1c2620" />
   </g>
 );
 
 /** A box's name, above it, or under it when the box is at the top edge */
 const Tag: React.FC<{ x: number; y: number; h?: number; text: string; solid?: boolean }> = ({ x, y, h = 0, text, solid }) => (
-  <g transform={`translate(${Math.min(x, 310 - (text.length * 5.6 + 10))} ${y < 16 ? y + h + 2 : y - 13})`}>
+  <g transform={`translate(${Math.min(x, VB_W - 10 - (text.length * 5.6 + 10))} ${y < 16 ? y + h + 2 : y - 13})`}>
     <rect width={text.length * 5.6 + 10} height="12" rx="2" fill={solid ? LIME : "rgba(233,255,101,0.18)"} />
     <text x="5" y="9" fontSize="8" fontFamily="ui-monospace, monospace" fill={solid ? "#171f1b" : LIME}>
       {text}
@@ -81,7 +102,7 @@ const Tag: React.FC<{ x: number; y: number; h?: number; text: string; solid?: bo
 const Scene: React.FC<{ stage: number; reduced: boolean }> = ({ stage, reduced }) => {
   const d = reduced ? 0 : 1;
   return (
-    <svg viewBox="0 0 320 200" className="block h-auto w-full" role="img" aria-label={STAGES[stage].caption}>
+    <svg viewBox={`0 0 ${VB_W} 200`} className="block h-full w-full" role="img" aria-label={STAGES[stage].caption}>
       <Board />
       {/* Scenes crossfade (no waiting on the old one to leave, so a paused tab can't get stuck) */}
       <AnimatePresence initial={false}>
@@ -117,12 +138,12 @@ const Scene: React.FC<{ stage: number; reduced: boolean }> = ({ stage, reduced }
 
         {stage === 1 && (
           <motion.g key="train" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <rect x="6" y="6" width="308" height="188" rx="10" fill="rgba(10,16,12,0.45)" />
+            <rect x="6" y="6" width="468" height="188" rx="10" fill="rgba(10,16,12,0.45)" />
             {/* Scanning passes over the board while it learns */}
             {!reduced && (
               <motion.rect
                 x="6"
-                width="308"
+                width="468"
                 height="3"
                 fill={LIME}
                 style={{ filter: "drop-shadow(0 0 6px #e9ff65)" }}
@@ -153,7 +174,7 @@ const Scene: React.FC<{ stage: number; reduced: boolean }> = ({ stage, reduced }
 
         {stage === 3 && (
           <motion.g key="report" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <rect x="6" y="6" width="308" height="188" rx="10" fill="rgba(10,16,12,0.35)" />
+            <rect x="6" y="6" width="468" height="188" rx="10" fill="rgba(10,16,12,0.35)" />
             {DEFECTS.map((b) => (
               <rect key={b.name} x={b.x} y={b.y} width={b.w} height={b.h} fill="rgba(233,255,101,0.08)" stroke={LIME} strokeWidth="1.5" rx="2" opacity="0.75" />
             ))}
@@ -259,8 +280,8 @@ export const SignupJourneyPanel: React.FC = () => {
         Vision-M<span className="ml-1 inline-block h-2 w-2 bg-[#88a530]" />
       </Link>
 
-      {/* Centred column; the app window below grows with the screen's height so it fills the space without spilling */}
-      <div className="relative mx-auto hidden min-h-0 w-full max-w-[600px] flex-1 flex-col justify-center gap-5 py-4 lg:flex">
+      {/* Full-width column; the board fills the panel's width, and shrinks only if the screen is short */}
+      <div className="relative hidden min-h-0 w-full flex-1 flex-col justify-center gap-5 py-4 lg:flex">
         <div>
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-[#e9ff65]">Vision-M Playground</p>
           <h2 className="mt-2 text-4xl font-normal leading-[1.05] tracking-tight xl:text-[42px]">
@@ -269,12 +290,12 @@ export const SignupJourneyPanel: React.FC = () => {
             to{" "}
             <em className="bg-[#e9ff65] px-1.5 pb-0.5 not-italic text-[#171c1b]">see defects.</em>
           </h2>
-          <p className="mt-3 max-w-md text-sm leading-relaxed text-[#b9c7b2]">
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-[#b9c7b2]">
             Label real inspection photos, train your own model and test it, all in your browser. No code needed.
           </p>
         </div>
 
-        <div style={{ width: "min(100%, max(320px, calc((100vh - 510px) * 1.6)))" }} onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+        <div className="w-full" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
           {/* The app window */}
           <motion.div
             className="overflow-hidden rounded-xl border border-[#425140] bg-[#1c2620] shadow-[0_30px_80px_-20px_rgba(0,0,0,0.6)]"
@@ -282,66 +303,65 @@ export const SignupJourneyPanel: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, ease: "easeOut" }}
           >
-            <div className="flex items-center gap-1.5 border-b border-[#33433a] px-3 py-2">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#425140]" />
-              <span className="h-2.5 w-2.5 rounded-full bg-[#425140]" />
-              <span className="h-2.5 w-2.5 rounded-full bg-[#425140]" />
-              <span className="ml-3 font-mono text-[11px] text-[#7f927a]">PCB defect check</span>
-              <AnimatePresence mode="wait">
-                <motion.span
-                  key={stage}
-                  className="ml-auto rounded bg-[#e9ff65]/15 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-[#e9ff65]"
-                  initial={{ opacity: 0, x: 6 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -6 }}
-                >
-                  {STAGES[stage].label}
-                </motion.span>
-              </AnimatePresence>
+            {/* Top bar: the four steps as tabs, the current one lit, with a bar filling towards the next */}
+            <div className="flex items-center gap-3 border-b border-[#33433a] px-3">
+              <span className="flex shrink-0 gap-1.5" aria-hidden="true">
+                <span className="h-2.5 w-2.5 rounded-full bg-[#425140]" />
+                <span className="h-2.5 w-2.5 rounded-full bg-[#425140]" />
+                <span className="h-2.5 w-2.5 rounded-full bg-[#425140]" />
+              </span>
+              <span className="hidden shrink-0 font-mono text-[11px] text-[#7f927a] xl:inline">PCB defect check</span>
+              <ol className="ml-auto grid flex-1 grid-cols-4 xl:max-w-[360px]" aria-label="What you'll do in the Playground">
+                {STAGES.map((s, i) => {
+                  const Icon = s.icon;
+                  const active = i === stage;
+                  return (
+                    <li key={s.id}>
+                      <button
+                        type="button"
+                        className="group relative flex w-full items-center justify-center gap-1.5 py-2.5"
+                        onClick={() => setStage(i)}
+                        aria-current={active ? "step" : undefined}
+                      >
+                        <Icon className={`h-3.5 w-3.5 ${active ? "text-[#e9ff65]" : "text-[#7f927a]"}`} aria-hidden="true" />
+                        <span
+                          className={`text-xs font-semibold transition-colors ${
+                            active ? "text-[#e9ff65]" : "text-[#7f927a] group-hover:text-[#b9c7b2]"
+                          }`}
+                        >
+                          {s.label}
+                        </span>
+                        <span className="absolute inset-x-1 bottom-0 h-0.5 overflow-hidden rounded-full bg-[#33433a]">
+                          {active ? (
+                            <motion.span
+                              key={`bar-${stage}`}
+                              className="block h-full bg-[#e9ff65]"
+                              initial={{ width: reduced || paused ? "100%" : "0%" }}
+                              animate={{ width: "100%" }}
+                              transition={{ duration: reduced || paused ? 0 : STAGE_MS / 1000, ease: "linear" }}
+                            />
+                          ) : (
+                            <span className={i < stage ? "block h-full w-full bg-[#88a530]" : "block h-full w-0"} />
+                          )}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
             </div>
             <div className="p-2.5">
-              <Scene stage={stage} reduced={reduced} />
+              {/* As wide as the window; height from the board's shape, capped by the screen's height */}
+              <div style={{ height: "max(160px, min(calc((50vw - 134px) * 200 / 480), calc(100vh - 470px)))" }}>
+                <Scene stage={stage} reduced={reduced} />
+              </div>
               <div className="mt-2 px-1">
                 <Readout stage={stage} reduced={reduced} />
               </div>
             </div>
           </motion.div>
 
-          {/* The four steps, the current one lit, with a bar filling towards the next */}
-          <ol className="mt-4 grid grid-cols-4 gap-2" aria-label="What you'll do in the Playground">
-            {STAGES.map((s, i) => {
-              const Icon = s.icon;
-              const active = i === stage;
-              return (
-                <li key={s.id}>
-                  <button type="button" className="group w-full text-left" onClick={() => setStage(i)} aria-current={active ? "step" : undefined}>
-                    <div className="h-1 overflow-hidden rounded-full bg-[#33433a]">
-                      {active ? (
-                        <motion.div
-                          key={`bar-${stage}`}
-                          className="h-full bg-[#e9ff65]"
-                          initial={{ width: reduced || paused ? "100%" : "0%" }}
-                          animate={{ width: "100%" }}
-                          transition={{ duration: reduced || paused ? 0 : STAGE_MS / 1000, ease: "linear" }}
-                        />
-                      ) : (
-                        <div className={i < stage ? "h-full w-full bg-[#88a530]" : "h-full w-0"} />
-                      )}
-                    </div>
-                    <span
-                      className={`mt-2 flex items-center gap-1.5 text-xs font-semibold transition-colors ${
-                        active ? "text-[#e9ff65]" : "text-[#7f927a] group-hover:text-[#b9c7b2]"
-                      }`}
-                    >
-                      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-                      {s.label}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-          <p className="mt-2 min-h-[1.25rem] text-sm text-[#b9c7b2]" aria-live="polite">
+          <p className="mt-3 text-sm text-[#b9c7b2]" aria-live="polite">
             {STAGES[stage].caption}
           </p>
         </div>
