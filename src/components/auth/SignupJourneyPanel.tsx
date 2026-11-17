@@ -259,7 +259,8 @@ export const SignupJourneyPanel: React.FC = () => {
         Vision-M<span className="ml-1 inline-block h-2 w-2 bg-[#88a530]" />
       </Link>
 
-      <div className="relative hidden min-h-0 flex-1 flex-col justify-center gap-5 py-4 lg:flex">
+      {/* Centred column; the app window below grows with the screen's height so it fills the space without spilling */}
+      <div className="relative mx-auto hidden min-h-0 w-full max-w-[600px] flex-1 flex-col justify-center gap-5 py-4 lg:flex">
         <div>
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-[#e9ff65]">Vision-M Playground</p>
           <h2 className="mt-2 text-4xl font-normal leading-[1.05] tracking-tight xl:text-[42px]">
@@ -273,7 +274,7 @@ export const SignupJourneyPanel: React.FC = () => {
           </p>
         </div>
 
-        <div className="w-full max-w-[400px]" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+        <div style={{ width: "min(100%, max(320px, calc((100vh - 510px) * 1.6)))" }} onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
           {/* The app window */}
           <motion.div
             className="overflow-hidden rounded-xl border border-[#425140] bg-[#1c2620] shadow-[0_30px_80px_-20px_rgba(0,0,0,0.6)]"
@@ -345,7 +346,7 @@ export const SignupJourneyPanel: React.FC = () => {
           </p>
         </div>
 
-        <ul className="grid max-w-[560px] grid-cols-3 gap-3 text-xs text-[#a4b797] [@media(max-height:900px)]:hidden">
+        <ul className="grid grid-cols-3 gap-3 text-xs text-[#a4b797] [@media(max-height:900px)]:hidden">
           {[
             { icon: Boxes, text: "Ready-made industry samples to start with" },
             { icon: Cpu, text: "Models trained on cloud GPUs" },
