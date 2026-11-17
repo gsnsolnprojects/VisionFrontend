@@ -62,7 +62,7 @@ export const InviteUserDialog: React.FC<Props> = ({
     if (!companyId) {
       toast({
         title: "Error",
-        description: "Company id missing",
+        description: "Organisation id missing",
         variant: "destructive",
       });
       return;

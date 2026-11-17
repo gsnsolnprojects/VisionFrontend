@@ -103,7 +103,7 @@ export const CompanyMembers: React.FC<CompanyMembersProps> = ({
       setMembers(data || []);
     } catch (err: any) {
       console.error("[CompanyMembers] Error fetching company members:", err);
-      setError(err?.message || "Failed to load company members");
+      setError(err?.message || "Failed to load organisation members");
     } finally {
       setLoading(false);
     }
@@ -112,7 +112,7 @@ export const CompanyMembers: React.FC<CompanyMembersProps> = ({
   if (!hasPermission("manageWorkspaceUsers")) {
     return (
       <div className="p-6">
-        <p className="text-muted-foreground">You don't have permission to view company members.</p>
+        <p className="text-muted-foreground">You don't have permission to view organisation members.</p>
       </div>
     );
   }
@@ -136,8 +136,8 @@ export const CompanyMembers: React.FC<CompanyMembersProps> = ({
   const handleAddUser = async () => {
     if (!companyId) {
       toast({
-        title: "Company required",
-        description: "Please create or join a company before inviting users.",
+        title: "Organisation required",
+        description: "Please create or join an organisation before inviting users.",
         variant: "destructive",
       });
       return;
@@ -409,7 +409,7 @@ export const CompanyMembers: React.FC<CompanyMembersProps> = ({
   if (loading) {
     return (
       <div className="p-6">
-        <p className="text-muted-foreground">Loading company members...</p>
+        <p className="text-muted-foreground">Loading organisation members...</p>
       </div>
     );
   }
@@ -426,9 +426,9 @@ export const CompanyMembers: React.FC<CompanyMembersProps> = ({
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold">Company Members</h2>
+          <h2 className="text-2xl font-bold">Organisation Members</h2>
           <p className="text-muted-foreground mt-1">
-            View all members of your company and their details.
+            View all members of your organisation and their details.
           </p>
         </div>
         {canInviteUsers && (
@@ -447,7 +447,7 @@ export const CompanyMembers: React.FC<CompanyMembersProps> = ({
       {members.length === 0 ? (
         <Card>
           <CardContent className="p-6 text-center">
-            <p className="text-muted-foreground">No members found in this company.</p>
+            <p className="text-muted-foreground">No members found in this organisation.</p>
           </CardContent>
         </Card>
       ) : (
@@ -617,7 +617,7 @@ export const CompanyMembers: React.FC<CompanyMembersProps> = ({
       <Dialog open={inviteOpen} onOpenChange={handleInviteDialogOpenChange}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Invite user to company</DialogTitle>
+            <DialogTitle>Invite user to organisation</DialogTitle>
           </DialogHeader>
           <div className="py-2">
             <InviteUserDialog companyId={companyId} accessToken={inviteAccessToken} />

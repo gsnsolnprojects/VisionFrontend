@@ -161,7 +161,7 @@ const LevelTwoPage: React.FC = () => {
         body: JSON.stringify({ project: projectName }),
         maxRetries: 1,
       });
-      toast({ title: "GSN's photos added", description: "They're being prepared. Then label at least 20 of them." });
+      toast({ title: "GSN's photos added", description: "They're being prepared. Then label them." });
     });
 
   return (
@@ -260,7 +260,7 @@ const LevelTwoPage: React.FC = () => {
           <div data-tour="l2-scope">
             <StepGuide
               what="Pick one defect to look for, for example a scratch or a missing part, and take clear photos of it."
-              why="You'll need at least 20 photos, and more is better. Include some good parts too, so the model learns the difference."
+              why="The more photos, the better. Include some good parts too, so the model learns the difference."
             />
           </div>
           <div data-tour="l2-upload">

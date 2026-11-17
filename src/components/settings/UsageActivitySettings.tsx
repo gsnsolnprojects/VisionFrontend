@@ -137,8 +137,8 @@ export const UsageActivitySettings: React.FC = () => {
           ))}
         </select>
         {admin && (
-          <select className={select} value={scope} onChange={(e) => setScope(e.target.value)} aria-label="Company">
-            <option value="all">All companies</option>
+          <select className={select} value={scope} onChange={(e) => setScope(e.target.value)} aria-label="Organisation">
+            <option value="all">All organisations</option>
             {[...new Set([...companies, ...(scope !== "all" ? [scope] : [])])].map((c) => (
               <option key={c} value={c}>
                 {c}
@@ -274,7 +274,7 @@ export const UsageActivitySettings: React.FC = () => {
                     <tr>
                       <th className="px-3 py-2 font-medium">What</th>
                       <th className="px-3 py-2 font-medium">Person</th>
-                      {admin && scope === "all" && <th className="px-3 py-2 font-medium">Company</th>}
+                      {admin && scope === "all" && <th className="px-3 py-2 font-medium">Organisation</th>}
                       <th className="px-3 py-2 font-medium">Project</th>
                       <th className="px-3 py-2 font-medium">Started</th>
                       <th className="px-3 py-2 font-medium">Ended</th>

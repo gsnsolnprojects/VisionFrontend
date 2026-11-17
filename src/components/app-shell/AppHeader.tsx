@@ -157,8 +157,8 @@ export const AppHeader: React.FC = () => {
             toast({
               title: "Invite accepted",
               description: acceptedAt
-                ? `${email} accepted your company invite on ${acceptedAt}.`
-                : `${email} accepted your company invite.`,
+                ? `${email} accepted your organisation invite on ${acceptedAt}.`
+                : `${email} accepted your organisation invite.`,
             });
           }
         },
@@ -392,7 +392,7 @@ export const AppHeader: React.FC = () => {
                   disabled={hasPendingJoinRequest}
                   onClick={() => navigate("/dashboard?action=create-company")}
                 >
-                  Create Company
+                  Create Organisation
                 </Button>
                 <JoinCompanyDialog disabled={hasPendingJoinRequest} />
               </>

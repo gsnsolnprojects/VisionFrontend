@@ -24,9 +24,9 @@ export const CompanySettings: React.FC = () => {
 
   if (!company) {
     return (
-      <SettingsSection title="Company" intro="The company your account belongs to.">
+      <SettingsSection title="Organisation" intro="The organisation your account belongs to.">
         <SettingsCard>
-          <p className="text-sm text-muted-foreground">Your account isn't part of a company yet.</p>
+          <p className="text-sm text-muted-foreground">Your account isn't part of an organisation yet.</p>
         </SettingsCard>
       </SettingsSection>
     );
@@ -48,7 +48,7 @@ export const CompanySettings: React.FC = () => {
         .eq("id", company.id);
       if (error) throw error;
       await reloadProfile();
-      toast({ title: "Saved", description: "Company details updated." });
+      toast({ title: "Saved", description: "Organisation details updated." });
     } catch (err) {
       toast({ title: "Couldn't save", description: (err as Error).message, variant: "destructive" });
     } finally {
@@ -58,19 +58,19 @@ export const CompanySettings: React.FC = () => {
 
   return (
     <SettingsSection
-      title="Company"
+      title="Organisation"
       intro={
         isAdmin
-          ? "Details everyone in your company shares. As the admin, you can edit the description."
-          : "Details everyone in your company shares. Only your company admin can change them."
+          ? "Details everyone in your organisation shares. As the admin, you can edit the description."
+          : "Details everyone in your organisation shares. Only your organisation admin can change them."
       }
     >
       <SettingsCard>
         <form className="space-y-4" onSubmit={save}>
           <div className="space-y-1.5">
-            <Label htmlFor="settings-company-name">Company name</Label>
+            <Label htmlFor="settings-company-name">Organisation name</Label>
             <Input id="settings-company-name" value={company.name ?? ""} disabled className="bg-muted" />
-            <p className="text-xs text-muted-foreground">To change the company name, contact GSN.</p>
+            <p className="text-xs text-muted-foreground">To change the organisation name, contact GSN.</p>
           </div>
           {(company.email || company.admin_email) && (
             <div className="space-y-1.5">
@@ -86,7 +86,7 @@ export const CompanySettings: React.FC = () => {
               onChange={(e) => setDescription(e.target.value)}
               disabled={!isAdmin}
               rows={3}
-              placeholder={isAdmin ? "What your company does (optional)" : "No description"}
+              placeholder={isAdmin ? "What your organisation does (optional)" : "No description"}
               className={isAdmin ? undefined : "bg-muted"}
             />
           </div>

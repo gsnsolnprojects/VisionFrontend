@@ -166,7 +166,7 @@ const BillingContent: React.FC<BillingContentProps> = ({ data, busyPlan, cancell
         <Card>
           <CardHeader>
             <CardTitle>Current Plan</CardTitle>
-            <CardDescription>Your company's subscription</CardDescription>
+            <CardDescription>Your organisation's subscription</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -208,7 +208,7 @@ const BillingContent: React.FC<BillingContentProps> = ({ data, busyPlan, cancell
         <Card>
           <CardHeader>
             <CardTitle>Usage</CardTitle>
-            <CardDescription>What your company is using against its plan limits</CardDescription>
+            <CardDescription>What your organisation is using against its plan limits</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {usage ? (
@@ -222,7 +222,7 @@ const BillingContent: React.FC<BillingContentProps> = ({ data, busyPlan, cancell
                 />
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">Join or create a company to see usage.</p>
+              <p className="text-sm text-muted-foreground">Join or create an organisation to see usage.</p>
             )}
           </CardContent>
         </Card>
@@ -231,7 +231,7 @@ const BillingContent: React.FC<BillingContentProps> = ({ data, busyPlan, cancell
       <div>
         <h3 className="mb-1 text-lg font-semibold">Plans</h3>
         <p className="mb-4 text-sm text-muted-foreground">
-          Billed monthly per company through Razorpay (UPI, cards, netbanking). Everyone in your company shares the plan.{" "}
+          Billed monthly per organisation through Razorpay (UPI, cards, netbanking). Everyone in your organisation shares the plan.{" "}
           <Link to="/refunds" className="underline">
             Refund &amp; cancellation policy
           </Link>
@@ -292,7 +292,7 @@ export const SettingsBillingPage: React.FC = () => {
 
       await verifyCheckout(outcome.result);
       clearSignupPlan();
-      toast({ title: "Payment successful", description: `Your company is now on the ${plan.name}.` });
+      toast({ title: "Payment successful", description: `Your organisation is now on the ${plan.name}.` });
       await Promise.all([loadSubscription(false), planAccess.refresh()]);
     } catch (err) {
       toast({
@@ -360,7 +360,7 @@ export const SettingsBillingPage: React.FC = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel your subscription?</AlertDialogTitle>
             <AlertDialogDescription>
-              You won't be charged again. Your company keeps full access until{" "}
+              You won't be charged again. Your organisation keeps full access until{" "}
               {formatDate(data?.subscription?.currentPeriodEnd) ?? "the end of the paid month"}, then the workspace
               becomes view-only. Your data is kept.
             </AlertDialogDescription>

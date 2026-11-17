@@ -259,7 +259,7 @@ useEffect(() => {
       if (!acceptError && acceptJson?.ok) {
         toast({
           title: "Invite accepted",
-          description: "You have been added to the company. Redirecting to dashboard...",
+          description: "You have been added to the organisation. Redirecting to dashboard...",
         });
         setTimeout(() => {
           navigate("/dashboard");
@@ -375,7 +375,7 @@ useEffect(() => {
     if (accepted) {
       toast({
         title: "Invite accepted",
-        description: "You have been added to the company. Redirecting to dashboard...",
+        description: "You have been added to the organisation. Redirecting to dashboard...",
       });
 
       // Clear invite token from URL
@@ -754,7 +754,7 @@ useEffect(() => {
           if (!acceptError && acceptJson?.ok) {
             toast({
               title: "Invite accepted",
-              description: "You have been added to the company.",
+              description: "You have been added to the organisation.",
             });
           } else {
             // Don't block navigation if invite acceptance fails
@@ -938,7 +938,7 @@ useEffect(() => {
                 onBlur={signupForm.handleBlur("email")}
                 error={signupForm.getFieldError("email")}
                 touched={signupForm.isFieldTouched("email")}
-                placeholder="you@company.com"
+                placeholder="you@example.com"
                 required
               />
 
@@ -1043,7 +1043,7 @@ useEffect(() => {
               {inviteToken && (
                 <div className="p-4 bg-primary/10 border border-primary/20 rounded-md">
                   <p className="text-sm font-medium text-primary mb-1">
-                    You&apos;ve been invited to join a company
+                    You&apos;ve been invited to join an organisation
                   </p>
                   <p className="text-xs text-muted-foreground">
                     A magic link has been sent to your email. Click the link in your email to sign in and accept the invite. 
@@ -1063,7 +1063,7 @@ useEffect(() => {
                 onBlur={signinForm.handleBlur("email")}
                 error={signinForm.getFieldError("email")}
                 touched={signinForm.isFieldTouched("email")}
-                placeholder="you@company.com"
+                placeholder="you@example.com"
                 required
                 disabled={!!inviteToken} // Disable email input when invite token is present
               />
@@ -1135,7 +1135,7 @@ useEffect(() => {
                 onBlur={resetPasswordForm.handleBlur("email")}
                 error={resetPasswordForm.getFieldError("email")}
                 touched={resetPasswordForm.isFieldTouched("email")}
-                placeholder="you@company.com"
+                placeholder="you@example.com"
                 required
               />
 

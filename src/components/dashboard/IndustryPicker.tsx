@@ -530,7 +530,7 @@ const Challenges: React.FC<{
           <LevelSteps
             steps={[
               "Name your project and upload your photos",
-              "Mark the defect on at least 20 of them",
+              "Mark the defects on them",
               "Train your own model",
               "Test it on new photos and make a report",
             ]}

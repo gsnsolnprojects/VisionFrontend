@@ -53,7 +53,7 @@ export const ResendVerification: React.FC<{ initialEmail?: string }> = ({ initia
     <div className="space-y-2 text-left">
       <Input
         type="email"
-        placeholder="you@company.com"
+        placeholder="you@example.com"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         aria-label="Email address for the verification link"

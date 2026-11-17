@@ -168,7 +168,7 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
               // Create a timeout promise that will always reject after 10 seconds
               const timeoutPromise = new Promise<never>((_, reject) => {
                 setTimeout(
-                  () => reject(new Error("Company fetch timeout after 10 seconds")),
+                  () => reject(new Error("Organisation fetch timeout after 10 seconds")),
                   10000
                 );
               });
@@ -182,7 +182,7 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
               // Add an additional safety timeout wrapper to ensure we never hang forever
               const safetyTimeout = new Promise<{ data: any; error: any }>((resolve) => {
                 setTimeout(() => {
-                  resolve({ data: null, error: new Error("Company fetch safety timeout after 12 seconds") });
+                  resolve({ data: null, error: new Error("Organisation fetch safety timeout after 12 seconds") });
                 }, 12000);
               });
 

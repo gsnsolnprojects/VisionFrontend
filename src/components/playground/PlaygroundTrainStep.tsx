@@ -310,7 +310,7 @@ export const PlaygroundTrainStep: React.FC<{
     : isSample
       ? "GSN's labelled samples are for viewing and testing. To train, choose \"Label this sample myself\" in step 1, or upload your own photos."
       : counts.labelled < MIN_LABELLED
-      ? `Label at least ${MIN_LABELLED} photos first (${counts.labelled} so far): the model learns only from labelled photos.`
+      ? `Label more photos first (${counts.labelled} labelled so far): the model learns only from labelled photos.`
       : runsLeft === 0
         ? "You've used this month's training runs. They reset on the 1st."
         : modelsFull

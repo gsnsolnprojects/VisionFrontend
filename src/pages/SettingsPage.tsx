@@ -27,7 +27,7 @@ interface SectionDef {
   path: string;
   label: string;
   Icon: LucideIcon;
-  group: "You" | "Company";
+  group: "You" | "Organisation";
   gsnOnly?: boolean;
 }
 
@@ -38,10 +38,10 @@ const SECTIONS: SectionDef[] = [
   { path: `${BASE}/password`, label: "Password", Icon: KeyRound, group: "You" },
   { path: `${BASE}/appearance`, label: "Appearance", Icon: Palette, group: "You" },
   { path: `${BASE}/shortcuts`, label: "Shortcut keys", Icon: Keyboard, group: "You", gsnOnly: true },
-  { path: `${BASE}/company`, label: "Company", Icon: Building2, group: "Company" },
-  { path: `${BASE}/billing`, label: "Plan & billing", Icon: CreditCard, group: "Company" },
-  { path: `${BASE}/usage`, label: "Usage", Icon: Activity, group: "Company" },
-  { path: `${BASE}/mobile-inspect`, label: "Mobile Inspect", Icon: Smartphone, group: "Company", gsnOnly: true },
+  { path: `${BASE}/company`, label: "Organisation", Icon: Building2, group: "Organisation" },
+  { path: `${BASE}/billing`, label: "Plan & billing", Icon: CreditCard, group: "Organisation" },
+  { path: `${BASE}/usage`, label: "Usage", Icon: Activity, group: "Organisation" },
+  { path: `${BASE}/mobile-inspect`, label: "Mobile Inspect", Icon: Smartphone, group: "Organisation", gsnOnly: true },
 ];
 
 function SectionBody({ path }: { path: string }) {
@@ -58,7 +58,7 @@ function SectionBody({ path }: { path: string }) {
       return (
         <SettingsSection
           title="Plan & billing"
-          intro="Your company's plan, what it includes and how much of it you're using. Everyone in the company shares one plan."
+          intro="Your organisation's plan, what it includes and how much of it you're using. Everyone in the organisation shares one plan."
         >
           <SettingsBillingPage />
         </SettingsSection>
@@ -102,7 +102,7 @@ export const SettingsPage: React.FC = () => {
 
   return (
     <div>
-      <PageHeader title="Settings" description="Your account, your company and your plan, all in one place." />
+      <PageHeader title="Settings" description="Your account, your organisation and your plan, all in one place." />
 
       <div className="grid gap-6 md:grid-cols-[220px_1fr] md:gap-8">
         <nav aria-label="Settings sections" className="min-w-0">
@@ -126,13 +126,13 @@ export const SettingsPage: React.FC = () => {
 
           {/* Larger screens: grouped list */}
           <div className="hidden space-y-6 md:block">
-            {(["You", "Company"] as const).map((group) => {
+            {(["You", "Organisation"] as const).map((group) => {
               const items = sections.filter((s) => s.group === group);
               if (!items.length) return null;
               return (
                 <div key={group}>
                   <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    {group === "You" ? "You" : "Your company"}
+                    {group === "You" ? "You" : "Your organisation"}
                   </p>
                   <ul className="space-y-1">
                     {items.map((s) => (

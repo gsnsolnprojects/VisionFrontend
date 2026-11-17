@@ -107,7 +107,7 @@ export const BADGES: BadgeInfo[] = [
     how: "Upload at least 10 of your own photos in Level 2",
     learned: "You started your own dataset with your own photos.",
     tiers: ["10 photos", "25 photos", "50 photos"],
-    next: "Next: label at least 20 of them.",
+    next: "Next: label them."
   },
   {
     id: "data_labeller",

@@ -112,8 +112,8 @@ export const ProjectsPage: React.FC = () => {
   const handleCreateProject = () => {
     if (!profile?.company_id) {
       toast({
-        title: "Company required",
-        description: "Please create or join a company before creating a project.",
+        title: "Organisation required",
+        description: "Please create or join an organisation before creating a project.",
         variant: "destructive",
       });
       navigate("/dashboard?action=create-company");

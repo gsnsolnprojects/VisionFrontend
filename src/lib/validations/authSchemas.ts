@@ -52,7 +52,7 @@ export const emailSchema = z
     if (domain === "gmail.com") return true;
     const blockedFreeDomains = ["yahoo.com", "hotmail.com", "outlook.com"];
     return !blockedFreeDomains.includes(domain);
-  }, "Please use Gmail or a company email address");
+  }, "Please use Gmail or an organisation email address");
 
 // Full password schema with all validation rules (for Sign Up and Reset Password)
 export const passwordSchema = z
@@ -131,26 +131,26 @@ export const validatePhoneNumber = (phone: string, countryCode: string): string 
 // Company Name Schema
 export const companyNameSchema = z
   .string()
-  .min(1, "Company name is required")
+  .min(1, "Organisation name is required")
   .refine(
     (val) => val.trim().length >= 2,
-    "Company name must be at least 2 characters"
+    "Organisation name must be at least 2 characters"
   )
   .refine(
     (val) => val.trim().length <= 50,
-    "Company name must be at most 50 characters"
+    "Organisation name must be at most 50 characters"
   )
   .refine(
     (val) => val.trim().length > 0,
-    "Company name cannot be only whitespace"
+    "Organisation name cannot be only whitespace"
   )
   .refine(
     (val) => !/^\d+$/.test(val.trim()),
-    "Company name cannot be only numbers"
+    "Organisation name cannot be only numbers"
   )
   .refine(
     (val) => /^[a-zA-Z0-9\s\-_&.,()]+$/.test(val.trim()),
-    "Company name can only contain letters, numbers, spaces, and common business characters (-, _, &, ., ,, (, ))"
+    "Organisation name can only contain letters, numbers, spaces, and common business characters (-, _, &, ., ,, (, ))"
   );
 
 // Company Details Schema (Create Company - requires name, email, optional description)
@@ -207,8 +207,8 @@ const phoneProfileSchema = z
 export const userProfileSchema = z.object({
   name: nameSchema,
   phone: phoneProfileSchema,
-  companyName: z.string().max(100, "Company name must be at most 100 characters").optional(),
-  companyDescription: z.string().max(500, "Company description must be at most 500 characters").optional(),
+  companyName: z.string().max(100, "Organisation name must be at most 100 characters").optional(),
+  companyDescription: z.string().max(500, "Organisation description must be at most 500 characters").optional(),
 });
 
 export type UserProfileFormData = z.infer<typeof userProfileSchema>;

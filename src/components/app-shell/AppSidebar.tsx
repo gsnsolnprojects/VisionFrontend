@@ -118,8 +118,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
   const handleCreateProject = () => {
     if (!companyId) {
       toast({
-        title: "Company required",
-        description: "Please create or join a company before creating a project.",
+        title: "Organisation required",
+        description: "Please create or join an organisation before creating a project.",
         variant: "destructive",
       });
       return;
@@ -398,8 +398,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
                               e.preventDefault();
                               e.stopPropagation();
                               toast({
-                                title: "Company required",
-                                description: "Please create or join a company before creating a project.",
+                                title: "Organisation required",
+                                description: "Please create or join an organisation before creating a project.",
                                 variant: "destructive",
                               });
                             }}

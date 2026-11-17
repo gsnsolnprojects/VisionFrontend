@@ -35,7 +35,7 @@ const APPROVAL_ROLES = [
   { value: "viewer", description: "Can only view projects, datasets, models and results." },
   { value: "operator", description: "Can run and monitor inference, and view results." },
   { value: "ml_engineer", description: "Can upload datasets and train models." },
-  { value: "workspace_admin", description: "Full control of the company, including members and roles." },
+  { value: "workspace_admin", description: "Full control of the organisation, including members and roles." },
 ] as const;
 
 type ApprovalRole = (typeof APPROVAL_ROLES)[number]["value"];
@@ -192,8 +192,8 @@ export const JoinRequestsSidePanel: React.FC<JoinRequestsSidePanelProps> = ({
         title: "Request approved",
         // Only state the role the server confirms it actually saved
         description: data?.role
-          ? `${name} has been added to the company as ${getRoleDisplayName(data.role)}.`
-          : `${name} has been added to the company.`,
+          ? `${name} has been added to the organisation as ${getRoleDisplayName(data.role)}.`
+          : `${name} has been added to the organisation.`,
       });
       setApprovalRequest(null);
 

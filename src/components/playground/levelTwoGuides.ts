@@ -17,13 +17,13 @@ export const LEVEL_TWO_START_TOUR: TourStep[] = [
   },
   {
     target: "l2-scope",
-    title: "20 photos is the minimum, not the goal",
-    text: "20 lets you train, but it rarely gives a good model. Take photos the way the real camera would see the part: same distance, same lighting. Then vary what really changes, like position, batch and shadows.",
+    title: "More photos make a better model",
+    text: "A few photos let you train, but rarely give a good model. Take photos the way the real camera would see the part: same distance, same lighting. Then vary what really changes, like position, batch and shadows.",
   },
   {
     target: "l2-upload",
     title: "Few photos make a weak exam",
-    text: "Your labelled photos are split by themselves, and only about one in ten is kept for the test. From 20 photos that's just 2 or 3, so one lucky result can look like a great score. More photos make your test mean more.",
+    text: "Your labelled photos are split by themselves, and only about one in ten is kept for the test. From a small set that's just 2 or 3 photos, so one lucky result can look like a great score. More photos make your test mean more.",
   },
   {
     target: "l2-gsn",

@@ -246,7 +246,7 @@ const Dashboard = () => {
       toast({
         title: action === "approve" ? "Request approved" : "Request rejected",
         description: action === "approve" 
-          ? "The user has been added to the company." 
+          ? "The user has been added to the organisation." 
           : "The join request has been rejected.",
       });
 
@@ -298,8 +298,8 @@ const Dashboard = () => {
       } else {
         // User tried to access create-project route without company
         toast({
-          title: "Company required",
-          description: "Please create or join a company before creating a project.",
+          title: "Organisation required",
+          description: "Please create or join an organisation before creating a project.",
           variant: "destructive",
         });
         // Clear the action param and redirect to dashboard
@@ -381,7 +381,7 @@ const Dashboard = () => {
       if (accepted) {
         toast({
           title: acceptJson?.error === "invite already accepted" ? "Already a member" : "Invite accepted",
-          description: "You have been added to the company.",
+          description: "You have been added to the organisation.",
         });
         const newParams = new URLSearchParams(searchParams);
         newParams.delete("invite");
@@ -495,7 +495,7 @@ const Dashboard = () => {
     if (!companyForm.validateForm()) {
       toast({
         title: "Please check your details",
-        description: "Fix the highlighted errors before saving company details.",
+        description: "Fix the highlighted errors before saving organisation details.",
         variant: "destructive",
       });
       return;
@@ -551,7 +551,7 @@ const Dashboard = () => {
             setLoading(false);
             toast({
               title: "Error",
-              description: "Unable to verify if company exists. Please try again or contact support.",
+              description: "Unable to verify if organisation exists. Please try again or contact support.",
               variant: "destructive",
             });
             return;
@@ -568,7 +568,7 @@ const Dashboard = () => {
         setLoading(false);
         toast({
           title: "Error",
-          description: "Failed to check if company exists. Please try again.",
+          description: "Failed to check if organisation exists. Please try again.",
           variant: "destructive",
         });
         return;
@@ -634,7 +634,7 @@ const Dashboard = () => {
       const profileEmail = currentProfile.email || userEmail;
       const adminEmail = formEmail || profileEmail;
       if (!adminEmail) {
-        throw new Error("Unable to get email for company creation. Please fill in the Company Email field.");
+        throw new Error("Unable to get email for organisation creation. Please fill in the Organisation Email field.");
       }
       
       // Use Edge Function to create company (bypasses RLS issues)
@@ -653,7 +653,7 @@ const Dashboard = () => {
         console.error("Error context:", invokeError.context);
         console.error("Response data:", createCompanyData);
         
-        let errorMessage = "Failed to create company";
+        let errorMessage = "Failed to create organisation";
         
         // Priority 1: Check if data contains error message (Edge Function's JSON response)
         // Sometimes data is populated even when there's an error
@@ -702,7 +702,7 @@ const Dashboard = () => {
       }
 
       if (!createCompanyData?.ok) {
-        let errorMsg = createCompanyData?.error || "Failed to create company";
+        let errorMsg = createCompanyData?.error || "Failed to create organisation";
         // Include details if available
         if (createCompanyData?.details) {
           errorMsg += `: ${createCompanyData.details}`;
@@ -714,7 +714,7 @@ const Dashboard = () => {
       const company = createCompanyData.company;
       
       if (!company) {
-        throw new Error("Failed to create company");
+        throw new Error("Failed to create organisation");
       }
 
       // Profile is already updated by the edge function, but verify
@@ -758,8 +758,8 @@ const Dashboard = () => {
       }
 
       toast({
-        title: "Company details saved successfully",
-        description: "Your company has been created successfully.",
+        title: "Organisation details saved successfully",
+        description: "Your organisation has been created successfully.",
       });
     } catch (error: any) {
       console.error("Error saving company - Full error object:", error);
@@ -777,10 +777,10 @@ const Dashboard = () => {
         error?.details || 
         error?.hint || 
         error?.message || 
-        "Failed to save company.";
+        "Failed to save organisation.";
       
       toast({
-        title: "Company details failed",
+        title: "Organisation details failed",
         description: errorMessage,
         variant: "destructive",
       });
@@ -838,7 +838,7 @@ const Dashboard = () => {
       if (hasIncompleteName || hasIncompletePhone) {
         toast({
           title: "Complete your profile",
-          description: "Please complete your profile (name and phone) before joining a company.",
+          description: "Please complete your profile (name and phone) before joining an organisation.",
           variant: "destructive",
         });
         setShowProfileCompletionDialog(true);
@@ -867,7 +867,7 @@ const Dashboard = () => {
         : null;
 
       if (!existingCompany) {
-        throw new Error("Company not found");
+        throw new Error("Organisation not found");
       }
 
       // Get user profile to get email
@@ -929,7 +929,7 @@ const Dashboard = () => {
     if (!parseResult.success) {
       toast({
         title: "Please check your details",
-        description: "Enter a valid company name to continue.",
+        description: "Enter a valid organisation name to continue.",
         variant: "destructive",
       });
       return;
@@ -974,7 +974,7 @@ const Dashboard = () => {
       if (hasIncompleteName || hasIncompletePhone) {
         toast({
           title: "Complete your profile",
-          description: "Please complete your profile (name and phone) before joining a company.",
+          description: "Please complete your profile (name and phone) before joining an organisation.",
           variant: "destructive",
         });
         setShowProfileCompletionDialog(true);
@@ -993,7 +993,7 @@ const Dashboard = () => {
         console.error("Error checking company existence:", fetchError);
         toast({
           title: "Error",
-          description: "Failed to check if company exists. Please try again.",
+          description: "Failed to check if organisation exists. Please try again.",
           variant: "destructive",
         });
         setJoinRequestLoading(false);
@@ -1007,8 +1007,8 @@ const Dashboard = () => {
 
       if (!existingCompany) {
         toast({
-          title: "Company not found",
-          description: `Company "${companyName}" not found. Please check the company name or create a new company.`,
+          title: "Organisation not found",
+          description: `Organisation "${companyName}" not found. Please check the organisation name or create a new organisation.`,
           variant: "destructive",
         });
         setJoinRequestLoading(false);
@@ -1056,8 +1056,8 @@ const Dashboard = () => {
   const openCreateProject = () => {
     if (!profile || !profile.company_id) {
       toast({
-        title: "Company required",
-        description: "Please join a company or create a company before creating a project.",
+        title: "Organisation required",
+        description: "Please join an organisation or create an organisation before creating a project.",
         variant: "destructive",
       });
       setDialogMode("create");
@@ -1224,7 +1224,7 @@ const Dashboard = () => {
     if (!user || !profile?.company_id) {
       toast({
         title: "Error",
-        description: "No authenticated user or company found.",
+        description: "No authenticated user or organisation found.",
         variant: "destructive",
       });
       return;
@@ -1344,7 +1344,7 @@ const Dashboard = () => {
         <EmptyState
           icon={FolderKanban}
           title="Welcome to VisionM"
-          description="Get started by creating a company to organize your projects and datasets."
+          description="Get started by creating an organisation to organize your projects and datasets."
           action={{
             label: "Create Workspace",
             onClick: () => {
@@ -1450,7 +1450,7 @@ const Dashboard = () => {
               }}
             >
               <Building2 className="h-10 w-10 text-primary" />
-              <span className="font-semibold">Create Company</span>
+              <span className="font-semibold">Create Organisation</span>
               <span className="text-xs text-muted-foreground font-normal">
                 Start a new workspace for your team
               </span>
@@ -1467,7 +1467,7 @@ const Dashboard = () => {
               }}
             >
               <UserPlus className="h-10 w-10 text-primary" />
-              <span className="font-semibold">Join Company</span>
+              <span className="font-semibold">Join Organisation</span>
               <span className="text-xs text-muted-foreground font-normal">
                 Request access to an existing workspace
               </span>
@@ -1484,17 +1484,17 @@ const Dashboard = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {dialogMode === "join" ? "Join Company" : "Company Details"}
+              {dialogMode === "join" ? "Join Organisation" : "Organisation Details"}
             </DialogTitle>
             <DialogDescription>
               {dialogMode === "join" 
-                ? "Enter the company name to request access."
-                : "Please provide your company information to continue."}
+                ? "Enter the organisation name to request access."
+                : "Please provide your organisation information to continue."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <FormFieldWrapper
-              label="Company Name"
+              label="Organisation Name"
               name="companyName"
               type="text"
               value={companyForm.values.companyName}
@@ -1502,12 +1502,12 @@ const Dashboard = () => {
               onBlur={companyForm.handleBlur("companyName")}
               error={companyForm.getFieldError("companyName")}
               touched={companyForm.isFieldTouched("companyName")}
-              placeholder="Enter company name"
+              placeholder="Enter organisation name"
               required
             />
             {dialogMode === "create" && (
               <FormFieldWrapper
-                label="Company Email"
+                label="Organisation Email"
                 name="businessEmail"
                 type="email"
                 value={companyForm.values.businessEmail}
@@ -1515,7 +1515,7 @@ const Dashboard = () => {
                 onBlur={companyForm.handleBlur("businessEmail")}
                 error={companyForm.getFieldError("businessEmail")}
                 touched={companyForm.isFieldTouched("businessEmail")}
-                placeholder="company@example.com"
+                placeholder="contact@example.com"
                 required
               />
             )}
@@ -1526,7 +1526,7 @@ const Dashboard = () => {
                   id="company-description"
                   value={companyForm.values.description ?? ""}
                   onChange={(e) => companyForm.setValue("description", e.target.value)}
-                  placeholder="Brief description of your company"
+                  placeholder="Brief description of your organisation"
                   className="mt-1"
                   rows={3}
                 />
@@ -1565,9 +1565,9 @@ const Dashboard = () => {
       <Dialog open={showCompanyExistsDialog} onOpenChange={setShowCompanyExistsDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Company Already Exists</DialogTitle>
+            <DialogTitle>Organisation Already Exists</DialogTitle>
             <DialogDescription>
-              This company already exists. Do you want to send a join request to the admin?
+              This organisation already exists. Do you want to send a join request to the admin?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="justify-end">

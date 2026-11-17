@@ -59,7 +59,7 @@ export const JoinCompanyDialog: React.FC<JoinCompanyDialogProps> = ({ disabled }
 
   return (
     <Button variant="outline" size="sm" disabled={disabled} onClick={handleJoinCompany}>
-      Join Company
+      Join Organisation
     </Button>
   );
 };

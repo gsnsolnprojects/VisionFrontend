@@ -91,7 +91,7 @@ const MIN_LABELLED = 20;
 const LEVEL_GUIDE = {
   label: {
     what: "Add photos of what you want to inspect, then draw a box around each defect.",
-    why: `Label at least ${MIN_LABELLED} photos: the model learns only from what your boxes show it. Once you have, you can make more training photos from them.`,
+    why: `Label your photos: the model learns only from what your boxes show it. Once you have, you can make more training photos from them.`,
   },
   train: {
     what: "Train your model on the photos you labelled.",
@@ -564,7 +564,7 @@ export const PlaygroundProjectPage: React.FC = () => {
       setSelectedId(String(json.datasetId));
       toast({
         title: res.ok ? "Sample added for you to label" : "You're already labelling this sample",
-        description: "Its photos are being prepared. Then label at least 20 of them and train.",
+        description: "Its photos are being prepared. Then label them and train.",
       });
     } catch (err) {
       toast({ title: "Couldn't add the sample", description: (err as Error).message, variant: "destructive" });
@@ -959,7 +959,7 @@ export const PlaygroundProjectPage: React.FC = () => {
                 <Loader2 className="h-4 w-4 animate-spin" /> Making photos... this takes a few minutes.
               </p>
             ) : counts.ownLabelled < 20 ? (
-              <p className="mt-3 text-sm text-muted-foreground">Label at least 20 photos first ({counts.ownLabelled} so far).</p>
+              <p className="mt-3 text-sm text-muted-foreground">Label more photos first ({counts.ownLabelled} labelled so far).</p>
             ) : (
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {[100, 250, 500]
