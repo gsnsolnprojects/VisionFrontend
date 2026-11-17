@@ -12,6 +12,10 @@ export interface PlanLimits {
   ownDatasets?: number | null; // datasets the company uploads itself (GSN sample links don't count)
   imagesPerDataset?: number | null;
   maxImageSizeMB?: number | null;
+  // Each photo: at least this many KB, and pixels on its shorter / longer side (lib/imageRules)
+  minImageSizeKB?: number | null;
+  minImageSide?: number | null;
+  maxImageSide?: number | null;
   trainingRunsPerMonth?: number | null; // resets on the 1st (India time)
   predictionsPerMonth?: number | null; // counts images, not batches
 }

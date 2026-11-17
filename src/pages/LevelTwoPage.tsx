@@ -10,6 +10,7 @@ import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { GuidedTour, useFirstTimeTour } from "@/components/playground/GuidedTour";
 import { LEVEL_TWO_START_TOUR } from "@/components/playground/levelTwoGuides";
 import { PhotoDropZone } from "@/components/playground/PhotoDropZone";
+import { photoRulesFrom } from "@/lib/imageRules";
 import { StepGuide } from "@/components/playground/StepGuide";
 import { BILLING_ROUTE, usePlanAccess } from "@/contexts/plan-access-context";
 import { useToast } from "@/hooks/use-toast";
@@ -107,7 +108,6 @@ const LevelTwoPage: React.FC = () => {
   const projectLimit = limits?.projects;
   const projectsUsed = Math.max(projects.length, planAccess.data?.usage?.projects ?? 0);
   const atLimit = typeof projectLimit === "number" && projectsUsed >= projectLimit;
-  const maxMB = typeof limits?.maxImageSizeMB === "number" ? limits.maxImageSizeMB : null;
   const maxImages = typeof limits?.imagesPerDataset === "number" ? limits.imagesPerDataset : null;
 
   const projectName = typedName.trim();
@@ -267,7 +267,7 @@ const LevelTwoPage: React.FC = () => {
             {problem ? (
               <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Name your project above to add photos.</p>
             ) : (
-              <PhotoDropZone uploading={busy === "upload"} maxMB={maxMB} spaceLeft={maxImages} onPhotos={(images) => void uploadPhotos(images)} />
+              <PhotoDropZone uploading={busy === "upload"} rules={photoRulesFrom(limits)} spaceLeft={maxImages} onPhotos={(images) => void uploadPhotos(images)} />
             )}
           </div>
           {samples.length > 0 && (

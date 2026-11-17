@@ -11,6 +11,8 @@ import { saveLevelProgress } from "@/lib/api/levels";
 import { hasReadableName, photoName } from "@/lib/photoName";
 import { getSamples, importSampleModel } from "@/lib/api/samples";
 import { cn } from "@/lib/utils";
+import { usePlanAccess } from "@/contexts/plan-access-context";
+import { checkPhotos, describePhotoRules, photoRulesFrom, refusedText } from "@/lib/imageRules";
 
 /**
  * Step 3 of a Playground project: test a model on photos it never learned from. Students pick a
@@ -329,14 +331,26 @@ export const PlaygroundTestStep: React.FC<{
     };
   }, [projectId, poll]);
 
-  const pickUploads = (picked: File[]) => {
-    const images = picked.filter((f) => IMAGE_NAME.test(f.name));
+  // The plan's size rules for each photo (the server checks them too)
+  const planAccess = usePlanAccess();
+  const photoRules = useMemo(() => photoRulesFrom(planAccess.data?.access?.limits), [planAccess.data?.access?.limits]);
+  const ruleText = describePhotoRules(photoRules);
+
+  const pickUploads = async (picked: File[]) => {
+    if (fileInput.current) fileInput.current.value = "";
+    const checked = await checkPhotos(
+      picked.filter((f) => IMAGE_NAME.test(f.name)),
+      photoRules
+    );
+    if (checked.refused.length) {
+      toast({ title: "Some photos were left out", description: refusedText(checked.refused), variant: "destructive" });
+    }
+    const images = checked.ok;
     const room = MAX_UPLOADS - uploads.length;
     if (images.length > room) {
       toast({ title: `Up to ${MAX_UPLOADS} photos`, description: `You can add ${room} more.`, variant: "destructive" });
     }
     setUploads((prev) => [...prev, ...images.slice(0, Math.max(0, room))]);
-    if (fileInput.current) fileInput.current.value = "";
   };
 
   const startTest = async () => {
@@ -604,7 +618,7 @@ export const PlaygroundTestStep: React.FC<{
                   accept="image/jpeg,image/png"
                   multiple
                   className="hidden"
-                  onChange={(e) => pickUploads(Array.from(e.target.files ?? []))}
+                  onChange={(e) => void pickUploads(Array.from(e.target.files ?? []))}
                 />
                 <div
                   role="button"
@@ -619,7 +633,7 @@ export const PlaygroundTestStep: React.FC<{
                   onDrop={(e) => {
                     e.preventDefault();
                     setDragging(false);
-                    pickUploads(Array.from(e.dataTransfer.files));
+                    void pickUploads(Array.from(e.dataTransfer.files));
                   }}
                   className={cn(
                     "flex cursor-pointer flex-col items-center gap-1 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors",
@@ -629,8 +643,9 @@ export const PlaygroundTestStep: React.FC<{
                   <Upload className="h-5 w-5 text-muted-foreground" />
                   <p className="text-sm font-medium text-foreground">Drop photos here, or browse</p>
                   <p className="text-xs text-muted-foreground">
-                    JPG or PNG · {uploads.length} of {MAX_UPLOADS} added · used only for this test
+                    JPG or PNG{ruleText.size && ` · ${ruleText.size}`} · {uploads.length} of {MAX_UPLOADS} added · used only for this test
                   </p>
+                  {ruleText.pixels && <p className="text-xs text-muted-foreground">{ruleText.pixels}</p>}
                 </div>
                 {uploads.length > 0 && (
                   <ul className="mt-2 flex flex-wrap gap-1.5">

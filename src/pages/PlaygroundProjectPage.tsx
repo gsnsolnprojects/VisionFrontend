@@ -40,6 +40,7 @@ import { PlaygroundLabelPractice } from "@/components/playground/PlaygroundLabel
 import { GuidedTour, useFirstTimeTour } from "@/components/playground/GuidedTour";
 import { LEVEL_TWO_DATA_TOUR } from "@/components/playground/levelTwoGuides";
 import { PhotoDropZone } from "@/components/playground/PhotoDropZone";
+import { photoRulesFrom } from "@/lib/imageRules";
 import { StepGuide } from "@/components/playground/StepGuide";
 import { getSamples } from "@/lib/api/samples";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
@@ -82,7 +83,7 @@ interface ImageFile {
   folder: string | null;
 }
 
-type Filter = "all" | "training" | "test" | "unlabelled";
+type Filter = "all" | "training" | "validation" | "test" | "unlabelled";
 
 const PAGE_SIZE = 24;
 /** Labelled photos a Level 2 model needs before it can train */
@@ -357,9 +358,16 @@ export const PlaygroundProjectPage: React.FC = () => {
     return { all: files.length, training, validation, test, unlabelled, labelled: files.length - unlabelled, copies, ownLabelled: files.length - unlabelled - copies };
   }, [files, isLabelled]);
 
+  // With the groups hidden (nothing sorted yet), only "All images" can be picked
+  const groupsHidden = counts.training + counts.test === 0;
+  useEffect(() => {
+    if (groupsHidden && filter !== "all") setFilter("all");
+  }, [groupsHidden, filter]);
+
   const visible = useMemo(() => {
     const filtered = files.filter((f) => {
-      if (filter === "training") return splitOf(f.folder).kind === "training";
+      if (filter === "training") return f.folder === "train";
+      if (filter === "validation") return f.folder === "val";
       if (filter === "test") return splitOf(f.folder).kind === "test";
       if (filter === "unlabelled") return !isLabelled(f);
       return true;
@@ -398,7 +406,6 @@ export const PlaygroundProjectPage: React.FC = () => {
 
   // ---- Upload (own dataset only) ----
   const maxImages = typeof limits?.imagesPerDataset === "number" ? limits.imagesPerDataset : null;
-  const maxMB = typeof limits?.maxImageSizeMB === "number" ? limits.maxImageSizeMB : null;
   const imagesInOwn = ownDataset ? (ownDataset.datasetId === selectedId ? files.length : ownDataset.totalImages ?? 0) : 0;
   const spaceLeft = maxImages === null ? null : Math.max(0, maxImages - imagesInOwn);
 
@@ -595,11 +602,19 @@ export const PlaygroundProjectPage: React.FC = () => {
     { n: 4, label: "Report", active: step === "report", done: reportDone, locked: !!level && !testDone, id: "report" as const },
   ];
   const guide = level && step !== "practice" ? LEVEL_GUIDE[step] : null;
+  // The groups only mean something once labelled photos have been sorted into them: until then
+  // every count but "All images" is 0 or everything, so only that one is shown, and photos carry no tag
+  const splitShown = !groupsHidden;
   const filters: { id: Filter; label: string; count: number }[] = [
     { id: "all", label: "All images", count: counts.all },
-    { id: "training", label: "Training", count: counts.training },
-    { id: "test", label: "Held-out test", count: counts.test },
-    { id: "unlabelled", label: "Needs a label", count: counts.unlabelled },
+    ...(splitShown
+      ? [
+          { id: "training" as Filter, label: "Training", count: counts.training - counts.validation },
+          { id: "validation" as Filter, label: "Validation", count: counts.validation },
+          { id: "test" as Filter, label: "Held-out test", count: counts.test },
+          { id: "unlabelled" as Filter, label: "Needs a label", count: counts.unlabelled },
+        ]
+      : []),
   ];
 
   return (
@@ -926,7 +941,7 @@ export const PlaygroundProjectPage: React.FC = () => {
 
         {showDropZone && (
           <div data-tour="l2-add" className="mt-5">
-            <PhotoDropZone uploading={uploading} maxMB={maxMB} spaceLeft={spaceLeft} onPhotos={(images) => void uploadImages(images)} />
+            <PhotoDropZone uploading={uploading} rules={photoRulesFrom(limits)} spaceLeft={spaceLeft} onPhotos={(images) => void uploadImages(images)} />
           </div>
         )}
 
@@ -982,7 +997,8 @@ export const PlaygroundProjectPage: React.FC = () => {
         {dataset && (
           <>
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-              <div data-tour="l2-filters" className="flex flex-wrap gap-2" role="tablist" aria-label="Filter images">
+              {/* The guide's step on the groups waits until they're shown */}
+              <div data-tour={splitShown ? "l2-filters" : undefined} className="flex flex-wrap gap-2" role="tablist" aria-label="Filter images">
                 {filters.map((f) => (
                   <button
                     key={f.id}
@@ -1042,14 +1058,16 @@ export const PlaygroundProjectPage: React.FC = () => {
                     <article key={f.id} data-tour={i === 0 ? "l2-first-photo" : undefined} className="overflow-hidden rounded-xl border bg-background/40">
                       <div className="relative aspect-[4/3] bg-[#171f1b]">
                         <LabelledThumbnail datasetId={selectedId!} file={f} boxes={boxes[f.id]} classNames={classNames} />
-                        <span
-                          className={cn(
-                            "absolute left-2 top-2 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                            split.kind === "test" ? "bg-[#e9ff65] text-[#171f1b]" : "bg-black/60 text-white"
-                          )}
-                        >
-                          {split.label}
-                        </span>
+                        {splitShown && (
+                          <span
+                            className={cn(
+                              "absolute left-2 top-2 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                              split.kind === "test" ? "bg-[#e9ff65] text-[#171f1b]" : "bg-black/60 text-white"
+                            )}
+                          >
+                            {split.label}
+                          </span>
+                        )}
                       </div>
                       <div className="space-y-2 p-3">
                         <p className="truncate text-xs text-foreground" title={photoName(f.originalName, (page - 1) * PAGE_SIZE + i + 1)}>

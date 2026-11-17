@@ -41,7 +41,8 @@ import { validatePolygonNormalized, polygonToBoundingBox } from "@/lib/utils/pol
 import { isMongoObjectId, annotationsMatchGeometry } from "@/lib/utils/annotationSync";
 import { GuidedTour, useFirstTimeTour } from "@/components/playground/GuidedTour";
 import { LEVEL_TWO_LABELLING_TOUR } from "@/components/playground/levelTwoGuides";
-import { HelpCircle, Loader2, Info, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import { HelpCircle, Loader2, Info, ZoomIn, ZoomOut, RotateCcw, Trash2, Check, ArrowRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useAugmentationStatus, type AugmentationStatusState } from "@/hooks/useAugmentationStatus";
 import { Progress } from "@/components/ui/progress";
@@ -69,6 +70,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { AugmentVersionNameModal } from "@/components/datasets/AugmentVersionNameModal";
+import { MorePhotosDialog } from "@/components/playground/MorePhotosDialog";
+import { usePlanAccess } from "@/contexts/plan-access-context";
 
 interface AnnotationWorkspaceProps {
   datasetId: string;
@@ -256,6 +259,12 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   const [augmenting, setAugmenting] = useState(false);
   const [augmentDatasetVersion, setAugmentDatasetVersion] = useState<string | number | null>(null);
   const [augmentingDatasetId, setAugmentingDatasetId] = useState<string | null>(null);
+  // Playground: after saving, offer to make more training photos, with how many are labelled now
+  const [morePhotos, setMorePhotos] = useState<{ open: boolean; labelled: number }>({ open: false, labelled: 0 });
+  const planAccess = usePlanAccess();
+  const planMaxPhotos = planAccess.data?.access?.limits?.imagesPerDataset;
+  /** The most photos the dataset can have, and the total recommended */
+  const morePhotosMax = typeof planMaxPhotos === "number" && planMaxPhotos > 0 ? planMaxPhotos : 500;
   const augmentationHandledRef = useRef<string | null>(null);
   const prevAugmentationStatusRef = useRef<AugmentationStatusState | null>(null);
 
@@ -750,6 +759,19 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     return annotations.filter((ann) => ann.state === stateFilter);
   }, [annotations, stateFilter]);
 
+  // The boxes on this photo, each named by its kind and a number within that kind in the order
+  // drawn (missing hole 1, missing hole 2, spur 1), so one can be picked or deleted from a list
+  const boxList = useMemo(() => {
+    const seen = new Map<string, number>();
+    return annotations.map((ann) => {
+      const n = (seen.get(ann.categoryId) ?? 0) + 1;
+      seen.set(ann.categoryId, n);
+      const category = categories.find((c) => c.id === ann.categoryId);
+      const kind = (category?.name ?? ann.categoryName ?? "box").replace(/_/g, " ");
+      return { id: ann.id, name: `${kind} ${n}`, color: category?.color ?? "#94a3b8" };
+    });
+  }, [annotations, categories]);
+
   // Phase 6: Calculate annotation counts by state
   const annotationCounts = useMemo(() => {
     return {
@@ -869,6 +891,63 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
     [images, boxedSinceLoad]
   );
 
+  // Photos marked good while labelling (no defect, so no boxes). Saving turns them into good photos
+  // in the dataset, like the save pop-up's "Yes, they're good". Kept in this browser until then, so
+  // leaving the page doesn't lose them
+  const goodKey = `visionm_marked_good_${datasetId}`;
+  const readGood = (key: string) => {
+    try {
+      return new Set<string>(JSON.parse(localStorage.getItem(key) || "[]"));
+    } catch {
+      return new Set<string>();
+    }
+  };
+  const [markedGood, setMarkedGood] = useState<Set<string>>(() => readGood(goodKey));
+  // Which dataset the marks in memory belong to, so another dataset's are never written over them
+  const goodLoadedFor = useRef(goodKey);
+  useEffect(() => {
+    if (goodLoadedFor.current !== goodKey) {
+      goodLoadedFor.current = goodKey;
+      setMarkedGood(readGood(goodKey));
+      return;
+    }
+    try {
+      if (markedGood.size) localStorage.setItem(goodKey, JSON.stringify([...markedGood]));
+      else localStorage.removeItem(goodKey);
+    } catch {
+      // without storage the marks last until the page closes
+    }
+  }, [goodKey, markedGood]);
+  const toggleGood = useCallback((imageId: string) => {
+    setMarkedGood((prev) => {
+      const next = new Set(prev);
+      if (next.has(imageId)) next.delete(imageId);
+      else next.add(imageId);
+      return next;
+    });
+  }, []);
+  // A box drawn on a photo marked good means it has a defect after all
+  useEffect(() => {
+    const boxedIds = new Set(annotations.map((a) => a.imageId));
+    setMarkedGood((prev) => ([...prev].some((id) => boxedIds.has(id)) ? new Set([...prev].filter((id) => !boxedIds.has(id))) : prev));
+  }, [annotations]);
+  // A photo marked good can't be given boxes or a category: "Undo good" first. Read through a ref
+  // in the drawing handlers, which are set up before this
+  const currentMarkedGood = !!currentImage && markedGood.has(currentImage.id);
+  const goodLockRef = useRef(false);
+  goodLockRef.current = currentMarkedGood;
+  /** Saved earlier as good: labelled, with no boxes (Playground, where labels come only from here) */
+  const savedGood = useCallback(
+    (img: { id: string; hasLabels?: boolean; hasAnnotations?: boolean }) =>
+      simpleTools && !!img.hasLabels && !img.hasAnnotations && !boxedSinceLoad.has(img.id),
+    [simpleTools, boxedSinceLoad]
+  );
+  // Photos with no boxes and not marked good: the ones the save pop-up asks about
+  const goodToSave = useMemo(() => photosWithoutLabels.filter((img) => markedGood.has(img.id)), [photosWithoutLabels, markedGood]);
+  const notDone = useMemo(() => photosWithoutLabels.filter((img) => !markedGood.has(img.id)), [photosWithoutLabels, markedGood]);
+  const goodCount = useMemo(() => images.filter((img) => markedGood.has(img.id) || savedGood(img)).length, [images, markedGood, savedGood]);
+  const labelledCount = Math.max(0, images.length - goodCount - notDone.length);
+
   // Phase 5 & 6: Save annotations and convert to YOLO
   const handleSaveAndConvert = useCallback(async (unannotatedImageIds: string[] = []) => {
     if (!hasCategories) {
@@ -913,6 +992,12 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
 
       setSaveStatus("saved");
       setIsSaveComplete(true);
+      // Saved as good photos now: the marks needn't be kept in this browser any more
+      try {
+        localStorage.removeItem(`visionm_marked_good_${datasetId}`);
+      } catch {
+        // ignore
+      }
 
       // Phase 7: Show success notification
       toast({
@@ -929,8 +1014,12 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       } catch {
         setAugmentDatasetVersion(null);
       }
-      // Playground makes extra photos from the project page
       if (!simpleTools) setShowAugmentDialog(true);
+      else {
+        // Labelled now: every photo but the ones still without boxes and not saved as good
+        const leftUnlabelled = photosWithoutLabels.filter((img) => !unannotatedImageIds.includes(img.id)).length;
+        setMorePhotos({ open: true, labelled: Math.max(0, images.length - leftUnlabelled) });
+      }
     } catch (error) {
       console.error("Failed to save and convert:", error);
       setSaveStatus("error");
@@ -941,7 +1030,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       });
       setTimeout(() => setSaveStatus("idle"), 3000);
     }
-  }, [annotations, datasetId, categories, hasCategories, markSaved, toast, annotationShapeMode, batchImages, simpleTools]);
+  }, [annotations, datasetId, categories, hasCategories, markSaved, toast, annotationShapeMode, batchImages, simpleTools, photosWithoutLabels, images]);
 
   // Handle image selection with unsaved changes confirmation.
   // Waits for any in-flight save (e.g. a click-to-mask save still saving in the background)
@@ -1020,6 +1109,8 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   /** Called when user left-clicks empty canvas area */
   const handleEmptyCanvasClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      // Marked good: no category picker
+      if (goodLockRef.current) return;
       const container = imageContainerRef.current;
       if (!container) return;
       const rect = container.getBoundingClientRect();
@@ -1035,6 +1126,10 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
 
   /** Called when user presses W — opens picker at the current cursor on the image */
   const handleOpenDrawPicker = useCallback(() => {
+    if (goodLockRef.current) {
+      toast({ title: "This photo is marked as good", description: "Press Undo good first to draw a box on it." });
+      return;
+    }
     const forMask = enterMaskAfterPickerRef.current;
     if (!forMask) {
       enterMaskAfterPickerRef.current = false;
@@ -1118,6 +1213,10 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   }, [currentImage, annotations, toast]);
 
   const handlePasteAnnotations = useCallback(async () => {
+    if (goodLockRef.current) {
+      toast({ title: "This photo is marked as good", description: "Press Undo good first to paste boxes on it." });
+      return;
+    }
     if (!currentImage) return;
     if (copiedAnnotations.length === 0) {
       toast({
@@ -2215,16 +2314,17 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
             variant="default"
             size="sm"
             onClick={async () => {
-              // Phase 5: Check for unannotated images
-              if (photosWithoutLabels.length > 0) {
+              // Phase 5: photos neither boxed nor marked good are asked about; the ones marked
+              // good are saved as good photos either way
+              if (notDone.length > 0) {
                 setShowUnannotatedDialog(true);
               } else {
-                await handleSaveAndConvert();
+                await handleSaveAndConvert(goodToSave.map((img) => img.id));
               }
             }}
             disabled={
               !hasCategories ||
-              photosWithoutLabels.length === images.length ||
+              (photosWithoutLabels.length === images.length && goodToSave.length === 0) ||
               saveStatus === "saving" ||
               (isSaveComplete && !simpleTools)
             }
@@ -2323,7 +2423,14 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
             selectedCategoryId={selectedCategoryId}
             onCategorySelect={setCategory}
             onAddCategory={() => setShowCategoryManager(true)}
+            disabled={currentMarkedGood}
           />
+          {currentMarkedGood && (
+            <div className="flex items-center gap-2 rounded border border-[#15803d]/30 bg-[#15803d]/10 p-2 text-xs text-foreground">
+              <Check className="h-3 w-3 shrink-0 text-[#15803d]" aria-hidden="true" />
+              <span>Marked as good, so no categories or boxes. Press Undo good to add some.</span>
+            </div>
+          )}
           {!selectedCategoryId && hasCategories && (
             <TooltipProvider>
               <Tooltip>
@@ -2526,7 +2633,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
                   annotations={filteredAnnotations}
                   categories={categories}
                   selectedCategoryId={selectedCategoryId}
-                  isDrawing={isDrawing && imageLoaded && hasCategories}
+                  isDrawing={isDrawing && imageLoaded && hasCategories && !currentMarkedGood}
                   selectedAnnotationId={selectedAnnotationId}
                   selectedAnnotationIds={selection.selectedAnnotationIds}
                   shapeMode={annotationShapeMode === "POLYGON" ? "polygon" : "bbox"}
@@ -2582,7 +2689,54 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
               </div>
             )}
             {/* Removed overlay message - user should add categories first before drawing */}
+            {currentImage && annotations.length === 0 && (markedGood.has(currentImage.id) || savedGood(currentImage)) && (
+              <span className="pointer-events-none absolute left-2 top-2 z-10 inline-flex items-center gap-1 rounded-md bg-[#15803d] px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white shadow">
+                <Check className="h-3 w-3" aria-hidden="true" /> Good
+              </span>
+            )}
           </div>
+          {/* A photo with no defect: mark it good, or skip it for now */}
+          {currentImage && imageLoaded && (
+            <div data-tour="label-good" className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">{labelledCount}</span> labelled ·{" "}
+                <span className="font-medium text-[#15803d]">{goodCount}</span> good ·{" "}
+                <span className="font-medium text-foreground">{notDone.length}</span> not done yet
+              </p>
+              {annotations.length === 0 && !savedGood(currentImage) && (
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={markedGood.has(currentImage.id) ? "outline" : "default"}
+                    className="gap-1.5"
+                    onClick={() => toggleGood(currentImage.id)}
+                  >
+                    {markedGood.has(currentImage.id) ? (
+                      "Undo good"
+                    ) : (
+                      <>
+                        <Check className="h-3.5 w-3.5" aria-hidden="true" /> Mark as good
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    disabled={currentImageIndex >= images.length - 1}
+                    onClick={() => void handleNextImage()}
+                  >
+                    {markedGood.has(currentImage.id) ? "Next" : "Skip"} <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </Button>
+                </div>
+              )}
+              {annotations.length === 0 && savedGood(currentImage) && (
+                <p className="text-xs text-muted-foreground">Saved as a good photo. Draw a box if it has a defect.</p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Right sidebar: tools + stats */}
@@ -2611,6 +2765,8 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
             canUndo={canUndoToolbar}
             canRedo={canRedo}
             onDelete={() => {
+              // Deletes only the box(es) picked: with none picked it does nothing, rather than
+              // removing whichever box was drawn first
               if (selectedAnnotationId) {
                 handleDeleteAnnotation(selectedAnnotationId);
                 setSelectedAnnotation(null);
@@ -2621,10 +2777,57 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
                 });
                 selection.clearSelection();
               } else if (annotations.length > 0) {
-                handleDeleteAnnotation(annotations[0].id);
+                toast({ title: "Pick a box first", description: "Click a box on the photo, or delete it from the list below." });
               }
             }}
           />
+
+          {/* Each box on this photo, to pick or delete one without undoing the boxes drawn after it */}
+          <div data-tour="label-box-list" className="pt-3 border-t">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Boxes on this photo ({boxList.length})
+            </p>
+            {boxList.length === 0 ? (
+              <p className="mt-2 text-xs text-muted-foreground">No boxes yet.</p>
+            ) : (
+              <ul className="mt-2 max-h-64 space-y-1 overflow-y-auto">
+                {boxList.map((b) => {
+                  const picked = selectedAnnotationId === b.id || selection.selectedAnnotationIds.includes(b.id);
+                  return (
+                    <li
+                      key={b.id}
+                      className={cn(
+                        "flex items-center justify-between gap-2 rounded-md border px-2 py-1 text-xs",
+                        picked && "border-ring bg-secondary"
+                      )}
+                    >
+                      <button
+                        type="button"
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                        onClick={() => handleAnnotationClick(b.id)}
+                        title="Show this box on the photo"
+                      >
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: b.color }} />
+                        <span className="truncate">{b.name}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded p-0.5 text-muted-foreground hover:text-destructive"
+                        onClick={() => {
+                          handleDeleteAnnotation(b.id);
+                          if (selectedAnnotationId === b.id) setSelectedAnnotation(null);
+                          if (selection.selectedAnnotationIds.includes(b.id)) selection.clearSelection();
+                        }}
+                        aria-label={`Delete ${b.name}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
           {currentImage?.hasLabels && !simpleTools && (
             <Button
               type="button"
@@ -2705,7 +2908,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
             <DialogTitle>Confirm Save</DialogTitle>
             <DialogDescription>
               {simpleTools
-                ? `${photosWithoutLabels.length} photo${photosWithoutLabels.length === 1 ? " has" : "s have"} no boxes. Are they good photos, with no defect in them?`
+                ? `${notDone.length} photo${notDone.length === 1 ? " has" : "s have"} no boxes and ${notDone.length === 1 ? "isn't" : "aren't"} marked good. Mark ${notDone.length === 1 ? "it" : "them"} as good too?${goodToSave.length ? ` The ${goodToSave.length} you marked good will be saved as good either way.` : ""}`
                 : "The images which don't have annotations are good images?"}
             </DialogDescription>
           </DialogHeader>
@@ -2716,7 +2919,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
                 setShowUnannotatedDialog(false);
                 // Playground: only the labelled photos are needed to go on; the rest stay as they are
                 if (simpleTools) {
-                  await handleSaveAndConvert();
+                  await handleSaveAndConvert(goodToSave.map((img) => img.id));
                   return;
                 }
                 // Phase 5: Display the list/grid of images without annotations
@@ -2742,6 +2945,39 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Playground: augmentation explained and offered right after saving */}
+      {simpleTools && (
+        <MorePhotosDialog
+          open={morePhotos.open}
+          onOpenChange={(open) => setMorePhotos((m) => ({ ...m, open }))}
+          photoCount={images.length}
+          labelledCount={morePhotos.labelled}
+          minLabelled={20}
+          maxPhotos={morePhotosMax}
+          starting={augmenting}
+          onStart={async (target) => {
+            setAugmenting(true);
+            try {
+              const versionName = `${augmentDatasetVersion ?? "v1"}-more-photos`.slice(0, 50);
+              await datasetsApi.augmentDataset(datasetId, versionName, { targetTrainTotal: target });
+              setAugmentingDatasetId(datasetId);
+              toast({ title: "Making more training photos", description: "This takes a few minutes. You'll go back to your project when it's done." });
+              setMorePhotos((m) => ({ ...m, open: false }));
+            } catch (error: unknown) {
+              const msg = error instanceof Error ? error.message : String(error ?? "");
+              if (msg.includes("409") || msg.includes("already running")) {
+                toast({ title: "Already making photos", description: "Extra photos are already being made for this dataset." });
+                setMorePhotos((m) => ({ ...m, open: false }));
+              } else {
+                toast({ title: "Couldn't make more photos", description: msg || "Please try again.", variant: "destructive" });
+              }
+            } finally {
+              setAugmenting(false);
+            }
+          }}
+        />
+      )}
 
       {/* Augmentation confirmation dialog shown after annotations are saved */}
       <AugmentVersionNameModal

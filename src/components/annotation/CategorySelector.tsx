@@ -8,6 +8,8 @@ interface CategorySelectorProps {
   selectedCategoryId: string | null;
   onCategorySelect?: (categoryId: string) => void;
   onAddCategory?: () => void;
+  /** Nothing can be picked or added (e.g. a photo marked good) */
+  disabled?: boolean;
 }
 
 export const CategorySelector: React.FC<CategorySelectorProps> = ({
@@ -15,6 +17,7 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
   selectedCategoryId,
   onCategorySelect,
   onAddCategory,
+  disabled = false,
 }) => {
   const hasCategories = categories.length > 0;
 
@@ -24,6 +27,7 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
         <Select
           value={selectedCategoryId ?? undefined}
           onValueChange={(value) => onCategorySelect?.(value)}
+          disabled={disabled}
         >
           <SelectTrigger>
             <SelectValue placeholder="Select category" />
@@ -50,6 +54,7 @@ export const CategorySelector: React.FC<CategorySelectorProps> = ({
         variant="outline"
         size="sm"
         onClick={onAddCategory}
+        disabled={disabled}
         className="w-full"
       >
         Add Category

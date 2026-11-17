@@ -91,9 +91,14 @@ export const LEVEL_TWO_LABELLING_TOUR: TourStep[] = [
     text: "With a fixed camera, parts often sit in the same place. Copy a photo's boxes, go to the next photo and press Ctrl + V. Always check them afterwards, because a pasted box on the wrong spot is a wrong lesson.",
   },
   {
+    target: "label-good",
+    title: "No defect? Mark it as good",
+    text: "A photo of a good part teaches the model what normal looks like. Mark it as good, or skip it to decide later. The count here shows what's labelled, good and still to do.",
+  },
+  {
     target: "label-save",
     title: "Careful with this question",
-    text: "If any photos have no boxes, Save Annotations asks if they are good photos. Yes marks all of them as having no defect. Say Yes only if that's true of every one, or the model learns that real defects are fine.",
+    text: "Photos you marked good are saved as good. If some have no boxes and aren't marked, Save Annotations asks if they're good too. Say Yes only if that's true of every one, or the model learns that real defects are fine.",
   },
 ];
 

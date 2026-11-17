@@ -361,9 +361,9 @@ export const PlaygroundTrainStep: React.FC<{
 
           <dl data-tour="train-numbers" className="mt-4 divide-y text-sm">
             {[
-              ["Photos it learns from", counts.training],
-              ["Photos it checks itself on", counts.validation],
-              ["Photos kept aside for your test", counts.test],
+              ["Photos it learns from (Training)", counts.training],
+              ["Photos it checks itself on (Validation)", counts.validation],
+              ["Photos kept aside for your test (Held-out test)", counts.test],
             ].map(([label, value]) => (
               <div key={label as string} className="flex items-center justify-between py-2.5">
                 <dt className="text-muted-foreground">{label}</dt>
