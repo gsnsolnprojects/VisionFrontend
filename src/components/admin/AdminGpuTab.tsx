@@ -204,10 +204,15 @@ export const AdminGpuTab: React.FC = () => {
                             <Badge variant="outline" className="border-blue-500/40 text-blue-700 dark:text-blue-400">
                               Still on
                             </Badge>
-                          ) : sameDay(s.startedAt, s.stoppedAt) ? (
-                            clock(s.stoppedAt)
                           ) : (
-                            shortTime(s.stoppedAt)
+                            <>
+                              {sameDay(s.startedAt, s.stoppedAt) ? clock(s.stoppedAt) : shortTime(s.stoppedAt)}
+                              {s.endEstimated && (
+                                <span className="ml-1 text-xs text-muted-foreground" title="The server went off without writing its stop time; this is its last sign of life">
+                                  (approx.)
+                                </span>
+                              )}
+                            </>
                           )}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-right">{duration(s.minutes)}</TableCell>

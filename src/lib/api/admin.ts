@@ -187,6 +187,8 @@ export interface AdminGpuSession {
   startedAt: string;
   stoppedAt: string | null;
   running: boolean;
+  /** No stop time was written; the end is the server's last sign of life */
+  endEstimated?: boolean;
   minutes: number;
   costInr: number;
   trainings: AdminGpuTraining[];
