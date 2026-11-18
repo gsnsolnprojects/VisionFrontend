@@ -173,6 +173,9 @@ export interface AdminGpuTraining {
   project: string | null;
   model: string;
   status: string;
+  /** Who clicked Start; null for runs before 18 Nov 2026 */
+  userName?: string | null;
+  userEmail?: string | null;
   startedAt: string | null;
   completedAt: string | null;
 }

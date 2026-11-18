@@ -221,19 +221,55 @@ export const AdminGpuTab: React.FC = () => {
                       </TableRow>
                       {openSession === s.id && (
                         <TableRow className="bg-muted/40 hover:bg-muted/40">
-                          <TableCell colSpan={5}>
-                            <ul className="space-y-1 text-sm">
-                              {s.trainings.map((t) => (
-                                <li key={t.id} className="flex flex-wrap gap-x-3">
-                                  <span className="font-medium">{t.company || "—"}</span>
-                                  <span className="text-muted-foreground">{t.project || ""}</span>
-                                  <span>{t.model}</span>
-                                  <span className="text-muted-foreground">
-                                    {formatDateTime(t.startedAt)} → {t.completedAt ? formatDateTime(t.completedAt) : t.status}
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
+                          <TableCell colSpan={5} className="py-3">
+                            <p className="mb-2 text-xs text-muted-foreground">
+                              Trainings on this switch-on. Their times are the training itself; the GPU's time on also covers starting up and the idle minutes before it switches off.
+                            </p>
+                            <div className="overflow-x-auto rounded-md border bg-background">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="border-b text-left text-xs text-muted-foreground">
+                                    <th className="px-3 py-2 font-medium">Started by</th>
+                                    <th className="px-3 py-2 font-medium">Organisation</th>
+                                    <th className="px-3 py-2 font-medium">Project</th>
+                                    <th className="px-3 py-2 font-medium">Model</th>
+                                    <th className="px-3 py-2 font-medium">Training start</th>
+                                    <th className="px-3 py-2 font-medium">Training end</th>
+                                    <th className="px-3 py-2 text-right font-medium">Took</th>
+                                    <th className="px-3 py-2 font-medium">Result</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {s.trainings.map((t) => (
+                                    <tr key={t.id} className="border-b last:border-0">
+                                      <td className="px-3 py-2">
+                                        {t.userName || t.userEmail ? (
+                                          <>
+                                            <div className="font-medium">{t.userName || "—"}</div>
+                                            <div className="text-xs text-muted-foreground">{t.userEmail || ""}</div>
+                                          </>
+                                        ) : (
+                                          <span className="text-muted-foreground">Not recorded</span>
+                                        )}
+                                      </td>
+                                      <td className="px-3 py-2">{t.company || "—"}</td>
+                                      <td className="px-3 py-2">{t.project || "—"}</td>
+                                      <td className="px-3 py-2 whitespace-nowrap">{t.model || "—"}</td>
+                                      <td className="px-3 py-2 whitespace-nowrap">{t.startedAt ? shortTime(t.startedAt) : "—"}</td>
+                                      <td className="px-3 py-2 whitespace-nowrap">
+                                        {t.completedAt ? (t.startedAt && sameDay(t.startedAt, t.completedAt) ? clock(t.completedAt) : shortTime(t.completedAt)) : "—"}
+                                      </td>
+                                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                                        {t.startedAt && t.completedAt
+                                          ? duration(Math.round((new Date(t.completedAt).getTime() - new Date(t.startedAt).getTime()) / 6000) / 10)
+                                          : "—"}
+                                      </td>
+                                      <td className="px-3 py-2 capitalize">{t.status}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
                           </TableCell>
                         </TableRow>
                       )}
