@@ -65,7 +65,7 @@ export const TrainingProgressCard: React.FC<{
     "Starting the training computer…",
     `Loading your ${photoCount} training photos…`,
     `Setting up the ${modelName} model…`,
-    "Almost ready, the first round starts soon…",
+    "Almost ready, the first epoch starts soon…",
   ];
   const message = startupMessages[Math.min(startupMessages.length - 1, Math.floor(elapsed / 25000))];
 
@@ -80,7 +80,7 @@ export const TrainingProgressCard: React.FC<{
   const headline = finishing
     ? "Checking how well it learned…"
     : training
-      ? `Round ${currentEpoch} of ${totalEpochs}${timeLeft ? ` · ${timeLeft}` : ""}`
+      ? `Epoch ${currentEpoch} of ${totalEpochs}${timeLeft ? ` · ${timeLeft}` : ""}`
       : message;
 
   return (
