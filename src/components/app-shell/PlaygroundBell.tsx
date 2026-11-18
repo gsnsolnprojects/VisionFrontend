@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, CheckCircle2, CloudOff, Loader2, UserPlus, XCircle } from "lucide-react";
+import { Bell, CheckCircle2, Clock, CloudOff, Loader2, UserPlus, XCircle } from "lucide-react";
+import { arrivedAt } from "@/lib/notificationTime";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useProfile } from "@/hooks/useProfile";
@@ -134,6 +135,17 @@ export const PlaygroundBell: React.FC<{
   };
 
   const notice = run?.training ? describe(run) : null;
+  // When this notice arrived: the run's latest change (queued, started, finished)
+  const t = run?.training;
+  const noticeTime = t
+    ? arrivedAt(
+        t.status === "completed" || t.status === "failed" || t.status === "cancelled"
+          ? t.completedAt ?? t.startedAt ?? t.queuedAt
+          : t.status === "running"
+            ? t.startedAt ?? t.queuedAt
+            : t.queuedAt
+      )
+    : null;
   const badge = (unread && notice ? 1 : 0) + joinRequestCount;
   const openRun = () => {
     if (!run?.projectId) return;
@@ -171,6 +183,12 @@ export const PlaygroundBell: React.FC<{
               <span className="min-w-0">
                 <span className="block text-sm font-medium text-foreground">{notice.title}</span>
                 <span className="mt-0.5 block text-xs text-muted-foreground">{notice.text}</span>
+                {noticeTime && (
+                  <span className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground/80">
+                    <Clock className="h-3 w-3" aria-hidden="true" />
+                    {noticeTime}
+                  </span>
+                )}
               </span>
             </button>
           )}

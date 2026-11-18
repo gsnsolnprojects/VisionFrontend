@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { formatDistanceToNow } from "date-fns";
+import { arrivedAt } from "@/lib/notificationTime";
 
 interface RequestItemProps {
   request: {
@@ -29,7 +29,7 @@ export const RequestItem: React.FC<RequestItemProps> = ({
   // Handle empty strings properly - trim and check if meaningful
   const requesterName = request.profiles?.name?.trim() || "Unknown User";
   const requesterEmail = request.profiles?.email?.trim() || "No email";
-  const timeAgo = formatDistanceToNow(new Date(request.created_at), { addSuffix: true });
+  const timeAgo = arrivedAt(request.created_at);
   const isAccepted = request.status === "approved";
   const isPending = request.status === "pending" || request.status === "email_sent";
 
