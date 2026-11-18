@@ -112,6 +112,12 @@ const INDUSTRIES: Industry[] = [
     tagline: "Explore the details behind everyday packs.",
     Icon: CupSoda,
     art: 3,
+    guided: {
+      title: "Bottle Cap Inspection",
+      sample: "Bottle Caps",
+      finds: "bottles with a missing cap",
+      photoNoun: "bottle",
+    },
     own: { example: "a crooked label or a dented can" },
   },
   {

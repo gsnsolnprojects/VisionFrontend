@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, BookOpen, Check, CheckCircle2, Clock, Cpu, Lightbulb, Pill, Plug, Search, X } from "lucide-react";
+import { ArrowRight, BookOpen, Check, CheckCircle2, Clock, CupSoda, Cpu, Lightbulb, Pill, Plug, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -41,6 +41,7 @@ const PRACTICE = [
   { industry: "automotive", title: "Terminal Block Inspection", text: "Terminal blocks with missing screws and bars.", Icon: Plug },
   { industry: "electronics", title: "PCB Defect Inspection", text: "Circuit boards with six kinds of defect.", Icon: Cpu },
   { industry: "pharma", title: "Blister Pack Inspection", text: "Blister packs with empty or damaged pockets.", Icon: Pill },
+  { industry: "food", title: "Bottle Cap Inspection", text: "Water bottles with and without their caps.", Icon: CupSoda },
 ];
 
 /** The two-question check at the end of a lesson */
