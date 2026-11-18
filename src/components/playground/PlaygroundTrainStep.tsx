@@ -321,6 +321,7 @@ export const PlaygroundTrainStep: React.FC<{
         // ignore
       }
       setJob((prev) => (prev ? { ...prev, status: "cancelled", error: null } : prev));
+      notifyProgressSaved();
       toast({
         title: "Training cancelled",
         description: res.countsAsRun === false ? "You didn't lose a training run." : "This run still counts towards this month's training runs.",

@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useProfile } from "@/hooks/useProfile";
 import { useToast } from "@/hooks/use-toast";
 import { getLevels, type LevelProgress } from "@/lib/api/levels";
+import { onProgressSaved } from "@/lib/api/badges";
 
 /**
  * The bell for Playground students: the state of their Level 2 training run (waiting for a GPU,
@@ -67,6 +68,8 @@ const describe = (level: LevelProgress) => {
       return { Icon: Loader2, tone: "text-ring", title: "Your model is training", text: `${project}: it keeps going while you're away.` };
     case "completed":
       return { Icon: CheckCircle2, tone: "text-success", title: "Your model is ready", text: `${project}: test it on photos it never learned from.` };
+    case "cancelled":
+      return { Icon: XCircle, tone: "text-muted-foreground", title: "You cancelled the training", text: `${project}: start it again whenever you're ready.` };
     default:
       return { Icon: XCircle, tone: "text-destructive", title: "Training didn't finish", text: `${project}: open it to see why and start again.` };
   }
@@ -120,7 +123,10 @@ export const PlaygroundBell: React.FC<{
     const timer = window.setInterval(() => void check(), POLL_MS);
     const onFocus = () => void check();
     window.addEventListener("focus", onFocus);
+    // A training started or cancelled on this page: update now, not at the next minute
+    const stopListening = onProgressSaved(() => void check());
     return () => {
+      stopListening();
       window.clearInterval(timer);
       window.removeEventListener("focus", onFocus);
     };
