@@ -6,6 +6,8 @@ interface ImageThumbnailGridProps {
   images: Image[];
   currentImageId: string | null;
   onImageSelect?: (imageId: string) => void;
+  /** Photos marked good (no defect): shown as "Good" instead of "Unlabeled" */
+  goodIds?: Set<string>;
 }
 
 // Memoized thumbnail component
@@ -13,9 +15,10 @@ const ThumbnailButton = React.memo<{
   image: Image;
   index: number;
   isActive: boolean;
+  isGood: boolean;
   onSelect: () => void;
-}>(({ image, index, isActive, onSelect }) => {
-  const isLabeled = image.hasAnnotations === true || image.annotationStatus === "annotated";
+}>(({ image, index, isActive, isGood, onSelect }) => {
+  const isLabeled = !isGood && (image.hasAnnotations === true || image.annotationStatus === "annotated");
   const shownName = image.originalName || image.filename;
   return (
     <button
@@ -26,18 +29,20 @@ const ThumbnailButton = React.memo<{
           ? "border-primary bg-primary/5 ring-1 ring-primary"
           : "border-muted hover:bg-muted"
       }`}
-      aria-label={`Select image ${index + 1} (${isLabeled ? "labeled" : "unlabeled"})`}
+      aria-label={`Select image ${index + 1} (${isGood ? "marked good" : isLabeled ? "labeled" : "unlabeled"})`}
     >
       Image {index + 1}
       {hasReadableName(shownName) && <div className="block text-[9px] text-muted-foreground truncate">{shownName}</div>}
       <span
         className={`mt-1 inline-block rounded-full px-1.5 py-0.5 text-[8px] font-medium leading-none ${
-          isLabeled
-            ? "bg-emerald-500/15 text-emerald-500"
-            : "bg-muted-foreground/15 text-muted-foreground"
+          isGood
+            ? "bg-sky-500/15 text-sky-600 dark:text-sky-400"
+            : isLabeled
+              ? "bg-emerald-500/15 text-emerald-500"
+              : "bg-muted-foreground/15 text-muted-foreground"
         }`}
       >
-        {isLabeled ? "Labeled" : "Unlabeled"}
+        {isGood ? "✓ Good" : isLabeled ? "Labeled" : "Unlabeled"}
       </span>
     </button>
   );
@@ -47,6 +52,7 @@ const ThumbnailButton = React.memo<{
     prev.image.hasAnnotations === next.image.hasAnnotations &&
     prev.image.annotationStatus === next.image.annotationStatus &&
     prev.isActive === next.isActive &&
+    prev.isGood === next.isGood &&
     prev.index === next.index
   );
 });
@@ -57,6 +63,7 @@ export const ImageThumbnailGrid: React.FC<ImageThumbnailGridProps> = ({
   images,
   currentImageId,
   onImageSelect,
+  goodIds,
 }) => {
   const renderedThumbnails = useMemo(() => {
     return images.map((image, index) => {
@@ -67,11 +74,12 @@ export const ImageThumbnailGrid: React.FC<ImageThumbnailGridProps> = ({
           image={image}
           index={index}
           isActive={isActive}
+          isGood={!!goodIds?.has(image.id)}
           onSelect={() => onImageSelect?.(image.id)}
         />
       );
     });
-  }, [images, currentImageId, onImageSelect]);
+  }, [images, currentImageId, onImageSelect, goodIds]);
 
   if (images.length === 0) {
     return (

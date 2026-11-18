@@ -3,7 +3,6 @@ import { ArrowRight, Check, ChevronDown, Gauge, HelpCircle, Layers, Loader2, Pla
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,6 +22,7 @@ import { GuidedTour, useFirstTimeTour } from "./GuidedTour";
 import { LEVEL_TWO_TRAIN_TOUR } from "./levelTwoGuides";
 import { TRAINING_JOURNEY } from "./trainingJourney";
 import { TrainingWaitCard } from "./TrainingWaitCard";
+import { TrainingProgressCard } from "./TrainingProgressCard";
 import { getModelQuota, type ModelQuota } from "@/lib/api/models";
 import type { PlanLimits } from "@/lib/api/subscription";
 import { cn } from "@/lib/utils";
@@ -139,6 +139,9 @@ export const PlaygroundTrainStep: React.FC<{
   const [models, setModels] = useState<TrainedModel[] | null>(null);
   const [modelToDelete, setModelToDelete] = useState<TrainedModel | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmStart, setConfirmStart] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const pollTimer = useRef<number | null>(null);
   const [showTour, setShowTour] = useFirstTimeTour("l2_train", guided && models !== null);
 
@@ -217,7 +220,8 @@ export const PlaygroundTrainStep: React.FC<{
           startupMinutes: s.startupMinutes ?? null,
           trainMinutes: s.estimatedTrainingMinutes ?? null,
         };
-        setJob(next);
+        // Keep the start time if the server leaves it out, so the startup bar doesn't jump back
+        setJob((prev) => (prev?.jobId === jobId && !next.queuedAt ? { ...next, queuedAt: prev.queuedAt } : next));
         if (next.status === "completed") notifyProgressSaved();
         if (next.status === "completed" || next.status === "failed" || next.status === "cancelled") {
           try {
@@ -299,6 +303,35 @@ export const PlaygroundTrainStep: React.FC<{
       toast({ title: "Training didn't start", description: (err as Error).message, variant: "destructive" });
     } finally {
       setStarting(false);
+    }
+  };
+
+  // Cancelling is free only while it waits and AWS has no GPU free; otherwise the run still counts
+  const cancelIsFree = job?.status === "queued" && job.noGpu;
+
+  const cancel = async () => {
+    if (!job) return;
+    setCancelling(true);
+    try {
+      const res = await apiRequest<{ countsAsRun?: boolean }>(`/train/${encodeURIComponent(job.jobId)}/cancel`, { method: "POST", maxRetries: 1 });
+      if (pollTimer.current) window.clearTimeout(pollTimer.current);
+      try {
+        localStorage.removeItem(jobKey(projectId));
+      } catch {
+        // ignore
+      }
+      setJob((prev) => (prev ? { ...prev, status: "cancelled", error: null } : prev));
+      toast({
+        title: "Training cancelled",
+        description: res.countsAsRun === false ? "You didn't lose a training run." : "This run still counts towards this month's training runs.",
+      });
+      loadAllowance();
+    } catch (err) {
+      toast({ title: "Couldn't cancel the training", description: (err as Error).message, variant: "destructive" });
+      void poll(job.jobId);
+    } finally {
+      setCancelling(false);
+      setConfirmCancel(false);
     }
   };
 
@@ -526,7 +559,7 @@ export const PlaygroundTrainStep: React.FC<{
             data-tour="train-start"
             className="mt-5 w-full gap-2"
             size="lg"
-            onClick={() => void start()}
+            onClick={() => setConfirmStart(true)}
             disabled={!TRAINING_AVAILABLE || starting || busy || !!blockedReason}
           >
             {starting || busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
@@ -538,7 +571,7 @@ export const PlaygroundTrainStep: React.FC<{
               : "We're setting up the training computers. Meanwhile, read how training works and test a ready-made model in step 3."}
           </p>
 
-          {busy && job && job.status === "queued" && (
+          {busy && job && job.status === "queued" && job.noGpu && (
             <TrainingWaitCard
               noGpu={job.noGpu}
               queuedAt={job.queuedAt}
@@ -547,22 +580,26 @@ export const PlaygroundTrainStep: React.FC<{
               trainMinutes={job.trainMinutes}
             />
           )}
-          {busy && job && job.status !== "queued" && (
-            <div className="mt-4 rounded-xl border bg-secondary/40 p-4" role="status">
-              <div className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="font-medium text-foreground">
-                  {job.totalEpochs ? `Epoch ${job.currentEpoch} of ${job.totalEpochs}` : "Getting started"}
-                </span>
-                <span className="font-semibold tabular-nums text-foreground">{Math.round(job.percent)}%</span>
-              </div>
-              <Progress value={job.percent} className="mt-2 h-3 bg-background" indicatorClassName="bg-ring" aria-label="Training progress" />
-              <p className="mt-2 text-xs text-muted-foreground">
-                {job.mAP50 !== null
-                  ? `Current score ${percent(job.mAP50)}: ${scoreWords(job.mAP50).toLowerCase()}. You can leave this page and come back.`
-                  : job.trainMinutes
-                    ? `Training takes about ${job.trainMinutes} min. You can leave this page and come back: training keeps going.`
-                    : "You can leave this page and come back: training keeps going."}
-              </p>
+          {busy && job && !(job.status === "queued" && job.noGpu) && (
+            <TrainingProgressCard
+              status={job.status as "queued" | "running"}
+              queuedAt={job.queuedAt}
+              currentEpoch={job.currentEpoch}
+              totalEpochs={job.totalEpochs}
+              percent={job.percent}
+              startupMinutes={job.startupMinutes}
+              trainMinutes={job.trainMinutes}
+              photoCount={counts.training}
+              modelName={SIZES.find((s) => s.key === size)?.name ?? "Nano"}
+              scoreLine={job.mAP50 !== null ? `Current score ${percent(job.mAP50)}: ${scoreWords(job.mAP50).toLowerCase()}.` : null}
+            />
+          )}
+          {busy && job && (
+            <div className="mt-3 flex justify-end">
+              <Button variant="outline" size="sm" onClick={() => setConfirmCancel(true)} disabled={cancelling}>
+                {cancelling && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                Cancel training
+              </Button>
             </div>
           )}
         </section>
@@ -681,6 +718,58 @@ export const PlaygroundTrainStep: React.FC<{
               onClick={() => modelToDelete && void deleteModel(modelToDelete)}
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmStart} onOpenChange={setConfirmStart}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Start training?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This uses 1 of your training runs{runsLeft !== null && runLimit !== null ? ` (${runsLeft} of ${runLimit} left this month)` : ""}. If you
+              cancel once the GPU has started, the run still counts. Check your photos, model size and settings before you start.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Not yet</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmStart(false);
+                void start();
+              }}
+            >
+              Start training
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmCancel} onOpenChange={(open) => !cancelling && setConfirmCancel(open)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel this training?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {cancelIsFree
+                ? "The GPU hasn't started yet, so you won't lose a training run. You won't get a model from this run."
+                : `The GPU has already started, so this run still counts${
+                    runsLeft !== null && runLimit !== null ? `: you'll have ${runsLeft} of ${runLimit} left this month` : ""
+                  }. You won't get a model from this run.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelling}>Keep training</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={cancelling}
+              onClick={(e) => {
+                e.preventDefault();
+                void cancel();
+              }}
+            >
+              {cancelling && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+              Cancel training
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

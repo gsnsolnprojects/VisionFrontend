@@ -316,7 +316,8 @@ const DatasetStep: React.FC<{
         {visible.map((f, i) => (
           <article key={f.id} data-tour={i === 0 ? "first-photo" : undefined} className="overflow-hidden rounded-xl border bg-background/40">
             <div className="relative aspect-[4/3] bg-[#171f1b]">
-              <LabelledThumbnail datasetId={sampleId} file={f} boxes={boxes[f.id]} classNames={classNames} />
+              {/* Held-out test photos are only for testing the model, so their labels aren't shown */}
+              <LabelledThumbnail datasetId={sampleId} file={f} boxes={f.folder === "test" ? undefined : boxes[f.id]} classNames={classNames} />
               <span
                 className={cn(
                   "absolute left-2 top-2 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",

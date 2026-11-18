@@ -945,7 +945,8 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
   // Photos with no boxes and not marked good: the ones the save pop-up asks about
   const goodToSave = useMemo(() => photosWithoutLabels.filter((img) => markedGood.has(img.id)), [photosWithoutLabels, markedGood]);
   const notDone = useMemo(() => photosWithoutLabels.filter((img) => !markedGood.has(img.id)), [photosWithoutLabels, markedGood]);
-  const goodCount = useMemo(() => images.filter((img) => markedGood.has(img.id) || savedGood(img)).length, [images, markedGood, savedGood]);
+  const goodIds = useMemo(() => new Set(images.filter((img) => markedGood.has(img.id) || savedGood(img)).map((img) => img.id)), [images, markedGood, savedGood]);
+  const goodCount = goodIds.size;
   const labelledCount = Math.max(0, images.length - goodCount - notDone.length);
 
   // Phase 5 & 6: Save annotations and convert to YOLO
@@ -3066,6 +3067,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
           }
           currentImageId={currentImage?.id ?? null}
           onImageSelect={handleImageSelect}
+          goodIds={goodIds}
         />
       </div>
       </div>

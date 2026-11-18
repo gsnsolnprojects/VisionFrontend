@@ -1057,7 +1057,8 @@ export const PlaygroundProjectPage: React.FC = () => {
                   return (
                     <article key={f.id} data-tour={i === 0 ? "l2-first-photo" : undefined} className="overflow-hidden rounded-xl border bg-background/40">
                       <div className="relative aspect-[4/3] bg-[#171f1b]">
-                        <LabelledThumbnail datasetId={selectedId!} file={f} boxes={boxes[f.id]} classNames={classNames} />
+                        {/* Held-out test photos are only for testing the model, so their labels aren't shown */}
+                        <LabelledThumbnail datasetId={selectedId!} file={f} boxes={split.kind === "test" ? undefined : boxes[f.id]} classNames={classNames} />
                         {splitShown && (
                           <span
                             className={cn(
