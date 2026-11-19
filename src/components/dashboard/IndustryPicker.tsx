@@ -21,6 +21,8 @@ import { IndustryArt } from "@/components/landing/IndustryArt";
 import { Button } from "@/components/ui/button";
 import { useProfile } from "@/hooks/useProfile";
 import { getSamples, type SampleDataset, type SampleModel } from "@/lib/api/samples";
+import { getIndustrySettings, type IndustrySettings } from "@/lib/api/playgroundIndustries";
+import { DifficultyBar } from "@/components/playground/DifficultyBar";
 import type { PathProgress } from "@/lib/api/dashboard";
 import type { LevelProgress } from "@/lib/api/levels";
 import { cn } from "@/lib/utils";
@@ -138,6 +140,9 @@ const INDUSTRIES: Industry[] = [
   },
 ];
 
+/** The worlds in order, for the superadmin's Playground tab */
+export const PLAYGROUND_INDUSTRIES = INDUSTRIES.map(({ id, name, tagline, Icon }) => ({ id, name, tagline, Icon }));
+
 const sameProject = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 /** The guided challenge that uses a GSN sample (by its project name), to start it from elsewhere */
@@ -174,6 +179,7 @@ export const IndustryPicker: React.FC<{
   const { user } = useProfile();
   const [selected, setSelected] = useState<string | null>(null);
   const [samples, setSamples] = useState<Samples | null>(null);
+  const [settings, setSettings] = useState<IndustrySettings>({});
 
   useEffect(() => {
     setSelected(readIndustry(user?.id));
@@ -196,6 +202,10 @@ export const IndustryPicker: React.FC<{
     getSamples()
       .then(setSamples)
       .catch(() => setSamples({ datasets: [], models: [] }));
+    // Difficulty set by the superadmin; without it the cards just show no bar
+    getIndustrySettings()
+      .then((res) => setSettings(res.industries || {}))
+      .catch(() => undefined);
   }, []);
 
   const pick = (id: string) => {
@@ -284,6 +294,7 @@ export const IndustryPicker: React.FC<{
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="Industry">
           {INDUSTRIES.map(({ id, name, tagline, Icon, recommended }, i) => {
             const isSelected = id === selected;
+            const difficulty = settings[id]?.difficulty ?? null;
             return (
               <button
                 key={id}
@@ -314,8 +325,11 @@ export const IndustryPicker: React.FC<{
                 </span>
                 <span className="mt-auto pt-6 font-semibold text-foreground">{name}</span>
                 <span className="mt-1 text-sm text-muted-foreground">{tagline}</span>
-                <span className="mt-2 self-end font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">
-                  World / {String(i + 1).padStart(2, "0")}
+                <span className="mt-3 flex items-center justify-between gap-3">
+                  {difficulty ? <DifficultyBar difficulty={difficulty} /> : <span />}
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/70">
+                    World / {String(i + 1).padStart(2, "0")}
+                  </span>
                 </span>
               </button>
             );

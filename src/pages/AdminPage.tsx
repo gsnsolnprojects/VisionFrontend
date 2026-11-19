@@ -13,6 +13,7 @@ import { AdminJobsTab } from "@/components/admin/AdminJobsTab";
 import { AdminGpuTab } from "@/components/admin/AdminGpuTab";
 import { AdminSampleLibraryTab } from "@/components/admin/AdminSampleLibraryTab";
 import { AdminPublishTab } from "@/components/admin/AdminPublishTab";
+import { AdminPlaygroundTab } from "@/components/admin/AdminPlaygroundTab";
 
 const TABS = [
   { value: "overview", label: "Overview" },
@@ -22,6 +23,7 @@ const TABS = [
   { value: "jobs", label: "Jobs & activity" },
   { value: "gpu", label: "GPU" },
   { value: "samples", label: "Sample library" },
+  { value: "playground", label: "Playground" },
   { value: "publish", label: "Publish to live" },
 ] as const;
 
@@ -82,6 +84,9 @@ export const AdminPage: React.FC = () => {
         </TabsContent>
         <TabsContent value="samples">
           <AdminSampleLibraryTab />
+        </TabsContent>
+        <TabsContent value="playground">
+          <AdminPlaygroundTab />
         </TabsContent>
         {SHOW_PUBLISH && (
           <TabsContent value="publish">
