@@ -78,6 +78,20 @@ const INDUSTRIES: Industry[] = [
     own: { example: "a missing component or a solder bridge" },
   },
   {
+    id: "food",
+    name: "Food & Beverages",
+    tagline: "Explore the details behind everyday packs.",
+    Icon: CupSoda,
+    art: 3,
+    guided: {
+      title: "Bottle Cap Inspection",
+      sample: "Bottle Caps",
+      finds: "bottles with a missing cap",
+      photoNoun: "bottle",
+    },
+    own: { example: "a crooked label or a dented can" },
+  },
+  {
     // id kept as "automotive" so browsers that remembered this card still pick it
     id: "automotive",
     name: "Electrical Components",
@@ -105,20 +119,6 @@ const INDUSTRIES: Industry[] = [
       photoNoun: "blister pack",
     },
     own: { example: "an empty pocket or a torn foil" },
-  },
-  {
-    id: "food",
-    name: "Food & Beverages",
-    tagline: "Explore the details behind everyday packs.",
-    Icon: CupSoda,
-    art: 3,
-    guided: {
-      title: "Bottle Cap Inspection",
-      sample: "Bottle Caps",
-      finds: "bottles with a missing cap",
-      photoNoun: "bottle",
-    },
-    own: { example: "a crooked label or a dented can" },
   },
   {
     id: "plastics",
