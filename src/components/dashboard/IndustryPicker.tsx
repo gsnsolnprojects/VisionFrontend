@@ -141,7 +141,14 @@ const INDUSTRIES: Industry[] = [
 ];
 
 /** The worlds in order, for the superadmin's Playground tab */
-export const PLAYGROUND_INDUSTRIES = INDUSTRIES.map(({ id, name, tagline, Icon }) => ({ id, name, tagline, Icon }));
+export const PLAYGROUND_INDUSTRIES = INDUSTRIES.map(({ id, name, tagline, Icon, guided }) => ({
+  id,
+  name,
+  tagline,
+  Icon,
+  /** Project name of the GSN sample its Level 1 uses, if it has a Level 1 */
+  level1Sample: guided?.sample ?? null,
+}));
 
 const sameProject = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 

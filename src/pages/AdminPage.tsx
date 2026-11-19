@@ -11,9 +11,7 @@ import { AdminCompaniesTab } from "@/components/admin/AdminCompaniesTab";
 import { AdminRevenueTab } from "@/components/admin/AdminRevenueTab";
 import { AdminJobsTab } from "@/components/admin/AdminJobsTab";
 import { AdminGpuTab } from "@/components/admin/AdminGpuTab";
-import { AdminSampleLibraryTab } from "@/components/admin/AdminSampleLibraryTab";
-import { AdminPublishTab } from "@/components/admin/AdminPublishTab";
-import { AdminPlaygroundTab } from "@/components/admin/AdminPlaygroundTab";
+import { AdminPlaygroundSection, type PlaygroundSection } from "@/components/admin/AdminPlaygroundSection";
 
 const TABS = [
   { value: "overview", label: "Overview" },
@@ -22,16 +20,18 @@ const TABS = [
   { value: "revenue", label: "Revenue" },
   { value: "jobs", label: "Jobs & activity" },
   { value: "gpu", label: "GPU" },
-  { value: "samples", label: "Sample library" },
   { value: "playground", label: "Playground" },
-  { value: "publish", label: "Publish to live" },
 ] as const;
 
 type TabValue = (typeof TABS)[number]["value"];
 
 /** "Publish to live" picks what to copy to the AWS site, so it only makes sense on the local setup */
 const SHOW_PUBLISH = import.meta.env.DEV;
-const VISIBLE_TABS = TABS.filter((t) => t.value !== "publish" || SHOW_PUBLISH);
+const VISIBLE_TABS = TABS;
+
+/** Old links: the sample library and publish tabs now live inside Playground */
+const OLD_TAB_SECTION: Record<string, PlaygroundSection> = { samples: "samples", publish: "publish" };
+const SECTIONS: PlaygroundSection[] = ["samples", "industries", "publish"];
 
 /**
  * Superadmin panel (GSN platform admin only). Everything here is also checked by
@@ -48,8 +48,13 @@ export const AdminPage: React.FC = () => {
   if (!profile || (profile.company_id && !company)) return <LoadingState message="Loading..." />;
   if (!isSuperadmin(userRole, company?.name)) return <Navigate to="/dashboard" replace />;
 
-  const requested = searchParams.get("tab");
+  const requestedTab = searchParams.get("tab") ?? "";
+  const oldSection = OLD_TAB_SECTION[requestedTab];
+  const requested = oldSection ? "playground" : requestedTab;
   const tab: TabValue = VISIBLE_TABS.some((t) => t.value === requested) ? (requested as TabValue) : "overview";
+  const requestedSection = (oldSection ?? searchParams.get("section") ?? "") as PlaygroundSection;
+  const section: PlaygroundSection =
+    SECTIONS.includes(requestedSection) && (requestedSection !== "publish" || SHOW_PUBLISH) ? requestedSection : "samples";
 
   return (
     <div>
@@ -82,17 +87,13 @@ export const AdminPage: React.FC = () => {
         <TabsContent value="gpu">
           <AdminGpuTab />
         </TabsContent>
-        <TabsContent value="samples">
-          <AdminSampleLibraryTab />
-        </TabsContent>
         <TabsContent value="playground">
-          <AdminPlaygroundTab />
+          <AdminPlaygroundSection
+            section={section}
+            onSectionChange={(next) => setSearchParams({ tab: "playground", section: next }, { replace: true })}
+            showPublish={SHOW_PUBLISH}
+          />
         </TabsContent>
-        {SHOW_PUBLISH && (
-          <TabsContent value="publish">
-            <AdminPublishTab />
-          </TabsContent>
-        )}
       </Tabs>
     </div>
   );

@@ -15,6 +15,7 @@ import {
   type Difficulty,
   type IndustrySettings,
 } from "@/lib/api/playgroundIndustries";
+import { getSampleLibrary, type SampleLibraryItem } from "@/lib/api/admin";
 import { errorMessage } from "./adminFormat";
 
 const NONE = "none";
@@ -29,6 +30,7 @@ export const AdminPlaygroundTab: React.FC = () => {
   const [settings, setSettings] = useState<IndustrySettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const [library, setLibrary] = useState<SampleLibraryItem[] | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -42,7 +44,21 @@ export const AdminPlaygroundTab: React.FC = () => {
 
   useEffect(() => {
     void load();
+    // For "is this world's Level 1 sample ready?"; the page works without it
+    getSampleLibrary()
+      .then((res) => setLibrary(res.items))
+      .catch(() => setLibrary([]));
   }, [load]);
+
+  /** A world's Level 1 sample: in the library and shown to students? */
+  const level1Status = (sample: string | null) => {
+    if (!sample) return { tone: "text-muted-foreground", text: "No Level 1 yet" };
+    if (!library) return { tone: "text-muted-foreground", text: sample };
+    const items = library.filter((i) => i.dataset?.project.trim().toLowerCase() === sample.trim().toLowerCase());
+    if (items.some((i) => i.isVisible)) return { tone: "text-success", text: `${sample} · ready` };
+    if (items.length) return { tone: "text-amber-600 dark:text-amber-400", text: `${sample} · hidden in Samples` };
+    return { tone: "text-destructive", text: `${sample} · not in Samples` };
+  };
 
   const change = async (industryId: string, name: string, value: string) => {
     const difficulty = value === NONE ? null : (value as Difficulty);
@@ -64,7 +80,7 @@ export const AdminPlaygroundTab: React.FC = () => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Industry difficulty</CardTitle>
+        <CardTitle>Industries</CardTitle>
         <CardDescription>
           The bar on each industry card in the Playground ("Choose your industry"). Changes save straight away; choose
           "Not shown" to hide the bar on a card.
@@ -77,13 +93,15 @@ export const AdminPlaygroundTab: React.FC = () => {
               <TableRow>
                 <TableHead className="w-16">World</TableHead>
                 <TableHead>Industry</TableHead>
+                <TableHead>Level 1 sample</TableHead>
                 <TableHead>On the card</TableHead>
                 <TableHead className="w-48">Difficulty</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {PLAYGROUND_INDUSTRIES.map(({ id, name, tagline, Icon }, i) => {
+              {PLAYGROUND_INDUSTRIES.map(({ id, name, tagline, Icon, level1Sample }, i) => {
                 const difficulty = settings[id]?.difficulty ?? null;
+                const status = level1Status(level1Sample);
                 return (
                   <TableRow key={id}>
                     <TableCell className="font-mono text-xs text-muted-foreground">{String(i + 1).padStart(2, "0")}</TableCell>
@@ -98,6 +116,7 @@ export const AdminPlaygroundTab: React.FC = () => {
                         </div>
                       </div>
                     </TableCell>
+                    <TableCell className={`whitespace-nowrap text-sm ${status.tone}`}>{status.text}</TableCell>
                     <TableCell>
                       {difficulty ? <DifficultyBar difficulty={difficulty} /> : <span className="text-xs text-muted-foreground">No bar</span>}
                     </TableCell>

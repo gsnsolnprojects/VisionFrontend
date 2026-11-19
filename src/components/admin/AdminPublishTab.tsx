@@ -306,6 +306,28 @@ export const AdminPublishTab: React.FC = () => {
           </Card>
         );
       })}
+      {/* Ticks only count once saved: a bar that stays in view until they are */}
+      {changed && (
+        <div
+          className="fixed inset-x-4 bottom-4 z-40 mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-3 rounded-xl border border-ring bg-card px-4 py-3 shadow-lg"
+          role="status"
+        >
+          <span className="text-sm">
+            <span className="font-medium text-foreground">Unsaved changes.</span>{" "}
+            <span className="text-muted-foreground">Ticks are only used for publishing once you save them.</span>
+          </span>
+          <span className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setSelected(new Set(saved))} disabled={saving}>
+              Undo
+            </Button>
+            <Button size="sm" onClick={save} disabled={saving}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save selection
+            </Button>
+          </span>
+        </div>
+      )}
+
     </div>
   );
 };
