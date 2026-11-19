@@ -94,32 +94,32 @@ interface AutoLabelResult {
 const LABELLING_TOUR: TourStep[] = [
   {
     title: "Now you try",
-    text: "So far you've looked at labels GSN made. Now you'll draw them yourself, the way real AI teams prepare their data. It's only practice: nothing you do here is saved or used for training.",
+    text: "In real AI projects, people spend more time labelling photos than training models, because a model is only as good as its labels. Now you'll draw them yourself. It's only practice: nothing here is saved or used for training.",
   },
   {
     target: "practice-photo",
     title: "The photo you're labelling",
-    text: "This is a real inspection photo with one or more defects in it. Your job is to find each one and mark it. What you mark here is what a model would learn to look for.",
+    text: "This is a real inspection photo with one or more defects in it. Find each one and mark it. Whatever you mark is exactly what a model would learn to look for, so anything you miss, it would miss too.",
   },
   {
     target: "practice-prompt",
     title: "What to do right now",
-    text: "This line always tells you your next move. Labelling takes two moves: pick the kind of defect, then draw a box around it.",
+    text: "This line always tells you your next move. Every label has two parts: the class (what the defect is) and the box (where it is). So you pick the class first, then draw the box.",
   },
   {
     target: "practice-labels",
     title: "1. Pick a label",
-    text: "Each label is one kind of defect, with a line on what it looks like. Pick the one you're marking, and your box takes its name and colour. A wrong name teaches a model the wrong thing, even if the box is perfect.",
+    text: "Each label is one class, with a line on what it looks like. Your box takes its name and colour. A wrong name teaches the model the wrong thing, even if the box is perfect.",
   },
   {
     target: "practice-photo",
     title: "2. Draw a box",
-    text: "Press on the photo and drag around the defect. Keep the box tight: too big and the model learns the background too, too small and it misses part of the defect.",
+    text: "Press on the photo and drag around the defect. This box is called a bounding box. Keep it tight: too big and the model learns the background too, too small and it misses part of the defect.",
   },
   {
     target: "practice-tools",
     title: "Zoom in on small defects",
-    text: "Some defects are tiny. Scroll on the photo or use + and - to zoom. To move around while zoomed, choose Move, or hold Space and drag. Fit shows the whole photo again.",
+    text: "Small defects are the hardest, for people and for models. Scroll on the photo or use + and - to zoom. To move around while zoomed, choose Move, or hold Space and drag. Fit shows the whole photo again.",
   },
   {
     target: "practice-boxes",
@@ -139,17 +139,17 @@ const LABELLING_TOUR: TourStep[] = [
   {
     target: "practice-strip",
     title: "Your practice photos",
-    text: "These photos cover every kind of defect. Move between them here. The dot on each one shows how it went: green for all right, amber for some fixes, blue for not checked yet.",
+    text: "These photos cover every class, because a model needs examples of each kind of defect to learn it. The dot on each photo shows how it went: green for all right, amber for some fixes, blue for not checked yet.",
   },
   {
     target: "practice-auto",
     title: "Auto-label",
-    text: "Labelling hundreds of photos by hand is slow. So real projects label a few, train a model, and let it suggest boxes for the rest, which people then check. Try it here with GSN's model.",
+    text: "Labelling hundreds of photos by hand is slow. So teams label a few, train a model, and let it suggest boxes for the rest, which people then check. This is called AI-assisted labelling. Try it with GSN's model.",
   },
   {
     target: "practice-finish",
     title: "Move on any time",
-    text: "One or two photos are enough if you've got the idea. Press this when you're ready, and next you'll see how a model is trained from labels like these. You can replay this guide with Show guide.",
+    text: "One or two photos are enough if you've got the idea. Next you'll see how a model learns from labels like these. You can replay this guide with Show guide.",
   },
 ];
 

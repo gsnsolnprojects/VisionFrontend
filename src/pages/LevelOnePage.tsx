@@ -97,57 +97,57 @@ const TRAINING_SETTINGS = [
 const DATASET_TOUR: TourStep[] = [
   {
     title: "Welcome to Level 1",
-    text: "This is your first look at how AI inspection works. In a minute you'll know what a dataset is, what labels are, and why photos are split into groups. Nothing here can break.",
+    text: "You're about to learn object detection: the part of AI that finds things in a photo and says where they are. Factories use it to catch defects a tired eye might miss. Nothing here can break.",
   },
   {
     target: "level-steps",
     title: "Your five steps",
-    text: "This is your path through Level 1. You're on the first step. Each one opens when you finish the one before, and your progress is saved, so you can leave and come back.",
+    text: "These five steps are the same order every real AI project follows: data, labels, training, testing, reporting. Each one opens when you finish the one before, and your progress is saved.",
   },
   {
     target: "dataset-title",
     title: "This is a dataset",
-    text: "A dataset is the collection of photos a model learns from. This one has real inspection photos, and GSN has already prepared it for you. In Level 2, you'll make your own.",
+    text: "Machine learning means a computer learns from examples instead of being given rules. Nobody tells it \"a scratch looks like this\": it works that out from hundreds of photos. Those examples are the dataset, and better data makes a better model.",
   },
   {
     target: "first-photo",
     title: "A photo and its labels",
-    text: "A box around a defect, with the defect's name, is a label. It tells the model what to look for, and where.",
+    text: "Each box tells the model two things: what the defect is (its name) and where it is (the box). Learning from photos marked like this is called supervised learning, like a student learning from a book that has the answers.",
   },
   {
     target: "label-list",
     title: "The kinds of defects",
-    text: "Each kind of defect has its own colour. The model learns only what's on this list.",
+    text: "Each kind of defect is called a class. A model can only find the classes it was taught: show it a defect that isn't on this list, and it won't know it exists.",
   },
   {
     target: "split-why",
     title: "What is a dataset split?",
-    text: "Each photo goes into one of three groups. The test photos are locked away, so the final score is honest.",
+    text: "The photos are split into three groups, one for each job. The model learns from the first, checks itself on the second while learning, and takes a final test on the third. The groups stay separate, so the model is never tested on photos it learned from.",
   },
   {
     target: "split-train",
     title: "Training photos",
-    text: "The biggest group. The model studies these again and again, getting a little closer to the labels each time.",
+    text: "The biggest group, the model's textbook. The model looks at a photo, makes a guess, then checks the label to see how wrong it was. It fixes itself a little and repeats this many times. That's how a model learns.",
   },
   {
     target: "split-val",
     title: "Validation photos",
-    text: "The model doesn't learn from these. After each pass it tries them, and its best version is kept.",
+    text: "Practice tests. The model never learns from these, but it's checked on them after each pass. If it gets better on training photos but worse here, it's memorising instead of learning. That's called overfitting.",
   },
   {
     target: "split-test",
     title: "Held-out test photos",
-    text: "Kept locked until training is over. You'll use them in the Test step: the model has never seen them, so the score is honest.",
+    text: "The final exam. These stay hidden until training is over. The model has never seen them, so its score shows how well it would spot defects on new parts in a real factory. That's called generalisation.",
   },
   {
     target: "photo-pages",
     title: "Look through the photos",
-    text: "Use these to see more photos. The tag on each photo shows its group. Look closely at the boxes: soon you'll be drawing your own.",
+    text: "Look closely at the boxes: how tight they are, and how small some defects are. The tag on each photo shows its group. Soon you'll be drawing these boxes yourself.",
   },
   {
     target: "dataset-next",
     title: "What's next",
-    text: "When you've seen enough, press this. Next you'll draw boxes on real photos yourself, and they'll be checked against GSN's labels. You can replay this guide any time with the Show guide button.",
+    text: "Next, you're the labeller: draw boxes on real photos and see how close you get to GSN's labels. You can replay this guide any time with the Show guide button.",
   },
 ];
 
@@ -155,62 +155,62 @@ const DATASET_TOUR: TourStep[] = [
 const TRAINING_TOUR: TourStep[] = [
   {
     title: "How a model learns",
-    text: "You've seen labels and drawn your own. Now see what a model does with them. Nothing gets trained in this level: you're learning what happens, so you're ready when you train your own in Level 2.",
+    text: "A model is a huge set of numbers. Training means adjusting those numbers, photo after photo, until its guesses match the labels.",
   },
   {
     target: "training-stages",
     title: "The four stages of training",
-    text: "Every training run goes through these four stages, in this order.",
+    text: "Every training run goes through these four stages, in this order: check the data, learn, check itself, save the best version.",
   },
   {
     target: "setting-Model size",
     title: "Settings: model size",
-    text: "Nano is quicker to train and to run. Small is slower, but often spots more.",
+    text: "A bigger model has more numbers to adjust, so it can learn finer details. Nano is quicker to train and run. Small is slower, but often spots more.",
   },
   {
     target: "setting-Epochs",
     title: "Settings: epochs",
-    text: "One epoch is one pass over all the training photos. Too many, and the model starts memorising them.",
+    text: "One epoch is one pass over all the training photos, like reading the textbook once. If you set too few epochs, the model hasn't learned enough. If you set too many, it starts memorising the photos, which is overfitting.",
   },
   {
     target: "setting-Batch size",
     title: "Settings: batch size",
-    text: "The model looks at a small group of photos, a batch, then adjusts. Bigger batches need more memory.",
+    text: "The model doesn't fix itself after every photo. It looks at a small group, called a batch, then adjusts once. Bigger batches give steadier learning but need more computer memory.",
   },
   {
     target: "setting-Image size",
     title: "Settings: image size",
-    text: "Every photo is resized before the model sees it. Too small, and tiny defects disappear.",
+    text: "Every photo is resized before the model sees it. Bigger keeps tiny defects visible, but training gets slower. Too small, and tiny defects disappear.",
   },
   {
     target: "setting-Learning rate",
     title: "Settings: learning rate",
-    text: "How big a step the model takes each time it corrects itself.",
+    text: "How big a step the model takes each time it corrects itself. Too big and it overshoots the right answer; too small and it learns very slowly.",
   },
   {
     target: "setting-More training photos",
     title: "Settings: more training photos",
-    text: "Flipped, rotated, brighter or darker copies give the model more to learn from. It's called augmentation, and you can use it in Level 2.",
+    text: "Only a few photos? You can make more from them: flipped, rotated, brighter or darker copies. This is called augmentation. The bigger the dataset, the better the model learns, and it learns that a defect is still a defect from any angle or in any light. You can use it in Level 2.",
   },
   {
     target: "model-card",
     title: "GSN's finished model",
-    text: "GSN has already trained a model on photos like these. You'll test it yourself in the next step.",
+    text: "We have a model already trained and ready for you. In the next step, you'll run a test on it and see how it does on photos it has never seen.",
   },
   {
     target: "score-Overall score (mAP50)",
     title: "Overall score",
-    text: "How well the model finds defects and puts its box in the right place. Higher is better. It's called mAP50.",
+    text: "When training finishes, the model scores itself on the validation photos. The overall score is how well it finds defects and puts its box in the right place. A box counts as right if it overlaps the true box by at least half: that's the 50 in mAP50. Higher is better.",
   },
   {
     target: "score-Precision",
     title: "Precision",
-    text: "When the model says there's a defect, how often is it right? Low precision means false alarms.",
+    text: "When the model says there's a defect, how often is it right? Low precision means false alarms, so good parts get thrown away.",
   },
   {
     target: "score-Recall",
     title: "Recall",
-    text: "Of all the real defects, how many did it find? Low recall means misses.",
+    text: "Of all the real defects, how many did it find? Low recall means misses, so bad parts slip through.",
   },
   {
     target: "training-next",

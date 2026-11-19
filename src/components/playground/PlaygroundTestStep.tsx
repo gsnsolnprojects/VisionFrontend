@@ -26,34 +26,34 @@ const MAX_UPLOADS = 30;
 const TEST_TOUR: TourStep[] = [
   {
     title: "Time for the final exam",
-    text: "Training scores come from photos the model checks itself on while learning. A test on photos it has never seen shows how it would really do in a factory. Here you'll test GSN's model.",
+    text: "A model can score well in training and still fail on new parts. The only way to know is to test it on photos it has never seen. This is how every AI model is judged before it goes into a factory.",
   },
   {
     target: "test-model",
     title: "The model being tested",
-    text: "This is GSN's ready-made model, already trained on this kind of photo. The score is from its training. Now you'll see if it holds up.",
+    text: "This is the model trained for you. The score shown here is the one it gave itself on the validation photos. Now you'll see if it holds up on new ones.",
   },
   {
     target: "test-photos",
     title: "The photos it's tested on",
-    text: "These are the held-out photos you met in See the data. The model never learned from them. GSN has labelled them too, so you can compare what it finds with the right answers.",
+    text: "These are the held-out test photos from the dataset you saw earlier. The model has never seen them. They have ground-truth labels too, so you can compare what the model finds with the right answers.",
   },
   {
     target: "test-how",
     title: "What to look for",
-    text: "Each box is something the model found, and its number is how sure it is, from 0 to 1. A missed defect means a bad part slips through. An extra box means a good part gets thrown away.",
+    text: "Each box is something the model found. Its number is the confidence score: how sure the model is, from 0 to 1. A model never just says yes or no: it always gives a guess and how sure it is.",
   },
   {
     target: "test-run",
     title: "Run the test",
-    text: "Press this when you're ready. The model looks at each photo, and the results appear below, photo by photo. In this level, tests don't use your monthly predictions.",
+    text: "Press this when you're ready. Using a trained model on new photos is called inference. The results appear below, photo by photo. In this level, tests don't use your monthly predictions.",
   },
 ];
 const RESULTS_TOUR: TourStep[] = [
   {
     target: "result-summary",
     title: "How did the model do?",
-    text: "Found: real defects it spotted. Missed: real defects it didn't see, so a bad part would slip through. Extra: boxes where nothing's wrong, so a good part would be thrown away.",
+    text: "Found: real defects it spotted. Missed: real defects it didn't see, so a bad part slips through (this lowers recall). Extra: boxes where nothing's wrong, so a good part gets thrown away (this lowers precision).",
   },
   {
     target: "result-first",
@@ -64,7 +64,7 @@ const RESULTS_TOUR: TourStep[] = [
   {
     target: "result-filters",
     title: "Jump to the mistakes",
-    text: "Show only the photos where it missed something or added an extra box. Mistakes show what a model still needs to learn.",
+    text: "Show only the photos where it missed something or added an extra box. Mistakes are the most useful part of a test: they show what the model still needs to learn, and which photos to add next time.",
   },
   {
     target: "result-actions",
