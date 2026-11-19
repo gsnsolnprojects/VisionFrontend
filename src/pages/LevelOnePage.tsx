@@ -215,7 +215,7 @@ const TRAINING_TOUR: TourStep[] = [
   {
     target: "training-next",
     title: "What's next",
-    text: "Press this to test GSN's model yourself, on photos it has never seen. You can replay this guide with the Show guide button.",
+    text: "Press this to run a test on the model we trained for you, on photos it has never seen. You can replay this guide with the Show guide button.",
   },
 ];
 

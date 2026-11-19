@@ -26,6 +26,8 @@ import { TrainingProgressCard } from "./TrainingProgressCard";
 import { getModelQuota, type ModelQuota } from "@/lib/api/models";
 import type { PlanLimits } from "@/lib/api/subscription";
 import { cn } from "@/lib/utils";
+import { adviseTraining } from "./trainingAdvice";
+import { AdviceBadge, AdviceLine, DatasetCheck, SuggestedSettings, useDatasetFacts } from "./TrainingCoach";
 
 /**
  * Step 2 of a Playground project: train a model on the project's dataset. Written for students
@@ -121,13 +123,17 @@ export const PlaygroundTrainStep: React.FC<{
   isSample: boolean;
   classNames: string[];
   counts: { training: number; validation: number; test: number; labelled: number };
+  /** the photos it learns from, so the suggestions can read their labels */
+  trainFileIds?: string[];
+  /** extra copies (augmentation) are in the training photos */
+  augmented?: boolean;
   limits: PlanLimits | null | undefined;
   onTestModel: () => void;
   /** the level's mission, which remembers the training run */
   missionName: string;
   /** in Level 2: walks the student through training */
   guided?: boolean;
-}> = ({ projectId, companyName, projectName, datasetId, isSample, classNames, counts, limits, onTestModel, missionName, guided = false }) => {
+}> = ({ projectId, companyName, projectName, datasetId, isSample, classNames, counts, trainFileIds = [], augmented = false, limits, onTestModel, missionName, guided = false }) => {
   const { toast } = useToast();
   const [size, setSize] = useState(SIZES[0].key);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -149,6 +155,26 @@ export const PlaygroundTrainStep: React.FC<{
   const runsLeft = runLimit === null || runsUsed === null ? null : Math.max(0, runLimit - runsUsed);
   const modelsFull = !!quota?.limited && typeof quota.limit === "number" && (quota.used ?? 0) >= quota.limit;
   const busy = job?.status === "queued" || job?.status === "running";
+
+  // Suggestions worked out from this dataset and the settings picked
+  const { facts, loading: factsLoading, classIndex } = useDatasetFacts(datasetId, trainFileIds, counts.training, augmented);
+  const sizeLetter = (SIZES.find((s) => s.key === size)?.letter ?? "n") as "n" | "s";
+  const choice = {
+    size: sizeLetter,
+    epochs: Number(settings.epochs) || 0,
+    batchSize: Number(settings.batchSize),
+    imgSize: Number(settings.imgSize),
+    learningRate: Number(settings.learningRate) || 0,
+  };
+  const advice = adviseTraining(facts, choice);
+  const canPickSize = (letter: string) => !quota?.sizes || quota.sizes.includes(letter);
+  const applySuggested = () => {
+    const s = advice.suggested;
+    const key = SIZES.find((x) => x.letter === s.size && canPickSize(x.letter))?.key;
+    if (key) setSize(key);
+    setSettings({ epochs: String(s.epochs), batchSize: String(s.batchSize), imgSize: String(s.imgSize), learningRate: String(s.learningRate) });
+    setShowSettings(true);
+  };
 
   const loadModels = useCallback(async () => {
     try {
@@ -443,7 +469,12 @@ export const PlaygroundTrainStep: React.FC<{
                 </button>
               ))}
             </div>
+            {!factsLoading && <AdviceLine advice={advice.size} />}
           </fieldset>
+
+          <div className="mt-5">
+            <DatasetCheck facts={facts} loading={factsLoading} classIndex={classIndex} advice={advice.dataset} />
+          </div>
 
           <div data-tour="train-settings" className="mt-5 rounded-xl border p-4">
             <button
@@ -453,7 +484,9 @@ export const PlaygroundTrainStep: React.FC<{
               onClick={() => setShowSettings((open) => !open)}
             >
               <span>
-                <span className="block text-sm font-medium text-foreground">Training settings</span>
+                <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  Training settings <AdviceBadge warnings={advice.warnings} loading={factsLoading} />
+                </span>
                 <span className="block text-xs text-muted-foreground">
                   {settings.epochs} epochs · batch {settings.batchSize} · image size {settings.imgSize} · learning rate {settings.learningRate}
                 </span>
@@ -462,6 +495,15 @@ export const PlaygroundTrainStep: React.FC<{
             </button>
             {showSettings && (
               <div className="mt-4 space-y-4">
+                {!factsLoading && (
+                  <SuggestedSettings
+                    suggested={advice.suggested}
+                    current={choice}
+                    sizeName={(l) => SIZES.find((x) => x.letter === l)?.name ?? "Nano"}
+                    disabled={busy}
+                    onApply={applySuggested}
+                  />
+                )}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <Label htmlFor="train-epochs">Epochs (1 to 200)</Label>
@@ -476,7 +518,7 @@ export const PlaygroundTrainStep: React.FC<{
                       value={settings.epochs}
                       onChange={(e) => setSettings((s) => ({ ...s, epochs: e.target.value }))}
                     />
-                    <p className="mt-1 text-xs text-muted-foreground">More passes can learn more, but take longer.</p>
+                    <AdviceLine advice={advice.epochs} />
                   </div>
                   <div>
                     <Label htmlFor="train-rate">Learning rate (0.0001 to 0.01)</Label>
@@ -491,7 +533,7 @@ export const PlaygroundTrainStep: React.FC<{
                       value={settings.learningRate}
                       onChange={(e) => setSettings((s) => ({ ...s, learningRate: e.target.value }))}
                     />
-                    <p className="mt-1 text-xs text-muted-foreground">Too high overshoots; too low learns slowly.</p>
+                    <AdviceLine advice={advice.learningRate} />
                   </div>
                   <div>
                     <Label htmlFor="train-batch">Batch size</Label>
@@ -508,7 +550,7 @@ export const PlaygroundTrainStep: React.FC<{
                         </option>
                       ))}
                     </select>
-                    <p className="mt-1 text-xs text-muted-foreground">Photos it looks at before correcting itself.</p>
+                    <AdviceLine advice={advice.batchSize} />
                   </div>
                   <div>
                     <Label htmlFor="train-size">Image size</Label>
@@ -525,7 +567,7 @@ export const PlaygroundTrainStep: React.FC<{
                         </option>
                       ))}
                     </select>
-                    <p className="mt-1 text-xs text-muted-foreground">Larger keeps small defects visible, but takes longer.</p>
+                    <AdviceLine advice={advice.imgSize} />
                   </div>
                 </div>
                 <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => setSettings(DEFAULT_SETTINGS)}>

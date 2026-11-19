@@ -70,7 +70,6 @@ const INDUSTRIES: Industry[] = [
     tagline: "Tiny components. Big inspection questions.",
     Icon: Cpu,
     art: 1,
-    recommended: true,
     guided: {
       title: "PCB Defect Inspection",
       sample: "PCB",
@@ -82,6 +81,7 @@ const INDUSTRIES: Industry[] = [
   {
     id: "food",
     name: "Food & Beverages",
+    recommended: true,
     tagline: "Explore the details behind everyday packs.",
     Icon: CupSoda,
     art: 3,

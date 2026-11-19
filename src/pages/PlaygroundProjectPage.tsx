@@ -376,6 +376,11 @@ export const PlaygroundProjectPage: React.FC = () => {
   }, [files, filter, page, isLabelled]);
   const totalPages = Math.max(1, Math.ceil(visible.total / PAGE_SIZE));
   const testFiles = useMemo(() => files.filter((f) => f.folder === "test"), [files]);
+  /** The photos a model learns from (before the split, everything but the test photos) */
+  const trainFileIds = useMemo(() => {
+    const split = files.some((f) => f.folder === "train");
+    return files.filter((f) => (split ? f.folder === "train" : f.folder !== "test" && f.folder !== "val")).map((f) => f.id);
+  }, [files]);
 
   // ---- Boxes for the images on this page ----
   useEffect(() => {
@@ -838,6 +843,8 @@ export const PlaygroundProjectPage: React.FC = () => {
                 ? { training: dataset.trainCount ?? 0, validation: dataset.valCount ?? 0, test: dataset.testCount ?? 0, labelled: counts.labelled }
                 : { training: counts.training - counts.validation, validation: counts.validation, test: counts.test, labelled: counts.labelled }
             }
+            trainFileIds={trainFileIds}
+            augmented={!!dataset.isAugmented || counts.copies > 0}
             limits={limits}
             onTestModel={() => goToStep("test")}
             missionName={missionName}
