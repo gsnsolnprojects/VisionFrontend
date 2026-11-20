@@ -17,7 +17,7 @@ const PLAYGROUND_SIGNUP = "/auth?mode=signup&plan=playground";
 const IsoBadge = ({ id, top, std, num, year }: { id: string; top: string; std: string; num: string; year: string }) => (
   <svg className="iso-badge" viewBox="0 0 120 120" role="img" aria-label={`${std} ${num}:${year} certified, ${top.toLowerCase()}`}>
     <defs>
-      <path id={`${id}-top`} d="M 20 60 A 40 40 0 0 1 100 60" />
+      <path id={`${id}-top`} d="M 25.4 80 A 40 40 0 1 1 94.6 80" />
       <path id={`${id}-bot`} d="M 22 60 A 38 38 0 0 0 98 60" />
     </defs>
     <circle cx="60" cy="60" r="58" fill="#1f3a8a" />
@@ -520,7 +520,6 @@ const LandingV2 = () => {
           <a className="brand" href="#" onClick={scrollToTop}>
             Vision-M<span></span>
           </a>
-          <p>Machine vision. Human possibilities.</p>
           <div className="iso-badges">
             <IsoBadge id="iso9001" top="QUALITY MANAGEMENT" std="ISO" num="9001" year="2015" />
             <IsoBadge id="iso27001" top="INFORMATION SECURITY" std="ISO/IEC" num="27001" year="2022" />
@@ -652,8 +651,8 @@ const VM2_CSS = `
 .vm2 footer { padding: 32px 0; }
 .vm2 footer .wrap { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
 .vm2 footer p { font-size: 11px; }
-.vm2 .iso-badges { display: flex; gap: 12px; }
-.vm2 .iso-badge { width: 76px; height: 76px; display: block; }
+.vm2 .iso-badges { display: flex; gap: 16px; }
+.vm2 .iso-badge { width: 96px; height: 96px; display: block; }
 @media (max-width: 950px) {
   .vm2 nav { gap: 20px; }
   .vm2 nav > * { white-space: nowrap; flex-shrink: 0; }
