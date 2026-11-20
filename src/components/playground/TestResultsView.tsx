@@ -161,12 +161,32 @@ const BoxDrawing: React.FC<{ W: number; H: number; compared: Compared; large?: b
       )}
     </g>
   );
+  // The kind's name in a filled tag on the box's top-left corner (inside the box if it touches the top)
+  const font = unit / (large ? 42 : 20);
+  const tag = (b: NamedBox, color: string, key: string) => {
+    const text = nice(b.name);
+    const tw = text.length * font * 0.58 + font * 0.8;
+    const th = font * 1.35;
+    const x = Math.min(b.x * W, W - tw);
+    const y = b.y * H - th >= 0 ? b.y * H - th : b.y * H;
+    return (
+      <g key={key}>
+        <rect x={x} y={y} width={tw} height={th} fill={color} rx={font * 0.2} />
+        <text x={x + font * 0.4} y={y + th * 0.74} fontSize={font} fontWeight={700} fill="#ffffff" fontFamily="Arial, sans-serif">
+          {text}
+        </text>
+      </g>
+    );
+  };
   return (
     <>
       {compared.found.map((f, i) => rect(f.truth, "#ffffff", true, line * 0.8, `ft${i}`))}
       {compared.found.map((f, i) => rect(f.model, GREEN, false, line, `fm${i}`))}
       {compared.missed.map((b, i) => rect(b, RED, true, line * 1.1, `mi${i}`))}
       {compared.extra.map((b, i) => rect(b, AMBER, false, line, `ex${i}`))}
+      {compared.found.map((f, i) => tag(f.model, "#15803d", `tf${i}`))}
+      {compared.missed.map((b, i) => tag(b, RED, `tm${i}`))}
+      {compared.extra.map((b, i) => tag(b, "#b45309", `te${i}`))}
     </>
   );
 };
