@@ -1,22 +1,17 @@
 import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import type { BlogAudience } from "@/content/blog/types";
-import { BLOG_AUDIENCES, BLOG_POSTS } from "@/content/blog/posts";
+import { BLOG_POSTS } from "@/content/blog/posts";
 import { BlogGrid } from "@/components/blog/BlogCard";
-import { BlogAudienceTabs } from "@/components/blog/BlogAudienceTabs";
 import { PublicPageLayout, usePageMeta } from "@/components/blog/PublicPageLayout";
 
 const PER_PAGE = 12;
 
-/** /blogs — all posts, filter by reader (?for=students) and page (?page=2) */
+/** /blogs — all posts, newest first, 12 per page (?page=2) */
 const BlogListPage = () => {
   const [params, setParams] = useSearchParams();
-  const forParam = params.get("for");
-  const audience = BLOG_AUDIENCES.some((a) => a.id === forParam) ? (forParam as BlogAudience) : null;
-  const filtered = BLOG_POSTS.filter((p) => !audience || p.audience === audience);
-  const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const pages = Math.max(1, Math.ceil(BLOG_POSTS.length / PER_PAGE));
   const page = Math.min(pages, Math.max(1, Number(params.get("page")) || 1));
-  const shown = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  const shown = BLOG_POSTS.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   usePageMeta({
     title: "Blog — Machine vision guides for students, engineers and teams | Vision-M",
@@ -27,16 +22,9 @@ const BlogListPage = () => {
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
-  }, [audience, page]);
+  }, [page]);
 
-  const update = (next: { for?: BlogAudience | null; page?: number }) => {
-    const p = new URLSearchParams();
-    const a = next.for !== undefined ? next.for : audience;
-    if (a) p.set("for", a);
-    const pg = next.page ?? 1;
-    if (pg > 1) p.set("page", String(pg));
-    setParams(p);
-  };
+  const goTo = (n: number) => setParams(n > 1 ? { page: String(n) } : {});
 
   return (
     <PublicPageLayout>
@@ -50,19 +38,18 @@ const BlogListPage = () => {
       </div>
       <section className="blog-list">
         <div className="wrap">
-          <BlogAudienceTabs value={audience} onChange={(a) => update({ for: a })} />
-          {shown.length ? <BlogGrid posts={shown} /> : <p className="blog-empty">No posts here yet. More are coming soon.</p>}
+          <BlogGrid posts={shown} />
           {pages > 1 && (
             <div className="pager">
-              <button disabled={page === 1} onClick={() => update({ page: page - 1 })} aria-label="Previous page">
+              <button disabled={page === 1} onClick={() => goTo(page - 1)} aria-label="Previous page">
                 ←
               </button>
               {Array.from({ length: pages }, (_, i) => i + 1).map((n) => (
-                <button key={n} className={n === page ? "active" : ""} onClick={() => update({ page: n })}>
+                <button key={n} className={n === page ? "active" : ""} onClick={() => goTo(n)}>
                   {n}
                 </button>
               ))}
-              <button disabled={page === pages} onClick={() => update({ page: page + 1 })} aria-label="Next page">
+              <button disabled={page === pages} onClick={() => goTo(page + 1)} aria-label="Next page">
                 →
               </button>
             </div>

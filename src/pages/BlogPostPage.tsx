@@ -153,7 +153,7 @@ const BlogPostPage = () => {
           <span>/</span>
           <Link to="/blogs">Blogs</Link>
           <span>/</span>
-          <Link to={`/blogs?for=${post.audience}`}>{audienceLabel(post.audience)}</Link>
+          <span>{audienceLabel(post.audience)}</span>
         </div>
         <h1>{post.title}</h1>
         <span className="blog-meta">

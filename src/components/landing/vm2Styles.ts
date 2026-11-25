@@ -170,9 +170,6 @@ export const VM2_CSS = `
   .vm2 * { transition: none !important; }
 }
 /* ---------- Blog (landing section, /blogs, /blogs/:slug) ---------- */
-.vm2 .blog-tabs { display: flex; gap: 9px; flex-wrap: wrap; margin: 0 0 30px; }
-.vm2 .blog-tabs button { background: transparent; border: 1px solid rgb(200, 205, 191); padding: 10px 15px; border-radius: 3px; color: var(--ink); font-size: 12px; }
-.vm2 .blog-tabs button.active { background: var(--ink); border-color: var(--ink); color: white; }
 .vm2 .blog-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
 .vm2 .blog-card { display: flex; flex-direction: column; background: white; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; transition: transform 0.2s, box-shadow 0.2s; }
 .vm2 .blog-card:hover { transform: translateY(-3px); box-shadow: rgba(36, 45, 32, 0.1) 0 16px 40px; }
@@ -187,7 +184,7 @@ export const VM2_CSS = `
 .vm2 .blog-hero { padding-top: 64px; padding-bottom: 30px; }
 .vm2 .blog-hero h1 { font-size: clamp(40px, 5vw, 62px); letter-spacing: -2.5px; margin: 20px 0 10px; }
 .vm2 .blog-hero p { max-width: 560px; }
-.vm2 .blog-list { padding-top: 10px; }
+.vm2 .blog-list { padding-top: 20px; }
 .vm2 .pager { display: flex; justify-content: center; gap: 8px; margin-top: 36px; }
 .vm2 .pager button { min-width: 38px; padding: 9px 12px; border: 1px solid var(--line); background: transparent; border-radius: 3px; font-size: 12px; }
 .vm2 .pager button.active { background: var(--ink); color: white; border-color: var(--ink); }
@@ -225,5 +222,13 @@ export const VM2_CSS = `
   .vm2 .post { padding: 32px 22px 10px; }
   .vm2 .post-body p, .vm2 .post-body li { font-size: 16px; }
   .vm2 .post-cta { padding: 26px; }
+}
+/* ---------- WhatsApp button (bottom right) ---------- */
+.vm2 .whatsapp-fab { position: fixed; right: 24px; bottom: 24px; z-index: 30; width: 58px; height: 58px; border-radius: 50%; background: #25d366; color: white; display: grid; place-items: center; box-shadow: rgba(0, 0, 0, 0.22) 0 8px 24px; transition: transform 0.2s, box-shadow 0.2s; }
+.vm2 .whatsapp-fab:hover { transform: translateY(-3px) scale(1.04); box-shadow: rgba(0, 0, 0, 0.28) 0 12px 28px; }
+.vm2 .whatsapp-fab svg { width: 32px; height: 32px; }
+@media (max-width: 720px) {
+  .vm2 .whatsapp-fab { right: 16px; bottom: 16px; width: 52px; height: 52px; }
+  .vm2 .whatsapp-fab svg { width: 28px; height: 28px; }
 }
 `;

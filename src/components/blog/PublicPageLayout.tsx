@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { IsoBadge } from "@/components/landing/IsoBadge";
 import { VM2_CSS } from "@/components/landing/vm2Styles";
+import { WhatsAppButton } from "@/components/landing/WhatsAppButton";
 
 const SITE = "https://visionm.gsnsoln.in";
 
@@ -117,6 +118,8 @@ export const PublicPageLayout = ({ children }: { children: ReactNode }) => {
           </p>
         </div>
       </footer>
+
+      <WhatsAppButton />
     </div>
   );
 };

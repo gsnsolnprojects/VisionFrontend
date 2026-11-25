@@ -4,6 +4,7 @@ import { IndustryArt } from "@/components/landing/IndustryArt";
 import { IsoBadge } from "@/components/landing/IsoBadge";
 import { VM2_CSS } from "@/components/landing/vm2Styles";
 import { BlogSection } from "@/components/blog/BlogSection";
+import { WhatsAppButton } from "@/components/landing/WhatsAppButton";
 
 /** Playground buttons start sign-up; after creating a company the app asks them to pay for the plan */
 const PLAYGROUND_SIGNUP = "/auth?mode=signup&plan=playground";
@@ -518,6 +519,8 @@ const LandingV2 = () => {
           </p>
         </div>
       </footer>
+
+      <WhatsAppButton />
 
     </div>
   );
