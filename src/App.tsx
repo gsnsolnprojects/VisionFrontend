@@ -4,6 +4,8 @@ import { useEffect } from "react";
 // restore this import and use <Landing /> on the "/" route below.
 // import Landing from "@/pages/Landing";
 import LandingV2 from "@/pages/LandingV2";
+import BlogListPage from "@/pages/BlogListPage";
+import BlogPostPage from "@/pages/BlogPostPage";
 import Auth from "@/pages/Auth";
 import Dashboard from "@/pages/Dashboard";
 import DatasetManager from "@/pages/DatasetManager";
@@ -206,6 +208,8 @@ function App() {
           <Route path="/showcase" element={<ShowcasePage />} />
           <Route path="/showcase/:categoryId" element={<ShowcasePage />} />
           <Route path="/showcase/:categoryId/:projectId" element={<ShowcasePage />} />
+          <Route path="/blogs" element={<BlogListPage />} />
+          <Route path="/blogs/:slug" element={<BlogPostPage />} />
 
           {/* Protected app pages - all routes under /dashboard, /account, /dataset, etc. */}
           <Route path="/*" element={<ProtectedRoutes />} />
