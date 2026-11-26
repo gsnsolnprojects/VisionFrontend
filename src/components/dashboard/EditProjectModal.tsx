@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { updateProject } from "@/lib/api/account";
 import { useFormValidation } from "@/hooks/useFormValidation";
 import { projectSchema } from "@/lib/validations/authSchemas";
 import { useToast } from "@/hooks/use-toast";
@@ -36,7 +36,7 @@ export function EditProjectModal({
 }: EditProjectModalProps) {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
-  // Set only when the Supabase rename succeeded but relinking the project's
+  // Set only when the project rename succeeded but relinking the project's
   // MongoDB data (surveys, actions, models...) under the new name failed —
   // the dialog stays open and blocks on this instead of closing silently,
   // since leaving it means the dashboard shows no data under the new name.
@@ -79,15 +79,10 @@ export function EditProjectModal({
       const trimmedName = form.values.projectName.trim();
       const nameChanged = trimmedName !== project.name;
 
-      const { error } = await supabase
-        .from("projects")
-        .update({
-          name: trimmedName,
-          description: (form.values.projectDescription || "").trim() || null,
-        })
-        .eq("id", project.id);
-
-      if (error) throw error;
+      await updateProject(project.id, {
+        name: trimmedName,
+        description: (form.values.projectDescription || "").trim() || null,
+      });
 
       // The project's actual inspection data (surveys, photos, actions,
       // trained models) lives in MongoDB, matched by name — keep it linked.
@@ -95,7 +90,7 @@ export function EditProjectModal({
         try {
           await renameProjectCascade(companyName, project.name, trimmedName);
         } catch (cascadeErr: any) {
-          // The name is already changed in Supabase at this point — leaving the
+          // The name is already changed in the projects table at this point — leaving the
           // dialog here (instead of closing it) is what stops this from being a
           // silent, easy-to-miss data split between the two names.
           setCascadeError({

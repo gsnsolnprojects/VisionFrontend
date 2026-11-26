@@ -26,7 +26,7 @@ interface DashboardMetrics {
  * 
  * Fetches:
  * - Active Projects (from projects prop - no fetch needed)
- * - Datasets count from Supabase
+ * - Datasets count from the API
  * - Last Prediction from backend API
  * 
  * @param projects - Array of projects (from Dashboard state)

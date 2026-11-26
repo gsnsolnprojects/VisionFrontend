@@ -1,6 +1,7 @@
 // src/components/CompanyMembers.tsx
 import { useEffect, useState, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/lib/auth/authClient";
+import { getLatestInvite, listMembers } from "@/lib/api/account";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { isUserAdmin } from "@/lib/utils/adminUtils";
 import { useProfile } from "@/hooks/useProfile";
@@ -88,16 +89,7 @@ export const CompanyMembers: React.FC<CompanyMembersProps> = ({
       setError(null);
 
       console.log("[CompanyMembers] Fetching members for company:", companyId);
-      const { data, error: fetchError } = await supabase
-        .from("profiles")
-        .select("id, name, email, phone, created_at, company_id, role, is_active")
-        .eq("company_id", companyId)
-        .order("created_at", { ascending: false });
-
-      if (fetchError) {
-        console.error("[CompanyMembers] Fetch error:", fetchError);
-        throw fetchError;
-      }
+      const data = await listMembers();
 
       console.log("[CompanyMembers] Fetched members:", data?.length || 0, data);
       setMembers(data || []);
@@ -146,7 +138,7 @@ export const CompanyMembers: React.FC<CompanyMembersProps> = ({
     try {
       const {
         data: { session },
-      } = await supabase.auth.getSession();
+      } = await auth.getSession();
 
       const token = session?.access_token ?? "";
       setInviteAccessToken(token);
@@ -167,16 +159,9 @@ export const CompanyMembers: React.FC<CompanyMembersProps> = ({
     if (open || !companyId || !user?.id) return;
 
     try {
-      const { data, error } = await supabase
-        .from("company_invites")
-        .select("email, status, created_at, updated_at")
-        .eq("company_id", companyId)
-        .eq("created_by", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const data = await getLatestInvite().catch(() => null);
 
-      if (error || !data) {
+      if (!data) {
         return;
       }
 
@@ -287,8 +272,8 @@ export const CompanyMembers: React.FC<CompanyMembersProps> = ({
     if (!canActOnMember(member)) return;
     setUpdatingActive((prev) => new Set(prev).add(member.id));
     try {
+      // The backend saves it and signs a disabled member out everywhere
       await setUserActive(member.id, nextActive);
-      await supabase.from("profiles").update({ is_active: nextActive }).eq("id", member.id);
       setMembers((prev) =>
         prev.map((m) => (m.id === member.id ? { ...m, is_active: nextActive } : m))
       );

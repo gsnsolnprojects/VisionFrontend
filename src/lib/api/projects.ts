@@ -4,7 +4,7 @@ import { apiRequest } from "./config";
  * Cascade-renames a project across every MongoDB collection that scopes
  * records by company/project name (surveys, action items, trained models,
  * datasets, training jobs, the pinned mobile-inspect config). Call this
- * immediately after the Supabase-side project rename succeeds — Supabase
+ * immediately after the project-row rename succeeds — the projects table
  * stays the source of truth for the name; this just keeps Mongo in sync so
  * historical data doesn't get orphaned under the old name.
  */

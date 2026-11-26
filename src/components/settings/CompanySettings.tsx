@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { updateMyCompany } from "@/lib/api/account";
 import { useProfile } from "@/hooks/useProfile";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -42,11 +42,7 @@ export const CompanySettings: React.FC = () => {
     }
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from("companies")
-        .update({ description: description.trim() || null } as never)
-        .eq("id", company.id);
-      if (error) throw error;
+      await updateMyCompany({ description: description.trim() || null });
       await reloadProfile();
       toast({ title: "Saved", description: "Organisation details updated." });
     } catch (err) {

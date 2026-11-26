@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/lib/auth/authClient";
 import { useProfile } from "@/hooks/useProfile";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -68,13 +68,13 @@ export const PasswordSettings: React.FC = () => {
 
     setSaving(true);
     try {
-      const check = await supabase.auth.signInWithPassword({ email: user.email, password: current });
-      if (check.error) {
+      // The API checks the current password itself, then signs out your other devices
+      const { error } = await auth.updateUser({ password: next, currentPassword: current });
+      if (error?.code === "invalid_credentials") {
         setErrors({ current: "That's not your current password" });
         return;
       }
-      const { error } = await supabase.auth.updateUser({ password: next });
-      if (error) throw error;
+      if (error) throw new Error(error.message);
       setCurrent("");
       setNext("");
       setConfirm("");

@@ -1,6 +1,5 @@
 import React, { useEffect, useRef } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { AppHeader } from "./AppHeader";
 import { AppSidebar } from "./AppSidebar";
 import { AppBreadcrumbs } from "./Breadcrumbs";

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/lib/auth/authClient";
+import { acceptInvite, validateInvite } from "@/lib/api/account";
 import { useProfile } from "@/hooks/useProfile";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -69,7 +70,7 @@ const Auth = () => {
   // Email a sign-up was just sent to: shows "Check your inbox" in place of the form
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [resendCooldown, setResendCooldown] = useState<number>(0);
-  
+
   // Plan picked on the landing page (?plan=playground), highlighted later on the Billing page
   useEffect(() => {
     rememberSignupPlan(searchParams.get("plan"));
@@ -85,7 +86,7 @@ const Auth = () => {
       navigate("/dashboard", { replace: true });
     }
   }, [sessionReady, signedInUser, inviteToken, navigate]);
-  
+
   // Force signin mode when invite token is present
   const [mode, setMode] = useState<"signin" | "signup" | "forgot">(() => {
     if (inviteToken) return "signin"; // Force signin mode for invites
@@ -156,7 +157,7 @@ const Auth = () => {
   useEffect(() => {
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = auth.onAuthStateChange(async (event, session) => {
       // When user signs in via magic link or confirms email, check for pending invites
       if ((event === "SIGNED_IN" || event === "USER_UPDATED") && session?.user) {
         // Small delay to ensure session is fully established
@@ -166,7 +167,7 @@ const Auth = () => {
             handleInviteAcceptanceAfterSignIn();
           } else {
             // No invite token in URL - check if user has pending invite in metadata
-            // This handles the case where user confirms via Supabase's "Confirm your signup" email
+            // (accounts invited while we were on Supabase carry it there)
             checkForPendingInviteFromMetadata(session.user);
           }
         }, 500);
@@ -187,33 +188,33 @@ useEffect(() => {
   const checkSessionAndTriggerOtp = async () => {
     const {
       data: { session },
-    } = await supabase.auth.getSession();
+    } = await auth.getSession();
 
     // If no session and invite token exists, validate invite and trigger OTP
     if (!session) {
       try {
         // Validate invite to get email
-        const { data: validateJson, error: validateError } = await supabase.functions.invoke("validate-invite", {
-          body: { token: inviteToken },
-        });
+        const validateJson = await validateInvite(inviteToken);
 
         // validate-invite returns invite.invite_email
-        const inviteEmail =
-          !validateError && validateJson?.ok
-            ? validateJson.invite?.invite_email ?? validateJson.invite?.email
-            : null;
+        const inviteEmail = validateJson?.ok ? validateJson.invite?.invite_email ?? null : null;
 
         if (inviteEmail) {
           // Prefill email in signin form
           signinForm.setValue("email", inviteEmail);
 
-          // Trigger signInWithOtp automatically
-          const { error: otpError } = await supabase.auth.signInWithOtp({
+          // No account yet for this email: create one from the invite (signs them in and joins)
+          const { exists } = await auth.checkEmail(inviteEmail);
+          if (!exists) {
+            navigate(`/auth/invite-signup?invite=${encodeURIComponent(inviteToken)}`, { replace: true });
+            return;
+          }
+
+          // Existing account: email a one-time sign-in link that comes back here to accept the invite
+          const { error: otpError } = await auth.signInWithOtp({
             email: inviteEmail,
             options: {
-              emailRedirectTo: `${normalizeUrl(
-                window.location.origin
-              )}/auth?invite=${encodeURIComponent(inviteToken)}`,
+              emailRedirectTo: `/auth?invite=${encodeURIComponent(inviteToken)}`,
             },
           });
 
@@ -243,24 +244,22 @@ useEffect(() => {
 }, [inviteToken]);
 
 
-  // Check for pending invite from user metadata (when user confirms via Supabase email)
+  // Check for pending invite from user metadata (accounts invited before 2026-11 carry it there)
   const checkForPendingInviteFromMetadata = async (user: any) => {
     if (!user?.user_metadata?.invite_token) return;
 
     try {
       const {
         data: { session },
-      } = await supabase.auth.getSession();
+      } = await auth.getSession();
       if (!session?.user) return;
 
       const inviteTokenFromMetadata = user.user_metadata.invite_token;
-      
+
       // Accept the invite using token from metadata
-      const { data: acceptJson, error: acceptError } = await supabase.functions.invoke("accept-invite", {
-        body: { token: inviteTokenFromMetadata, userId: user.id },
-      });
-      
-      if (!acceptError && acceptJson?.ok) {
+      const acceptJson = await acceptInvite(inviteTokenFromMetadata);
+
+      if (acceptJson?.ok) {
         toast({
           title: "Invite accepted",
           description: "You have been added to the organisation. Redirecting to dashboard...",
@@ -286,9 +285,9 @@ useEffect(() => {
     let session = null;
     let retries = 0;
     const maxRetries = 10;
-    
+
     while (!session && retries < maxRetries) {
-      const { data } = await supabase.auth.getSession();
+      const { data } = await auth.getSession();
       if (data?.session?.access_token) {
         session = data.session;
         break;
@@ -305,11 +304,9 @@ useEffect(() => {
     }
 
     // Validate invite
-    const { data: validateJson, error: validateError } = await supabase.functions.invoke("validate-invite", {
-      body: { token: inviteToken },
-    });
+    const validateJson = await validateInvite(inviteToken);
 
-    if (validateError || !validateJson?.ok) {
+    if (!validateJson?.ok) {
       return;
     }
 
@@ -319,10 +316,10 @@ useEffect(() => {
     }
 
     // validate-invite returns invite.invite_email
-    const inviteEmail = invite.invite_email ?? invite.email;
+    const inviteEmail = invite.invite_email;
 
     // Check if user's email matches invite email
-    if (inviteEmail && session.user.email !== inviteEmail) {
+    if (inviteEmail && session.user.email.toLowerCase() !== inviteEmail.toLowerCase()) {
       toast({
         title: "Invite email mismatch",
         description: "This invite is for a different email address.",
@@ -331,49 +328,8 @@ useEffect(() => {
       return;
     }
 
-    // Accept the invite - supabase.functions.invoke should automatically include auth header
-    const { data: acceptJson, error: acceptError } = await supabase.functions.invoke("accept-invite", {
-      body: { token: inviteToken, userId: session.user.id },
-    });
-
-    if (acceptError) {
-      console.error("Invite acceptance error:", acceptError);
-      
-      // Try to extract detailed error message from error.context (FunctionsHttpError)
-      let errorMessage = acceptError.message || "Please try again.";
-      
-      if ((acceptError as any).context) {
-        try {
-          const errorContext = (acceptError as any).context;
-          let errorData: any;
-          
-          // error.context might be a Response object or already parsed
-          if (typeof errorContext.json === 'function') {
-            errorData = await errorContext.json();
-          } else if (typeof errorContext === 'object') {
-            errorData = errorContext;
-          }
-          
-          if (errorData?.error) {
-            errorMessage = errorData.error;
-            if (errorData.details) {
-              errorMessage += `: ${errorData.details}`;
-            }
-          } else if (errorData?.message) {
-            errorMessage = errorData.message;
-          }
-        } catch (parseError) {
-          console.warn("Could not parse error context:", parseError);
-        }
-      }
-      
-      toast({
-        title: "Failed to accept invite",
-        description: errorMessage,
-        variant: "destructive",
-      });
-      return;
-    }
+    // Accept the invite as the signed-in person
+    const acceptJson: { ok: boolean; error?: string; details?: string } = await acceptInvite(inviteToken);
 
     const accepted = acceptJson?.ok || acceptJson?.error === "invite already accepted";
     if (accepted) {
@@ -501,7 +457,7 @@ useEffect(() => {
   // Check if all required fields are filled and valid
   const isSignupFormValid = () => {
     // Check if all required fields have values
-    const hasAllFields = 
+    const hasAllFields =
       signupForm.values.name?.trim() &&
       signupForm.values.email?.trim() &&
       signupForm.values.phone?.trim() &&
@@ -550,7 +506,7 @@ useEffect(() => {
 
     // Check if form is valid (including phone and password requirements)
     const hasFormErrors = !signupForm.isValid || !!currentPhoneError || !passwordIsValid;
-    const hasAllFields = 
+    const hasAllFields =
       signupForm.values.name &&
       signupForm.values.email &&
       signupForm.values.phone &&
@@ -570,7 +526,7 @@ useEffect(() => {
     try {
       const fullPhone = countryCode + signupForm.values.phone;
 
-      const { data, error } = await supabase.auth.signUp({
+      const { data, error } = await auth.signUp({
         email: signupForm.values.email,
         password: signupForm.values.password,
         options: {
@@ -604,42 +560,7 @@ useEffect(() => {
         return;
       }
 
-      // Create or update profile with name and phone
-      // Retry logic to ensure profile is saved even if trigger hasn't run yet
-      if (data?.user?.id) {
-        let profileSaved = false;
-        let retries = 0;
-        const maxRetries = 3;
-        
-        while (!profileSaved && retries < maxRetries) {
-          const { error: profileError } = await supabase
-            .from("profiles")
-            .upsert({
-              id: data.user.id,
-              name: signupForm.values.name.trim(),
-              phone: fullPhone.trim(),
-              email: signupForm.values.email.trim(),
-            }, {
-              onConflict: "id",
-            });
-
-          if (profileError) {
-            console.error(`[Auth] Error upserting profile (attempt ${retries + 1}/${maxRetries}):`, profileError);
-            retries++;
-            // Wait a bit before retrying (exponential backoff)
-            if (retries < maxRetries) {
-              await new Promise(resolve => setTimeout(resolve, 500 * retries));
-            }
-          } else {
-            profileSaved = true;
-            console.log("[Auth] Profile upserted successfully");
-          }
-        }
-        
-        if (!profileSaved) {
-          console.warn("[Auth] Failed to upsert profile after retries - trigger should handle it");
-        }
-      }
+      // Name and phone are saved to the profile by the API from the sign-up details
 
       // "Check your inbox" replaces the form
       setSentTo(signupForm.values.email.trim());
@@ -652,7 +573,7 @@ useEffect(() => {
           "An account with this email already exists. Please sign in instead.";
       }
 
-      // Detect Supabase email rate limit for verification emails
+      // Detect the email rate limit for verification emails
       const lower = rawMessage.toLowerCase();
       const isRateLimit =
         error?.status === 429 ||
@@ -721,7 +642,7 @@ useEffect(() => {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await auth.signInWithPassword({
         email: signinForm.values.email,
         password: signinForm.values.password,
       });
@@ -730,12 +651,12 @@ useEffect(() => {
 
       if (error) {
         // Handle specific error for invited users (account exists but no password)
-        if (inviteToken && (error.message?.includes("Invalid login credentials") || 
+        if (inviteToken && (error.message?.includes("Invalid login credentials") ||
             error.message?.includes("Email not confirmed") ||
             error.message?.includes("invalid_credentials"))) {
           throw new Error("This account was created via invite. Please use the magic link sent to your email to sign in. Check your email inbox for the sign-in link.");
         }
-        throw error;
+        throw new Error(error.message);
       }
 
       if (!data?.user) {
@@ -745,10 +666,8 @@ useEffect(() => {
       // Handle invite acceptance if token is present
       if (inviteToken && data.user) {
         try {
-          const { data: acceptJson, error: acceptError } = await supabase.functions.invoke("accept-invite", {
-            body: { token: inviteToken, userId: data.user.id },
-          });
-          if (!acceptError && acceptJson?.ok) {
+          const acceptJson = await acceptInvite(inviteToken);
+          if (acceptJson?.ok) {
             toast({
               title: "Invite accepted",
               description: "You have been added to the organisation.",
@@ -798,12 +717,8 @@ useEffect(() => {
       const email = resetPasswordForm.values.email.trim();
 
       // Step 1: Check if email exists in Auth database
-      const { data: emailCheckData, error: emailCheckError } = await supabase.functions.invoke(
-        "check-email-exists",
-        {
-          body: { email },
-        }
-      );
+      const { exists, error: emailCheckError } = await auth.checkEmail(email);
+      const emailCheckData = { exists };
 
       if (emailCheckError) {
         throw new Error("Failed to verify email. Please try again.");
@@ -814,7 +729,7 @@ useEffect(() => {
         // Set inline field error
         resetPasswordForm.setFieldError("email", "This email is not registered");
         resetPasswordForm.setFieldTouched("email", true);
-        
+
         toast({
           title: "Email not found",
           description: "This email is not registered. Please check and try again.",
@@ -825,11 +740,9 @@ useEffect(() => {
       }
 
       // Step 3: Email exists - proceed with password reset
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${normalizeUrl(window.location.origin)}/reset-password`,
-      });
+      const { error } = await auth.resetPasswordForEmail(email);
 
-      if (error) throw error;
+      if (error) throw new Error(error.message);
 
       toast({
         title: "Password reset email sent",
@@ -840,7 +753,7 @@ useEffect(() => {
     } catch (error: any) {
       // Handle errors from resetPasswordForEmail or other issues
       const errorMessage = error.message || "Something went wrong";
-      
+
       // Don't show duplicate error if we already showed "email not found"
       if (!errorMessage.includes("not registered")) {
         toast({
@@ -1143,7 +1056,7 @@ useEffect(() => {
                     You&apos;ve been invited to join an organisation
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    A magic link has been sent to your email. Click the link in your email to sign in and accept the invite. 
+                    A magic link has been sent to your email. Click the link in your email to sign in and accept the invite.
                     {signinForm.values.email && (
                       <> If you haven&apos;t received it, check your inbox for <strong>{signinForm.values.email}</strong>.</>
                     )}

@@ -1,5 +1,5 @@
 import { ReactNode, useCallback, useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { updateMyProfile } from "@/lib/api/account";
 import { useProfile } from "@/hooks/useProfile";
 import { useToast } from "@/hooks/use-toast";
 import { applyColorTheme, getCachedColorTheme, isColorTheme, type ColorTheme } from "@/lib/colorTheme";
@@ -32,10 +32,12 @@ export function ColorThemeProvider({ children }: { children: ReactNode }) {
       if (!user?.id) return;
 
       setSaving(true);
-      const { error } = await supabase
-        .from("profiles")
-        .update({ color_theme: theme })
-        .eq("id", user.id);
+      let error: unknown = null;
+      try {
+        await updateMyProfile({ color_theme: theme });
+      } catch (err) {
+        error = err;
+      }
       setSaving(false);
 
       if (error) {

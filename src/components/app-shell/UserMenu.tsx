@@ -1,6 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/lib/auth/authClient";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,7 +37,7 @@ export const UserMenu: React.FC = () => {
       } catch {
         // Ignore storage errors; sign-out will still proceed
       }
-      await supabase.auth.signOut();
+      await auth.signOut();
       navigate("/", { replace: true });
     } catch (error) {
       console.error("Sign out error:", error);

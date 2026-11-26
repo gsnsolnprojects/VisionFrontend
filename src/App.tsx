@@ -19,6 +19,8 @@ import ProjectDatasetRoute from "@/pages/ProjectDatasetRoute";
 import ResetPassword from "@/pages/ResetPassword";
 import SetPasswordPage from "@/pages/SetPasswordPage";
 import VerifyEmail from "@/pages/VerifyEmail";
+import AuthLink from "@/pages/AuthLink";
+import SignUpWithInvite from "@/pages/SignUpWithInvite";
 import NotFound from "@/pages/NotFound";
 import { ContactPage, PrivacyPage, RefundsPage, TermsPage } from "@/pages/LegalPage";
 import ShowcasePage from "@/pages/ShowcasePage";
@@ -197,6 +199,9 @@ function App() {
           {/* Public pages */}
           <Route path="/" element={<LandingV2 />} />
           <Route path="/auth" element={<Auth />} />
+          {/* Emailed one-time sign-in link, and sign-up for people invited to an organisation */}
+          <Route path="/auth/link" element={<AuthLink />} />
+          <Route path="/auth/invite-signup" element={<SignUpWithInvite />} />
           {/* Sign-up link for clients: sign up, then the Playground subscription page */}
           <Route path="/start" element={<Navigate to="/auth?mode=signup&plan=playground" replace />} />
           <Route path="/reset-password" element={<ResetPassword />} />

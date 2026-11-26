@@ -25,7 +25,6 @@ import {
 } from "@/components/ui/dialog";
 import { Loader2, ArrowLeft, ZoomIn, ZoomOut, ChevronLeft, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { photoName } from "@/lib/photoName";
 import { getAuthHeaders, apiUrl, API_BASE_URL } from "@/lib/api/config";

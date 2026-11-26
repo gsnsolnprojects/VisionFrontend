@@ -364,7 +364,7 @@ export interface PublishVersion {
 }
 
 export interface PublishProject {
-  /** Supabase project id; null when datasets exist without a project row */
+  /** Project id (projects table); null when datasets exist without a project row */
   projectId: string | null;
   company: string | null;
   project: string;

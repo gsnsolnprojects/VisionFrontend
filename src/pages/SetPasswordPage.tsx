@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/lib/auth/authClient";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/PasswordInput";
@@ -61,7 +61,7 @@ const SetPasswordPage = () => {
 
   useEffect(() => {
     const check = async () => {
-      const { data } = await supabase.auth.getSession();
+      const { data } = await auth.getSession();
       if (!data.session) {
         navigate("/auth", { replace: true });
         return;
@@ -93,15 +93,10 @@ const SetPasswordPage = () => {
 
     setLoading(true);
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: form.values.password,
-        data: { needs_password_set: false },
-      });
+      // First password for this account (the API clears needs_password_set and renews the session)
+      const { error } = await auth.updateUser({ password: form.values.password });
 
-      if (error) throw error;
-
-      // Refresh session so ProfileProvider gets updated user_metadata before we navigate
-      await supabase.auth.refreshSession();
+      if (error) throw new Error(error.message);
       // Ensure profile context is up to date (e.g., company info) before hitting dashboard
       await reloadProfile();
 

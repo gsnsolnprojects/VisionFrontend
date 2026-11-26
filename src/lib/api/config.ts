@@ -1,27 +1,10 @@
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/lib/auth/authClient";
+import { API_BASE_URL } from "@/lib/api/apiBase";
 
 // Centralized auth route used for redirects on session expiry / 401s
 const AUTH_ROUTE = "/auth";
 
-/**
- * Resolve API base URL in this order:
- * 1) explicit VITE_API_BASE_URL from .env
- * 2) dynamic fallback to current host on backend port 3000 with /api prefix
- */
-const resolveApiBaseUrl = (): string => {
-  const envBase = (import.meta.env.VITE_API_BASE_URL || "").trim();
-  if (envBase) return envBase.replace(/\/+$/, "");
-
-  if (typeof window !== "undefined" && window.location?.hostname) {
-    const protocol = window.location.protocol || "http:";
-    const host = window.location.hostname;
-    return `${protocol}//${host}:3000/api`;
-  }
-
-  return "";
-};
-
-export const API_BASE_URL = resolveApiBaseUrl();
+export { API_BASE_URL };
 
 /**
  * Construct API URL from path
@@ -33,7 +16,7 @@ export const apiUrl = (path: string): string => {
 };
 
 /**
- * Cache for user profile data to avoid repeated Supabase calls
+ * Cache for user profile data to avoid repeated profile lookups
  */
 interface CachedProfile {
   id: string;
@@ -61,10 +44,9 @@ export const clearAuthCache = () => {
  */
 export const getAuthHeaders = async (): Promise<HeadersInit> => {
   try {
-    // Get Supabase session
     const {
       data: { session },
-    } = await supabase.auth.getSession();
+    } = await auth.getSession();
 
     if (!session) {
       throw new Error("Not authenticated");
@@ -94,38 +76,22 @@ export const getAuthHeaders = async (): Promise<HeadersInit> => {
       return headers;
     }
 
-    // Fetch fresh profile data
+    // Fetch fresh profile + company (one call)
     let profile: any = null;
+    let companyName: string | null = null;
     try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, email, role, company_id")
-        .eq("id", userId)
-        .maybeSingle();
-
-      if (!error && data) {
-        profile = data;
+      const res = await fetch(apiUrl("auth/me"), {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
+      });
+      if (res.ok) {
+        const me = await res.json();
+        profile = me.profile || null;
+        companyName = me.company?.name || null;
       }
     } catch (profileError) {
       console.warn("[getAuthHeaders] Could not fetch profile:", profileError);
       // Continue with session data only
-    }
-
-    // Get company name if company_id exists
-    let companyName: string | null = null;
-    if (profile?.company_id) {
-      try {
-        const { data: companyData } = await supabase
-          .from("companies")
-          .select("name")
-          .eq("id", profile.company_id)
-          .maybeSingle();
-
-        companyName = companyData?.name || null;
-      } catch (companyError) {
-        console.warn("[getAuthHeaders] Could not fetch company:", companyError);
-        // Continue without company name
-      }
     }
 
     // Update cache
@@ -181,7 +147,7 @@ export const getAuthHeaders = async (): Promise<HeadersInit> => {
     // Return minimal headers to prevent complete failure
     const {
       data: { session },
-    } = await supabase.auth.getSession();
+    } = await auth.getSession();
 
     // Backend requires non-empty X-User-Id; use session id or a stable fallback
     const userId = session?.user?.id || "dev-fallback-user";
@@ -311,12 +277,12 @@ export const apiRequest = async <T>(
   // Handle 401 Unauthorized
   if (response.status === 401) {
     // Check if session is still valid
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await auth.getSession();
 
     if (!session) {
       // Session expired, redirect to login
       clearAuthCache();
-      await supabase.auth.signOut();
+      await auth.signOut();
       window.location.href = AUTH_ROUTE;
       throw new Error("Unauthorized - please log in again");
     }
@@ -325,7 +291,7 @@ export const apiRequest = async <T>(
     const {
       data: { session: newSession },
       error: refreshError,
-    } = await supabase.auth.refreshSession();
+    } = await auth.refreshSession();
 
     // Special-case invalid/missing refresh token errors so they behave like a clean expiry
     const refreshMessage = (refreshError as any)?.message as string | undefined;
@@ -342,7 +308,7 @@ export const apiRequest = async <T>(
 
     // Refresh failed (including invalid/missing refresh token) – treat as an expired session
     clearAuthCache();
-    await supabase.auth.signOut();
+    await auth.signOut();
     window.location.href = AUTH_ROUTE;
 
     if (isInvalidRefreshToken) {

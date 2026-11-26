@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { fadeInUpVariants } from "@/utils/animations";
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/lib/auth/authClient";
 import { ResendVerification } from "@/components/auth/ResendVerification";
 import { rememberSignupPlan } from "@/lib/signupPlan";
 
@@ -32,65 +32,30 @@ const VerifyEmail = () => {
     rememberSignupPlan(new URLSearchParams(window.location.search).get("plan"));
   }, []);
 
-  // Check verification status on mount
+  // Confirm the email with the token from the link (each link works once); this also signs them in
   useEffect(() => {
     const checkVerificationStatus = async () => {
+      const token = new URLSearchParams(window.location.search).get("token");
+      if (!token) {
+        setStatus("invalid");
+        setMessage("We couldn't verify your email with this link. It may have been used already or expired.");
+        return;
+      }
       try {
-        // Wait a moment for Supabase to process the redirect/hash fragments
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        // Get current session
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-        if (sessionError || !session?.user) {
-          // No session: the link was already used (opened twice / in another browser) or is too old.
-          // Supabase puts the reason in the URL, e.g. #error_code=otp_expired
-          const reason = new URLSearchParams(window.location.hash.replace(/^#/, "")).get("error_code") ||
-            new URLSearchParams(window.location.search).get("error_code");
+        const { error } = await auth.verifyEmail(token);
+        // Remove the token from the address bar so it isn't kept in the browser history
+        window.history.replaceState(null, "", window.location.pathname);
+        if (error) {
           setStatus("invalid");
           setMessage(
-            reason === "otp_expired"
+            error.code === "otp_expired"
               ? "This verification link was already used or has expired. Each link works only once."
-              : "We couldn't verify your email with this link. It may have been used already or expired."
+              : error.message || "We couldn't verify your email with this link. It may have been used already or expired."
           );
           return;
         }
-
-        const user = session.user;
-        const emailConfirmedAt = user.email_confirmed_at;
-
-        if (!emailConfirmedAt) {
-          // User exists but email not confirmed - shouldn't happen after clicking verification link
-          setStatus("invalid");
-          setMessage("Email verification failed. Please try signing up again.");
-          return;
-        }
-
-        // Check if this is a recent verification (within last 10 seconds)
-        const confirmedTimestamp = new Date(emailConfirmedAt).getTime();
-        const now = Date.now();
-        const timeSinceConfirmation = now - confirmedTimestamp;
-        const isRecentVerification = timeSinceConfirmation < 10000; // 10 seconds
-
-        if (isRecentVerification) {
-          // First-time verification - update profile
-          try {
-            await supabase
-              .from("profiles")
-              .update({ is_verified: true })
-              .eq("id", user.id);
-          } catch (profileError) {
-            console.error("Error updating profile verification status:", profileError);
-            // Don't fail verification if profile update fails
-          }
-
-          setStatus("verified");
-          setMessage("Your email has been successfully verified.");
-        } else {
-          // Already verified (clicking link again)
-          setStatus("already_verified");
-          setMessage("Your email has already been verified. You can sign in now.");
-        }
+        setStatus("verified");
+        setMessage("Your email has been successfully verified.");
       } catch (error) {
         console.error("Error checking verification status:", error);
         setStatus("invalid");
@@ -105,7 +70,7 @@ const VerifyEmail = () => {
   useEffect(() => {
     if (status === "verified") {
       const timer = setTimeout(() => {
-        navigate("/auth?mode=signin");
+        navigate("/dashboard");
       }, 3000); // 3 seconds
 
       return () => clearTimeout(timer);
@@ -169,12 +134,12 @@ const VerifyEmail = () => {
               <CardDescription>
                 {message}
                 <br />
-                Redirecting you to the sign in page…
+                Taking you to Vision-M Studio…
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button className="w-full" onClick={goNow}>
-                Go to Sign In now
+              <Button className="w-full" onClick={() => navigate("/dashboard")}>
+                Continue now
               </Button>
             </CardContent>
           </Card>

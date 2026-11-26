@@ -1,8 +1,7 @@
-import { liveProjectFilter } from "@/lib/liveProjects";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { supabase } from "@/integrations/supabase/client";
+import { listProjects } from "@/lib/api/account";
 import { useProfile } from "@/hooks/useProfile";
 import { PageHeader } from "@/components/pages/PageHeader";
 import { LoadingState } from "@/components/pages/LoadingState";
@@ -329,14 +328,7 @@ export default function CorrosionDashboardPage() {
     if (!profile?.company_id) return;
     setLoadingProjects(true);
     try {
-      const { data, error } = await supabase
-        .from("projects")
-        .select("id, name")
-        .eq("company_id", profile.company_id)
-        .eq("project_type", "corrosion")
-        .match(liveProjectFilter)
-        .order("name", { ascending: true });
-      if (error) throw error;
+      const data = await listProjects({ type: "corrosion", order: "name" });
       const list = (data || []).map((p) => ({ id: String(p.id), name: String(p.name) }));
       setProjects(list);
       // Most companies only have one vessel — default to it instead of

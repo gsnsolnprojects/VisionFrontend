@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/lib/auth/authClient";
+import { getMyCompany, getMyProfile } from "@/lib/api/account";
 import { isUserAdmin } from "@/lib/utils/adminUtils";
 
 interface JoinCompanyDialogProps {
@@ -18,22 +19,14 @@ export const JoinCompanyDialog: React.FC<JoinCompanyDialogProps> = ({ disabled }
     const checkAdminStatus = async () => {
       const {
         data: { user },
-      } = await supabase.auth.getUser();
+      } = await auth.getUser();
 
       if (!user) return;
 
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .maybeSingle();
+      const profileData = await getMyProfile().catch(() => null);
 
       if (profileData?.company_id) {
-        const { data: companyData } = await supabase
-          .from("companies")
-          .select("*")
-          .eq("id", profileData.company_id)
-          .maybeSingle();
+        const companyData = await getMyCompany().catch(() => null);
 
         setProfile(profileData);
         setCompany(companyData);

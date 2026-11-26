@@ -1,10 +1,9 @@
 // src/pages/Dashboard.tsx
-import { liveProjectFilter } from "@/lib/liveProjects";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { fadeInUpVariants } from "@/utils/animations";
-import { supabase } from "@/integrations/supabase/client";
+import { acceptInvite, createCompany, createProject, decideJoinRequest, errorMessage, findCompanyByName, getMyJoinRequest, listProjects, sendJoinRequest, validateInvite } from "@/lib/api/account";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -168,11 +167,11 @@ const Dashboard = () => {
   // This includes: invited users, users who joined via join request, and any user missing name/phone
   useEffect(() => {
     if (!sessionReady || profileLoading || !profile) return;
-    
+
     // Check if profile is incomplete (empty or null name or phone)
     const hasIncompleteName = !profile.name || profile.name.trim() === '';
     const hasIncompletePhone = !profile.phone || profile.phone.trim() === '';
-    
+
     // Show dialog if profile is incomplete
     // Priority: Show for users with company_id (invited/joined), but also check all users
     if (hasIncompleteName || hasIncompletePhone) {
@@ -184,18 +183,13 @@ const Dashboard = () => {
         // Check if user has a pending join request - if so, show profile completion
         // This helps ensure join requests show correct name
         const checkPendingRequest = async () => {
-          const { data: pendingRequest } = await supabase
-            .from("workspace_join_requests")
-            .select("id")
-            .eq("user_id", user?.id)
-            .in("status", ["pending", "email_sent"])
-            .maybeSingle();
-          
+          const pendingRequest = await getMyJoinRequest("open").catch(() => null);
+
           if (pendingRequest) {
             setShowProfileCompletionDialog(true);
           }
         };
-        
+
         checkPendingRequest();
       }
     }
@@ -210,19 +204,7 @@ const Dashboard = () => {
 
     const fetchPendingJoinRequest = async () => {
       try {
-        const { data, error } = await supabase
-          .from("workspace_join_requests")
-          .select("company_name, status, created_at")
-          .eq("user_id", user.id)
-          .in("status", ["pending", "email_sent"])
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (error) {
-          console.error("[Dashboard] Error fetching pending join request:", error);
-          return;
-        }
+        const data = await getMyJoinRequest("open");
 
         setPendingJoinRequest(data || null);
       } catch (err) {
@@ -245,22 +227,16 @@ const Dashboard = () => {
     }
 
     try {
-      const functionName = action === "approve" 
-        ? "approve-workspace-request" 
-        : "reject-workspace-request";
-      
-      const { data: result, error } = await supabase.functions.invoke(functionName, {
-        body: { token },
-      });
-      
-      if (error) {
-        throw new Error(error.message || `Failed to ${action} request`);
+      const result = await decideJoinRequest(action === "approve" ? "approve" : "reject", { token });
+
+      if (!result.ok || result.body?.success === false) {
+        throw new Error(errorMessage(result.body, `Failed to ${action} request`));
       }
 
       toast({
         title: action === "approve" ? "Request approved" : "Request rejected",
-        description: action === "approve" 
-          ? "The user has been added to the organisation." 
+        description: action === "approve"
+          ? "The user has been added to the organisation."
           : "The join request has been rejected.",
       });
 
@@ -283,7 +259,7 @@ const Dashboard = () => {
     const action = searchParams.get("action");
     const view = searchParams.get("view");
     const token = searchParams.get("token");
-    
+
     // Handle view parameter (e.g., ?view=simulation)
     if (view && ["overview", "projects", "simulation", "members"].includes(view)) {
       setActiveView(view as ViewMode);
@@ -292,7 +268,7 @@ const Dashboard = () => {
       // If no view param, default to overview
       setActiveView("overview");
     }
-    
+
     // Handle join request approve/reject from email links
     if (token && (action === "approve" || action === "reject")) {
       handleJoinRequestFromEmail(token, action);
@@ -303,7 +279,7 @@ const Dashboard = () => {
       setSearchParams(newParams);
       return;
     }
-    
+
     if (action === "create-project") {
       if (profile?.company_id) {
       setShowProjectDialog(true);
@@ -347,11 +323,9 @@ const Dashboard = () => {
 
     try {
       // Validate invite first
-      const { data: validateJson, error: validateError } = await supabase.functions.invoke("validate-invite", {
-        body: { token: inviteToken },
-      });
+      const validateJson = await validateInvite(inviteToken);
 
-      if (validateError || !validateJson?.ok) {
+      if (!validateJson?.ok) {
         // Invalid invite - clear token and continue normal flow
         const newParams = new URLSearchParams(searchParams);
         newParams.delete("invite");
@@ -360,14 +334,15 @@ const Dashboard = () => {
         return;
       }
 
+      // ok means the invite can still be used (not accepted, revoked or expired)
       const invite = validateJson.invite;
-      if (!invite || invite.status !== "pending") {
+      if (!invite) {
         return;
       }
 
       // Check if user's email matches invite email
       const userEmail = user.email;
-      if (userEmail !== invite.email) {
+      if (userEmail?.toLowerCase() !== invite.invite_email?.toLowerCase()) {
         toast({
           title: "Invite email mismatch",
           description: "This invite is for a different email address.",
@@ -385,9 +360,7 @@ const Dashboard = () => {
         return;
       }
 
-      const { data: acceptJson, error: acceptError } = await supabase.functions.invoke("accept-invite", {
-        body: { token: inviteToken.trim(), userId: user.id },
-      });
+      const acceptJson = await acceptInvite(inviteToken.trim());
 
       const accepted = acceptJson?.ok || acceptJson?.error === "invite already accepted";
       if (accepted) {
@@ -417,14 +390,12 @@ const Dashboard = () => {
     if (!inviteToken) return false;
 
     try {
-      const { data: json, error } = await supabase.functions.invoke("validate-invite", {
-        body: { token: inviteToken },
-      });
-      
-      if (!error && json?.ok && json.invite?.status === "pending") {
+      const json = await validateInvite(inviteToken);
+
+      if (json?.ok && json.invite) {
         // Check if email matches
         const userEmail = user?.email;
-        return userEmail === json.invite.email;
+        return userEmail?.toLowerCase() === json.invite.invite_email?.toLowerCase();
       }
     } catch (error) {
       console.error("Error checking invite:", error);
@@ -483,17 +454,9 @@ const Dashboard = () => {
 
   const loadProjects = async (companyId: string) => {
     try {
-      const { data, error } = await supabase
-        .from("projects")
-        .select("*")
-        .eq("company_id", companyId)
-        .match(liveProjectFilter)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("Error loading projects:", error);
-        return;
-      }
+      // Your organisation's projects (companyId is always your own), only live ones on the live site
+      void companyId;
+      const data = await listProjects();
 
       if (data) setProjects(data);
       setProjectsLoaded(true);
@@ -532,51 +495,11 @@ const Dashboard = () => {
       // Check if company already exists using the SECURITY DEFINER function
       // This bypasses RLS to allow existence checks even if user is not a member
       let existingCompany = null;
-      
-      try {
-        const { data: existingCompanyData, error: checkError } = await supabase
-          .rpc("check_company_exists", { company_name: companyName });
 
-        if (checkError) {
-          // If RPC function doesn't exist or fails, try direct query as fallback
-          // This handles the case where migration hasn't been applied yet
-          console.warn("RPC check_company_exists failed, trying direct query:", checkError);
-          
-          // Fallback: Try direct query (will work if user is admin/member, but may fail due to RLS)
-          // Use case-insensitive comparison with ilike for fallback
-          // Note: This may still fail due to RLS if user is not a member, but we try anyway
-          const { data: directQueryData, error: directError } = await supabase
-            .from("companies")
-            .select("id, name, admin_email")
-            .ilike("name", companyName.trim())
-            .maybeSingle();
-          
-          if (!directError && directQueryData) {
-            existingCompany = directQueryData;
-          } else {
-            // If both fail, log error but don't proceed with creation
-            // This prevents creating duplicate companies
-            console.error("Both RPC and direct query failed to check company existence:", {
-              rpcError: checkError,
-              directError: directError
-            });
-            setLoading(false);
-            toast({
-              title: "Error",
-              description: "Unable to verify if organisation exists. Please try again or contact support.",
-              variant: "destructive",
-            });
-            return;
-          }
-        } else {
-          // RPC function succeeded, get the first result
-          existingCompany = existingCompanyData && existingCompanyData.length > 0 
-            ? existingCompanyData[0] 
-            : null;
-        }
-      } catch (rpcException: any) {
-        // Catch any unexpected errors in the RPC call
-        console.error("Exception checking company existence:", rpcException);
+      try {
+        existingCompany = await findCompanyByName(companyName);
+      } catch (checkError) {
+        console.error("Exception checking company existence:", checkError);
         setLoading(false);
         toast({
           title: "Error",
@@ -597,49 +520,16 @@ const Dashboard = () => {
       // Company doesn't exist - create it and assign user as admin
       // Get user's email (from auth user or profile)
       const userEmail = user.email || profile?.email;
-      
+
       // Ensure profile exists before creating company (required for foreign key)
       let currentProfile = profile;
-      
+
       if (!currentProfile) {
-        // Create profile if it doesn't exist
-        const { error: profileError } = await supabase
-          .from("profiles")
-          .upsert({
-            id: user.id,
-            name: user.user_metadata?.name || "",
-            phone: user.user_metadata?.phone || "",
-            email: userEmail || "",
-          }, {
-            onConflict: "id",
-          });
-        
-        if (profileError) {
-          console.error("Error creating profile:", profileError);
-          throw new Error("Failed to create profile. Please try again.");
-        }
-        
-        // Wait a moment for the profile to be committed
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Reload profile to ensure it's available
+        // The profile is created together with the account; reload it once if it isn't here yet
         await reloadProfile();
-        
-        // Fetch the profile we just created
-        const { data: profileData, error: profileFetchError } = await supabase
-          .from("profiles")
-          .select("id, email, name")
-          .eq("id", user.id)
-          .single();
-        
-        if (profileFetchError || !profileData) {
-          console.error("Profile fetch error:", profileFetchError);
-          throw new Error("Profile was created but could not be retrieved. Please refresh and try again.");
-        }
-        
-        currentProfile = profileData;
+        currentProfile = { id: user.id, email: userEmail || "", name: user.user_metadata?.name || "" };
       }
-      
+
       // Use Company Email from form (user's input) - required field, so it should be filled
       // Fallback to profile email only if form value is empty (e.g. validation edge case)
       const formEmail = (companyForm.values.businessEmail ?? "").trim();
@@ -648,111 +538,38 @@ const Dashboard = () => {
       if (!adminEmail) {
         throw new Error("Unable to get email for organisation creation. Please fill in the Organisation Email field.");
       }
-      
-      // Use Edge Function to create company (bypasses RLS issues)
+
+      // Create the organisation; you become its admin
       const companyDescription = (companyForm.values.description ?? "").trim() || undefined;
-      const { data: createCompanyData, error: invokeError } = await supabase.functions.invoke("create-company", {
-        body: {
-          companyName,
-          adminEmail,
-          description: companyDescription,
-        },
+      const createCompanyData = await createCompany({
+        companyName,
+        adminEmail,
+        description: companyDescription,
       });
 
-      // Handle errors - extract actual error message from Edge Function response
-      if (invokeError) {
-        console.error("Company creation error:", invokeError);
-        console.error("Error context:", invokeError.context);
-        console.error("Response data:", createCompanyData);
-        
-        let errorMessage = "Failed to create organisation";
-        
-        // Priority 1: Check if data contains error message (Edge Function's JSON response)
-        // Sometimes data is populated even when there's an error
-        if (createCompanyData?.error) {
-          errorMessage = createCompanyData.error;
-          // Include details if available
-          if (createCompanyData.details) {
-            errorMessage += `: ${createCompanyData.details}`;
-          }
-        } else if (createCompanyData && typeof createCompanyData === 'object' && 'error' in createCompanyData) {
-          errorMessage = (createCompanyData as any).error;
-          if ((createCompanyData as any).details) {
-            errorMessage += `: ${(createCompanyData as any).details}`;
-          }
-        }
-        // Priority 2: Check error.context (FunctionsHttpError) - contains the actual response body
-        else if (invokeError.context) {
-          try {
-            // error.context might be a Response object or already parsed
-            let errorData: any;
-            if (typeof invokeError.context.json === 'function') {
-              errorData = await invokeError.context.json();
-            } else if (typeof invokeError.context === 'object') {
-              errorData = invokeError.context;
-            }
-            
-            if (errorData?.error) {
-              errorMessage = errorData.error;
-              if (errorData.details) {
-                errorMessage += `: ${errorData.details}`;
-              }
-            } else if (errorData?.message) {
-              errorMessage = errorData.message;
-            }
-          } catch (parseError) {
-            // If parsing fails, fall back to error message
-            console.warn("Could not parse error context:", parseError);
-          }
-        }
-        // Priority 3: Use error message
-        else if (invokeError.message) {
-          errorMessage = invokeError.message;
-        }
-        
-        throw new Error(errorMessage);
-      }
-
-      if (!createCompanyData?.ok) {
-        let errorMsg = createCompanyData?.error || "Failed to create organisation";
-        // Include details if available
-        if (createCompanyData?.details) {
-          errorMsg += `: ${createCompanyData.details}`;
-        }
+      if (!createCompanyData.ok) {
         console.error("Company creation error:", createCompanyData);
-        throw new Error(errorMsg);
+        throw new Error(createCompanyData.error || "Failed to create organisation");
       }
 
       const company = createCompanyData.company;
-      
+
       if (!company) {
         throw new Error("Failed to create organisation");
       }
 
-      // Profile is already updated by the edge function, but verify
-      const { data: profileRow, error: profileUpdateError } = await supabase
-        .from("profiles")
-        .select("company_id")
-        .eq("id", user.id)
-        .single();
-
-      if (profileUpdateError) {
-        console.error("Error verifying profile update:", profileUpdateError);
-        // Company was created, profile should be updated by edge function
-        // Just reload profile to sync state
-      }
       setShowCompanyDialog(false);
       companyForm.resetForm();
-      
-      // Small delay to ensure Edge Function has committed the profile update
+
+      // Small delay before reloading the profile with the new organisation
       await new Promise(resolve => setTimeout(resolve, 300));
-      
+
       // Reload profile to get updated company_id and email
       await reloadProfile();
-      
+
       // Wait a bit more for context to update after reload
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       // Verify admin status after reload (use the context values already available)
       if (import.meta.env.DEV) {
         console.log("[Dashboard] After company creation:", {
@@ -764,7 +581,7 @@ const Dashboard = () => {
           companyFromContext: company?.admin_email,
         });
       }
-      
+
       if (company?.id) {
         loadProjects(company.id);
       }
@@ -783,14 +600,14 @@ const Dashboard = () => {
         status: error?.status,
         statusText: error?.statusText,
       });
-      
+
       // Show more detailed error message
-      const errorMessage = 
-        error?.details || 
-        error?.hint || 
-        error?.message || 
+      const errorMessage =
+        error?.details ||
+        error?.hint ||
+        error?.message ||
         "Failed to save organisation.";
-      
+
       toast({
         title: "Organisation details failed",
         description: errorMessage,
@@ -813,12 +630,7 @@ const Dashboard = () => {
 
     // Prevent duplicate join requests for the same user while a request is pending
     try {
-      const { data: existingRequest } = await supabase
-        .from("workspace_join_requests")
-        .select("id, status")
-        .eq("user_id", user.id)
-        .in("status", ["pending", "email_sent"])
-        .maybeSingle();
+      const existingRequest = await getMyJoinRequest("open");
 
       if (existingRequest) {
         toast({
@@ -846,7 +658,7 @@ const Dashboard = () => {
     if (profile) {
       const hasIncompleteName = !profile.name || profile.name.trim() === '';
       const hasIncompletePhone = !profile.phone || profile.phone.trim() === '';
-      
+
       if (hasIncompleteName || hasIncompletePhone) {
         toast({
           title: "Complete your profile",
@@ -863,50 +675,17 @@ const Dashboard = () => {
     try {
       // Trim and normalize company name for comparison
       const companyName = companyForm.values.companyName.trim();
-      
-      // Get the existing company to get the actual admin_email using the SECURITY DEFINER function
-      // This bypasses RLS to allow fetching admin_email even if user is not a member
-      const { data: existingCompanyData, error: fetchError } = await supabase
-        .rpc("check_company_exists", { company_name: companyName });
 
-      if (fetchError) {
-        throw fetchError;
-      }
-
-      // The RPC function returns an array, get the first result
-      const existingCompany = existingCompanyData && existingCompanyData.length > 0 
-        ? existingCompanyData[0] 
-        : null;
+      // The organisation's real admin email (not what was typed in the form)
+      const existingCompany = await findCompanyByName(companyName);
 
       if (!existingCompany) {
         throw new Error("Organisation not found");
       }
 
-      // Get user profile to get email
-      const { data: profileData, error: profileError } = await supabase
-        .from("profiles")
-        .select("email, name")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (profileError) {
-        throw profileError;
-      }
-
-      if (!profileData) {
-        throw new Error("Profile not found");
-      }
-
-      // Create join request via edge function using the actual admin_email from the company
-      const { error } = await supabase.functions.invoke("send-workspace-request", {
-        body: {
-          userId: user.id,
-          companyName: companyName,
-          adminEmail: existingCompany.admin_email, // Use actual admin email from company, not form input
-        },
-      });
-
-      if (error) throw error;
+      // Send the join request (the API uses your signed-in account as the requester)
+      const sent = await sendJoinRequest(companyName, existingCompany.admin_email);
+      if (!sent.ok || sent.body?.success === false) throw new Error(errorMessage(sent.body, "Failed to send join request."));
 
       toast({
         title: "Request sent successfully",
@@ -949,12 +728,7 @@ const Dashboard = () => {
 
     // Prevent duplicate join requests for the same user while a request is pending
     try {
-      const { data: existingRequest } = await supabase
-        .from("workspace_join_requests")
-        .select("id, status")
-        .eq("user_id", user.id)
-        .in("status", ["pending", "email_sent"])
-        .maybeSingle();
+      const existingRequest = await getMyJoinRequest("open");
 
       if (existingRequest) {
         toast({
@@ -982,7 +756,7 @@ const Dashboard = () => {
     if (profile) {
       const hasIncompleteName = !profile.name || profile.name.trim() === '';
       const hasIncompletePhone = !profile.phone || profile.phone.trim() === '';
-      
+
       if (hasIncompleteName || hasIncompletePhone) {
         toast({
           title: "Complete your profile",
@@ -996,12 +770,11 @@ const Dashboard = () => {
 
     setJoinRequestLoading(true);
     try {
-      // Check if company exists by name using the SECURITY DEFINER function
-      // This bypasses RLS to allow existence checks even if user is not a member
-      const { data: existingCompanyData, error: fetchError } = await supabase
-        .rpc("check_company_exists", { company_name: companyName });
-
-      if (fetchError) {
+      // Does an organisation with this name exist? (case and spaces don't matter)
+      let existingCompany: { id: string; name: string; admin_email: string } | null = null;
+      try {
+        existingCompany = await findCompanyByName(companyName);
+      } catch (fetchError) {
         console.error("Error checking company existence:", fetchError);
         toast({
           title: "Error",
@@ -1011,11 +784,6 @@ const Dashboard = () => {
         setJoinRequestLoading(false);
         return;
       }
-
-      // The RPC function returns an array, get the first result
-      const existingCompany = existingCompanyData && existingCompanyData.length > 0 
-        ? existingCompanyData[0] 
-        : null;
 
       if (!existingCompany) {
         toast({
@@ -1027,16 +795,9 @@ const Dashboard = () => {
         return;
       }
 
-      // Send join request
-      const { error } = await supabase.functions.invoke("send-workspace-request", {
-        body: {
-          userId: user.id,
-          companyName: companyName,
-          adminEmail: existingCompany.admin_email,
-        },
-      });
-
-      if (error) throw error;
+      // Send join request (the API uses your signed-in account as the requester)
+      const sent = await sendJoinRequest(companyName, existingCompany.admin_email);
+      if (!sent.ok || sent.body?.success === false) throw new Error(errorMessage(sent.body, "Failed to send join request."));
 
       toast({
         title: "Request sent successfully",
@@ -1172,18 +933,12 @@ const Dashboard = () => {
 
     setLoading(true);
     try {
-      const { data: project, error } = await supabase
-        .from("projects")
-        .insert({
-          name: mission.title,
-          description: `${industryName} · ${mission.title}`,
-          company_id: profile.company_id,
-          created_by: user.id,
-          project_type: "generic",
-        })
-        .select()
-        .single();
-      if (error || !project) throw error || new Error("Failed to create project");
+      const project = await createProject({
+        name: mission.title,
+        description: `${industryName} · ${mission.title}`,
+        project_type: "generic",
+      });
+      if (!project) throw new Error("Failed to create project");
       setProjects((prev) => [project, ...prev.filter((p) => p.id !== project.id)]);
 
       if (useSample) {
@@ -1252,20 +1007,14 @@ const Dashboard = () => {
       const projectName = projectForm.values.projectName;
       const projectDescription = projectForm.values.projectDescription || "";
 
-      const { data: project, error: projectError } = await supabase
-        .from("projects")
-        .insert({
-          name: projectName,
-          description: projectDescription,
-          company_id: profile.company_id,
-          created_by: user.id,
-          project_type: projectType,
-        })
-        .select()
-        .single();
+      const project = await createProject({
+        name: projectName,
+        description: projectDescription,
+        project_type: projectType,
+      });
 
-      if (projectError || !project) {
-        throw projectError || new Error("Failed to create project");
+      if (!project) {
+        throw new Error("Failed to create project");
       }
 
       // Immediately add the new project to the state so it appears in "Manage Projects" without reload
@@ -1458,8 +1207,8 @@ const Dashboard = () => {
       />
 
       {/* Company Details Dialog */}
-      <Dialog 
-        open={showCompanyDialog} 
+      <Dialog
+        open={showCompanyDialog}
         onOpenChange={setShowCompanyDialog}
       >
         <DialogContent>
@@ -1468,7 +1217,7 @@ const Dashboard = () => {
               {dialogMode === "join" ? "Join Organisation" : "Organisation Details"}
             </DialogTitle>
             <DialogDescription>
-              {dialogMode === "join" 
+              {dialogMode === "join"
                 ? "Enter the organisation name to request access."
                 : "Please provide your organisation information to continue."}
             </DialogDescription>

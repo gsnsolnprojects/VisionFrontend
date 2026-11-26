@@ -16,7 +16,7 @@ interface ActivityFeedProps {
  * ActivityFeed Component
  * 
  * Displays recent activity feed with:
- * - Project creation events (from Supabase)
+ * - Project creation events (from the projects table)
  * - Prediction events (from backend API, optional)
  * 
  * Gracefully handles API failures and shows fallback content.

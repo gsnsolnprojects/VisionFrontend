@@ -1,17 +1,33 @@
 // src/contexts/ProfileContext.tsx
 import React, { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
+import { auth, type AuthChangeEvent, type Session } from "@/lib/auth/authClient";
 import { isUserAdmin } from "@/lib/utils/adminUtils";
 import { ProfileContext, type ProfileContextType } from "./profile-context";
 import { clearLastRoute } from "@/utils/routePersistence";
 import type { UserRole } from "@/types/roles";
 import { hasPermission as hasPermissionUtil } from "@/lib/utils/permissions";
-import { clearAuthCache } from "@/lib/api/config";
+import { apiUrl, clearAuthCache } from "@/lib/api/config";
 
 type ProfileProviderProps = {
   children: ReactNode;
 };
+
+/** Profile + organisation of the signed-in person in one call. deactivated = the API refused them. */
+async function fetchMe(accessToken: string): Promise<{ profile: any | null; company: any | null; deactivated: boolean }> {
+  const res = await fetch(apiUrl("auth/me"), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    credentials: "include",
+  });
+  const body = await res.json().catch(() => ({}));
+  if (res.status === 403 && /deactivated/i.test(body?.message || body?.error || "")) {
+    return { profile: null, company: null, deactivated: true };
+  }
+  if (res.status === 403 && /profile not found/i.test(body?.message || "")) {
+    return { profile: null, company: null, deactivated: false };
+  }
+  if (!res.ok) throw new Error(body?.message || body?.error || `Failed to load profile (HTTP ${res.status})`);
+  return { profile: body.profile || null, company: body.company || null, deactivated: false };
+}
 
 export function ProfileProvider({ children }: ProfileProviderProps) {
   const isDev = import.meta.env.DEV;
@@ -70,13 +86,6 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
           }
 
         // Add timeout to profile fetch to prevent infinite hanging
-        const profileFetchPromise = supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", userId)
-          .maybeSingle();
-
-        // Single timeout promise that rejects after 8 seconds
         const profileTimeoutPromise = new Promise<never>((_, reject) => {
           setTimeout(
             () => reject(new Error("Profile fetch timeout after 8 seconds")),
@@ -85,15 +94,9 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
         });
 
         // Race between the fetch and timeout
-        const profileResult: any = await Promise.race([
-          profileFetchPromise.then((r: any) => ({ data: r.data, error: r.error })),
-          profileTimeoutPromise,
-        ]);
+        const me = await Promise.race([fetchMe(session.access_token), profileTimeoutPromise]);
 
-          const profileData = profileResult.data;
-          const profileError = profileResult.error;
-
-          if (profileError) throw profileError;
+          const profileData = me.deactivated ? { is_active: false } : me.profile;
 
           if (!profileData) {
             if (isDev) {
@@ -124,7 +127,7 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
             setIsAdmin(false);
             setUserRole(null);
             setLoading(false);
-            await supabase.auth.signOut();
+            await auth.signOut();
             return;
           }
 
@@ -155,55 +158,8 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
           }
 
           if (profileData.company_id) {
-            let companyData: any = null;
-            let companyError: any = null;
-
-            try {
-              const companyFetchPromise = supabase
-                .from("companies")
-                .select("*")
-                .eq("id", profileData.company_id)
-                .maybeSingle();
-
-              // Create a timeout promise that will always reject after 10 seconds
-              const timeoutPromise = new Promise<never>((_, reject) => {
-                setTimeout(
-                  () => reject(new Error("Organisation fetch timeout after 10 seconds")),
-                  10000
-                );
-              });
-
-              // Wrap Promise.race in a safety timeout to ensure it always resolves
-              const racePromise = Promise.race([
-                companyFetchPromise.then((r: any) => ({ data: r.data, error: r.error })),
-                timeoutPromise,
-              ]);
-
-              // Add an additional safety timeout wrapper to ensure we never hang forever
-              const safetyTimeout = new Promise<{ data: any; error: any }>((resolve) => {
-                setTimeout(() => {
-                  resolve({ data: null, error: new Error("Organisation fetch safety timeout after 12 seconds") });
-                }, 12000);
-              });
-
-              const result: any = await Promise.race([
-                racePromise,
-                safetyTimeout,
-              ]);
-
-              companyData = result.data;
-              companyError = result.error;
-            } catch (timeoutError: any) {
-              console.error("[ProfileContext] Company fetch timeout or error:", timeoutError);
-              companyError = timeoutError;
-            }
-
-            if (companyError) {
-              console.error("[ProfileContext] Error loading company:", companyError);
-              if (isDev) {
-                console.log("[ProfileContext] Company fetch failed - continuing without company data");
-              }
-            }
+            // Came with the profile from /api/auth/me
+            const companyData: any = me.company;
 
             if (companyData) {
               setCompany(companyData);
@@ -293,7 +249,7 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
         const {
           data: { session },
           error: sessionError,
-        } = await supabase.auth.getSession();
+        } = await auth.getSession();
 
         if (isDev) {
           console.log("[ProfileContext] hydrateSession getSession:", {
@@ -362,10 +318,8 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      // Supabase holds its auth lock while this callback runs, so any supabase query awaited
-      // here waits for the lock and hangs (the profile fetch then hit its 8 s timeout on every
-      // load). Run the work right after the callback returns instead.
+    } = auth.onAuthStateChange((event, session) => {
+      // Run the work right after the callback returns, so listeners never block each other
       setTimeout(() => {
         void handleAuthChange(event, session);
       }, 0);
@@ -519,7 +473,7 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
         const {
           data: { session },
           error: sessionError,
-        } = await supabase.auth.getSession();
+        } = await auth.getSession();
 
         // Handle errors from getSession()
         if (sessionError) {

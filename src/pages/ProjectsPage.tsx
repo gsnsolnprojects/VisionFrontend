@@ -1,8 +1,7 @@
-import { liveProjectFilter } from "@/lib/liveProjects";
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { supabase } from "@/integrations/supabase/client";
+import { deleteProjectByName, listProjects } from "@/lib/api/account";
 import { useProfile } from "@/hooks/useProfile";
 import { PageHeader } from "@/components/pages/PageHeader";
 import { EmptyState } from "@/components/pages/EmptyState";
@@ -88,14 +87,7 @@ export const ProjectsPage: React.FC = () => {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("projects")
-        .select("*")
-        .eq("company_id", profile.company_id)
-        .match(liveProjectFilter)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
+      const data = await listProjects();
       setProjects(data || []);
     } catch (error: any) {
       console.error("Error loading projects:", error);
@@ -284,13 +276,9 @@ export const ProjectsPage: React.FC = () => {
         companyName={projectToDelete?.companyName ?? ""}
         projectName={projectToDelete?.projectName ?? ""}
         onDeleted={async () => {
-          // Project list is from Supabase; remove the row so UI updates
+          // Remove the project row too, so it disappears from the list
           if (profile?.company_id && projectToDelete?.projectName) {
-            await supabase
-              .from("projects")
-              .delete()
-              .eq("company_id", profile.company_id)
-              .eq("name", projectToDelete.projectName);
+            await deleteProjectByName(projectToDelete.projectName).catch(() => undefined);
           }
           await loadProjects();
           toast({

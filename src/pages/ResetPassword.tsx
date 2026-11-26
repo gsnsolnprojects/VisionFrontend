@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/lib/auth/authClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,8 @@ const ResetPassword = () => {
 
   const [loading, setLoading] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
+  // The one-time token from the emailed link (/reset-password?token=...)
+  const [resetToken, setResetToken] = useState<string | null>(null);
   const [passwordStrengthError, setPasswordStrengthError] = useState(false);
 
   // Force light theme on reset password page (no dark mode)
@@ -67,11 +69,11 @@ const ResetPassword = () => {
     checkSession();
   }, []);
 
-  // Ensure user reached this page using Supabase reset link
+  // Ensure user reached this page from the emailed reset link
   const checkSession = async () => {
-    const { data } = await supabase.auth.getSession();
+    const token = new URLSearchParams(window.location.search).get("token");
 
-    if (!data.session) {
+    if (!token) {
       toast({
         title: "Invalid or expired link",
         description: "Please request a new password reset email.",
@@ -81,6 +83,9 @@ const ResetPassword = () => {
       return;
     }
 
+    // Keep the token in memory only, not in the address bar / browser history
+    setResetToken(token);
+    window.history.replaceState(null, "", window.location.pathname);
     setSessionChecked(true);
   };
 
@@ -108,9 +113,7 @@ const ResetPassword = () => {
 
     setLoading(true);
 
-    const { error } = await supabase.auth.updateUser({
-      password: resetPasswordForm.values.password,
-    });
+    const { error } = await auth.resetPassword(resetToken || "", resetPasswordForm.values.password);
 
     if (error) {
       toast({
@@ -118,14 +121,15 @@ const ResetPassword = () => {
         description: error.message,
         variant: "destructive",
       });
+      // A used or expired link can't be retried: ask for a new email
+      if (error.code === "otp_expired") navigate("/auth?mode=forgot");
     } else {
       toast({
         title: "Password updated successfully",
         description: "You can now sign in using your new password.",
       });
-      // End the temporary password-recovery session so we don't keep a stale/invalid refresh token around.
-      // This ensures the user returns to a clean sign-in state after updating their password.
-      await supabase.auth.signOut();
+      // Every device was signed out by the reset; start clean on the sign-in page
+      await auth.signOut();
       navigate("/auth?mode=signin");
     }
 

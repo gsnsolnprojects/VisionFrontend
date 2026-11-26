@@ -1,7 +1,6 @@
-import { liveProjectFilter } from "@/lib/liveProjects";
 import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { listProjects } from "@/lib/api/account";
 import { useProfile } from "@/hooks/useProfile";
 import { useSidebar } from "./sidebar-context";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -87,18 +86,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onNavigate }) => {
       const loadProjects = async () => {
         setLoadingProjects(true);
         try {
-          const { data: projectsData, error } = await supabase
-            .from("projects")
-            .select("id, name, description, project_type")
-            .eq("company_id", companyId)
-            .match(liveProjectFilter)
-            .order("created_at", { ascending: false });
-
-          if (error) {
-            console.error("Error loading projects:", error);
-            return;
-          }
-
+          // Your organisation's projects, newest first (only live ones on the live site)
+          const projectsData = await listProjects();
           if (projectsData) setProjects(projectsData);
         } catch (err) {
           console.error("Error loading projects:", err);

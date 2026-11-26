@@ -1,5 +1,4 @@
 // src/pages/PredictionPage.tsx
-import { liveProjectFilter } from "@/lib/liveProjects";
 import { photoName } from "@/lib/photoName";
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -7,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useProfile } from "@/hooks/useProfile";
 import { useBreadcrumbs } from "@/components/app-shell/breadcrumb-context";
 import { ProtectedComponent } from "@/components/permissions/ProtectedComponent";
-import { supabase } from "@/integrations/supabase/client";
+import { listProjects } from "@/lib/api/account";
 import { getAuthHeaders, apiUrl } from "@/lib/api/config";
 import { putMobileInspectConfig } from "@/lib/api/mobileInspect";
 import { PageHeader } from "@/components/pages/PageHeader";
@@ -949,17 +948,7 @@ const PredictionPage = () => {
     const loadProjects = async () => {
       setLoadingProjects(true);
       try {
-        const { data: projectsData, error } = await supabase
-          .from("projects")
-          .select("id, name, description")
-          .eq("company_id", profile.company_id)
-          .match(liveProjectFilter)
-          .order("created_at", { ascending: false });
-
-        if (error) {
-          console.error("Error loading projects:", error);
-          return;
-        }
+        const projectsData = await listProjects();
 
         if (projectsData) {
           setProjects(projectsData);

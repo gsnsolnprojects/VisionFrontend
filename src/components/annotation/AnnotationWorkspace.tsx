@@ -24,7 +24,7 @@ import { useAnnotationSelection } from "@/hooks/useAnnotationSelection";
 import { useAnnotationShortcuts } from "@/hooks/useAnnotationShortcuts";
 import { useShortcutKeys, matchesShortcut } from "@/hooks/useShortcutKeys";
 import { useProfile } from "@/hooks/useProfile";
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/lib/auth/authClient";
 import * as annotationsApi from "@/lib/api/annotations";
 import * as categoriesApi from "@/lib/api/categories";
 import * as modelsApi from "@/lib/api/models";
@@ -1797,7 +1797,7 @@ export const AnnotationWorkspace: React.FC<AnnotationWorkspaceProps> = ({
       if (selection.selectedAnnotationIds.length === 0) return;
 
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user } } = await auth.getUser();
         if (!user) throw new Error("Not authenticated");
 
         await annotationsApi.bulkUpdateAnnotationState(

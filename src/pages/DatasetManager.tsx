@@ -1,11 +1,10 @@
 // src/pages/DatasetManager.tsx
 import { markLearningStep } from "@/lib/learningProgress";
-import { liveProjectFilter } from "@/lib/liveProjects";
 import { photoName } from "@/lib/photoName";
 import type { RolePermissions } from "@/types/roles";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { deleteProject as deleteProjectRow, getProject } from "@/lib/api/account";
 import { useProfile } from "@/hooks/useProfile";
 import { getAuthHeaders, apiUrl, API_BASE_URL } from "@/lib/api/config";
 import { Button } from "@/components/ui/button";
@@ -1009,16 +1008,10 @@ const DatasetManager = () => {
         return;
       }
 
-      // DB request - Supabase client automatically includes Authorization header
       // Session is already ready and user exists (checked above)
-      const { data: projectData, error: projectError } = await supabase
-        .from("projects")
-        .select("id, name, description, company_id")
-        .eq("id", projectId)
-        .match(liveProjectFilter)
-        .single();
+      const projectData = await getProject(projectId).catch(() => null);
 
-      if (projectError || !projectData) {
+      if (!projectData) {
         toast({
           title: "Project not found",
           description: "Unable to load this project.",
@@ -1030,16 +1023,8 @@ const DatasetManager = () => {
 
       setProject(projectData);
 
-      if (projectData.company_id) {
-        const { data: companyData } = await supabase
-          .from("companies")
-          .select("name")
-          .eq("id", projectData.company_id)
-          .single();
-
-        if (companyData?.name) {
-          setCompanyName(companyData.name);
-        }
+      if (projectData.company_name) {
+        setCompanyName(projectData.company_name);
       }
     };
 
@@ -4250,15 +4235,11 @@ const DatasetManager = () => {
         onSaved={() => {
           // Reload project to get updated name/description
           if (projectId) {
-            supabase
-              .from("projects")
-              .select("id, name, description, company_id")
-              .eq("id", projectId)
-              .match(liveProjectFilter)
-              .single()
-              .then(({ data }) => {
+            getProject(projectId)
+              .then((data) => {
                 if (data) setProject(data);
-              });
+              })
+              .catch(() => undefined);
           }
         }}
       />
@@ -4270,9 +4251,9 @@ const DatasetManager = () => {
         companyName={companyName}
         projectName={displayProjectName}
         onDeleted={async () => {
-          // Project list is from Supabase; remove the row so it disappears from UI (sidebar, projects page)
+          // Remove the project row too, so it disappears from the sidebar and projects page
           if (projectId) {
-            await supabase.from("projects").delete().eq("id", projectId);
+            await deleteProjectRow(projectId).catch(() => undefined);
           }
           toast({
             title: "Project deleted",

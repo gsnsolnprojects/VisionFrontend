@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { getMyProfile, updateMyProfile } from "@/lib/api/account";
 import { FormFieldWrapper } from "@/components/FormFieldWrapper";
 import { useFormValidation } from "@/hooks/useFormValidation";
 import {
@@ -71,13 +71,10 @@ export const ProfileCompletionDialog: React.FC<ProfileCompletionDialogProps> = (
     const fetchProfileData = async () => {
       setFetchingProfile(true);
       try {
-        const { data: profileData, error } = await supabase
-          .from("profiles")
-          .select("name, phone")
-          .eq("id", userId)
-          .maybeSingle();
-
-        if (error) {
+        let profileData: { name: string | null; phone: string | null } | null = null;
+        try {
+          profileData = await getMyProfile();
+        } catch (error) {
           console.error("Error fetching profile:", error);
           return;
         }
@@ -158,15 +155,10 @@ export const ProfileCompletionDialog: React.FC<ProfileCompletionDialogProps> = (
 
     try {
       const fullPhone = countryCode + form.values.phone;
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          name: form.values.name.trim(),
-          phone: fullPhone,
-        })
-        .eq("id", userId);
-
-      if (error) throw error;
+      await updateMyProfile({
+        name: form.values.name.trim(),
+        phone: fullPhone,
+      });
 
       toast({
         title: "Profile updated",

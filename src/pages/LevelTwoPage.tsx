@@ -15,13 +15,12 @@ import { StepGuide } from "@/components/playground/StepGuide";
 import { BILLING_ROUTE, usePlanAccess } from "@/contexts/plan-access-context";
 import { useToast } from "@/hooks/use-toast";
 import { useProfile } from "@/hooks/useProfile";
-import { supabase } from "@/integrations/supabase/client";
+import { createProject, listProjects } from "@/lib/api/account";
 import { apiRequest } from "@/lib/api/config";
 import { deleteProject } from "@/lib/api/dashboard";
 import { uploadUnlabelledDataset } from "@/lib/api/datasets";
 import { getLevels, startLevel } from "@/lib/api/levels";
 import { getSamples, type SampleDataset } from "@/lib/api/samples";
-import { liveProjectFilter } from "@/lib/liveProjects";
 
 /**
  * Level 2's first screen (/level-2): the student names their project and adds their photos. The
@@ -58,13 +57,8 @@ const LevelTwoPage: React.FC = () => {
     if (!profile?.company_id) return;
     let cancelled = false;
     (async () => {
-      const [{ data }, { levels }] = await Promise.all([
-        supabase
-          .from("projects")
-          .select("id, name")
-          .eq("company_id", profile.company_id)
-          .match(liveProjectFilter)
-          .order("created_at", { ascending: false }),
+      const [data, { levels }] = await Promise.all([
+        listProjects().catch(() => []),
         getLevels().catch(() => ({ levels: [] as Awaited<ReturnType<typeof getLevels>>["levels"] })),
       ]);
       if (cancelled) return;
@@ -119,18 +113,8 @@ const LevelTwoPage: React.FC = () => {
     setBusy(kind);
     let created: { id: string; name: string } | null = null;
     try {
-      const { data, error } = await supabase
-        .from("projects")
-        .insert({
-          name: projectName,
-          description: null,
-          company_id: profile.company_id,
-          created_by: user.id,
-          project_type: "generic",
-        })
-        .select()
-        .single();
-      if (error || !data) throw error || new Error("Failed to create the project");
+      const data = await createProject({ name: projectName, description: null, project_type: "generic" });
+      if (!data) throw new Error("Failed to create the project");
       created = data;
       await addWork();
     } catch (err) {

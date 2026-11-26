@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { updateMyProfile } from "@/lib/api/account";
 import { useProfile } from "@/hooks/useProfile";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -45,11 +45,7 @@ export const ProfileSettings: React.FC = () => {
     if (!profile?.id) return;
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ name: parsed.data.name, phone: parsed.data.phone })
-        .eq("id", profile.id);
-      if (error) throw error;
+      await updateMyProfile({ name: parsed.data.name, phone: parsed.data.phone });
       await reloadProfile();
       toast({ title: "Saved", description: "Your profile is updated." });
     } catch (err) {

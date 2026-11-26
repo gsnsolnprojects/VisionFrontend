@@ -1,25 +1,22 @@
 import React, { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/lib/auth/authClient";
 import { cn } from "@/lib/utils";
 
 /**
  * "Continue with Google" for the sign-in and sign-up pages. Google sends the person back to
  * /dashboard signed in; first-time users then complete their profile and create or join a
- * company like any new sign-up. Needs the Google provider switched on in Supabase Auth.
+ * company like any new sign-up. Our API handles the Google round trip (/api/auth/google).
  */
 export const GoogleSignInButton: React.FC<{ onError: (message: string) => void; className?: string }> = ({ onError, className }) => {
   const [redirecting, setRedirecting] = useState(false);
 
   const signIn = async () => {
     setRedirecting(true);
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { error } = await auth.signInWithOAuth({
       provider: "google",
-      options: {
-        redirectTo: `${window.location.origin.replace(/\/+$/, "")}/dashboard`,
-        queryParams: { prompt: "select_account" },
-      },
+      options: { redirectTo: "/dashboard" },
     });
     if (error) {
       setRedirecting(false);

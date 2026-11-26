@@ -86,7 +86,7 @@ function Capabilities() {
 
 const ARCH = [
   { Icon: Eye, title: "Capture", items: ["Web app (React)", "Android app", "Line cameras"] },
-  { Icon: Server, title: "API", items: ["Node.js / Express", "Supabase auth", "Role-based access"] },
+  { Icon: Server, title: "API", items: ["Node.js / Express", "Secure sign-in (JWT)", "Role-based access"] },
   { Icon: Workflow, title: "Job queue", items: ["Redis + Bull", "Retries & progress", "Per-job status"] },
   { Icon: Zap, title: "GPU workers", items: ["Training", "Inference", "SAM & augmentation"] },
   { Icon: Database, title: "Storage", items: ["MongoDB metadata", "Azure Blob images", "Model registry"] },

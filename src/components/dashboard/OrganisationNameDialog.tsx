@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import { createCompany, findCompanyByName } from "@/lib/api/account";
 
 /**
  * First step after signing up: just the organisation's name. Names must be unique (the database
@@ -13,10 +13,11 @@ import { supabase } from "@/integrations/supabase/client";
  */
 
 const nameTaken = async (name: string): Promise<boolean> => {
-  const { data, error } = await supabase.rpc("check_company_exists" as never, { company_name: name } as never);
-  if (error) throw new Error("Couldn't check the name. Please try again.");
-  const rows: unknown = data;
-  return Array.isArray(rows) && rows.length > 0;
+  try {
+    return !!(await findCompanyByName(name));
+  } catch {
+    throw new Error("Couldn't check the name. Please try again.");
+  }
 };
 
 /** The name as typed, or with the lowest free number after it */
@@ -49,21 +50,14 @@ export const OrganisationNameDialog: React.FC<{
     setError(null);
     try {
       let saved = await freeName(trimmed);
-      let { data, error: invokeError } = await supabase.functions.invoke("create-company", {
-        body: { companyName: saved, adminEmail: email },
-      });
+      let result = await createCompany({ companyName: saved, adminEmail: email });
       // Taken a moment ago by someone else: one more try with the next free name
-      if (!data?.ok && /already exists/i.test(String(data?.error ?? ""))) {
+      if (!result.ok && /already exists/i.test(String(result.error ?? ""))) {
         saved = await freeName(trimmed);
-        ({ data, error: invokeError } = await supabase.functions.invoke("create-company", {
-          body: { companyName: saved, adminEmail: email },
-        }));
+        result = await createCompany({ companyName: saved, adminEmail: email });
       }
-      if (invokeError || !data?.ok) {
-        let message = data?.error as string | undefined;
-        const context = (invokeError as { context?: { json?: () => Promise<{ error?: string }> } } | null)?.context;
-        if (!message && context?.json) message = (await context.json().catch(() => ({ error: undefined }))).error;
-        throw new Error(message || "Couldn't save your organisation. Please try again.");
+      if (!result.ok) {
+        throw new Error(result.error || "Couldn't save your organisation. Please try again.");
       }
       await onCreated(saved, trimmed);
     } catch (err) {

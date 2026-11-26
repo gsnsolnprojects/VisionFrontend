@@ -25,7 +25,7 @@ import { LoadingState } from "@/components/pages/LoadingState";
 import { useToast } from "@/hooks/use-toast";
 import { useProfile } from "@/hooks/useProfile";
 import { usePlanAccess } from "@/contexts/plan-access-context";
-import { supabase } from "@/integrations/supabase/client";
+import { getProject, listProjects } from "@/lib/api/account";
 import { apiRequest, apiUrl, getAuthHeaders } from "@/lib/api/config";
 import { addDatasetFiles, deleteDatasetFile, uploadUnlabelledDataset } from "@/lib/api/datasets";
 import { getLearningProgress } from "@/lib/api/dashboard";
@@ -203,8 +203,8 @@ export const PlaygroundProjectPage: React.FC = () => {
   useEffect(() => {
     if (!projectId) return;
     (async () => {
-      const { data, error } = await supabase.from("projects").select("id, name, description").eq("id", projectId).maybeSingle();
-      if (error || !data) {
+      const data = await getProject(projectId, { liveOnly: false }).catch(() => null);
+      if (!data) {
         toast({ title: "Project not found", description: "It may have been deleted.", variant: "destructive" });
         navigate("/dashboard", { replace: true });
         return;
@@ -245,12 +245,9 @@ export const PlaygroundProjectPage: React.FC = () => {
   // The company's projects, for the switcher in the mission bar
   useEffect(() => {
     if (!profile?.company_id) return;
-    supabase
-      .from("projects")
-      .select("id, name, description")
-      .eq("company_id", profile.company_id)
-      .order("created_at", { ascending: false })
-      .then(({ data }) => setAllProjects(data ?? []));
+    listProjects({ liveOnly: false })
+      .then((data) => setAllProjects(data ?? []))
+      .catch(() => setAllProjects([]));
   }, [profile?.company_id]);
 
   useEffect(() => {

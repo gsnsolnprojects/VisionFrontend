@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/lib/auth/authClient";
+import { acceptInvite, validateInvite } from "@/lib/api/account";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,10 +40,8 @@ export default function SignUpWithInvite() {
     (async () => {
       setValidating(true);
       try {
-        const { data: json, error } = await supabase.functions.invoke("validate-invite", {
-          body: { token: inviteToken },
-        });
-        if (error || !json?.ok) {
+        const json = await validateInvite(inviteToken);
+        if (!json?.ok) {
           setErrorMsg(json?.error || "Invalid invite");
           setValidating(false);
           return;
@@ -68,7 +67,8 @@ export default function SignUpWithInvite() {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const { data, error } = await supabase.auth.signUp({
+      // Signing up from the emailed invite link proves the inbox, so the API signs them in straight away
+      const { data, error } = await auth.signUp({
         email,
         password,
         options: {
@@ -77,109 +77,37 @@ export default function SignUpWithInvite() {
             phone: phone.trim() || null,
           },
         },
+        inviteToken: inviteToken?.trim() || undefined,
       });
-      
+
       // Handle specific error cases
       if (error) {
         // Check if error is about user already existing
-        if (error.message?.includes("User already registered") || 
+        if (error.message?.includes("User already registered") ||
             error.message?.includes("already exists") ||
             error.message?.includes("already registered")) {
           setErrorMsg("An account with this email already exists. Please sign in instead. You can use the invite link to sign in and accept the invite.");
           setLoading(false);
           return;
         }
-        throw error;
+        throw new Error(error.message);
       }
 
-      const user = (data as any)?.user ?? null;
-      
-      // Check if user exists but is unconfirmed (identities.length === 0)
-      // This happens when email confirmation is required and user hasn't confirmed yet
-      if (
-        user &&
-        Array.isArray((user as any).identities) &&
-        (user as any).identities.length === 0
-      ) {
-        setErrorMsg("An account with this email already exists but is not confirmed. Please check your email to confirm your account, then sign in with the invite link to accept the invite.");
-        setLoading(false);
-        return;
-      }
-      
-      // If your Supabase requires email confirmation, `user` may be null - handle this case:
-      if (!user) {
-        // inform user to confirm email, and only call accept-invite after confirmation flow.
+      // No session: the invite didn't match this email, so the email has to be confirmed first
+      if (!data.session) {
         setErrorMsg("Sign-up created. Please confirm your email before the invite is accepted.");
         setLoading(false);
         return;
       }
 
-      // Ensure profile row has name and phone so join requests and team members show correct details
-      // Retry logic to ensure profile is saved even if trigger hasn't run yet
-      let profileSaved = false;
-      let retries = 0;
-      const maxRetries = 3;
-      
-      while (!profileSaved && retries < maxRetries) {
-        try {
-          const { error: profileError } = await supabase
-            .from("profiles")
-            .upsert(
-              {
-                id: user.id,
-                name: name.trim(),
-                phone: phone.trim() || null,
-                email: email.trim(),
-              },
-              { onConflict: "id" }
-            );
-
-          if (profileError) {
-            console.error(`[SignUpWithInvite] Error upserting profile (attempt ${retries + 1}/${maxRetries}):`, profileError);
-            retries++;
-            // Wait a bit before retrying (exponential backoff)
-            if (retries < maxRetries) {
-              await new Promise(resolve => setTimeout(resolve, 500 * retries));
-            }
-          } else {
-            profileSaved = true;
-            console.log("[SignUpWithInvite] Profile upserted successfully");
-          }
-        } catch (profileErr) {
-          console.error(`[SignUpWithInvite] Unexpected error upserting profile (attempt ${retries + 1}/${maxRetries}):`, profileErr);
-          retries++;
-          if (retries < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 500 * retries));
-          }
-        }
-      }
-      
-      if (!profileSaved) {
-        console.warn("[SignUpWithInvite] Failed to upsert profile after retries - trigger should handle it");
-      }
-
-      // call accept-invite server function with token and new user.id
-      if (inviteToken) {
-        if (!inviteToken.trim() || !user.id) {
-          console.warn("Skipping accept-invite after sign-up due to missing token or userId", {
-            hasToken: !!inviteToken,
-            hasUserId: !!user.id,
-          });
-        } else {
-        const { data: acceptJson, error: acceptError } = await supabase.functions.invoke("accept-invite", {
-            body: { token: inviteToken.trim(), userId: user.id },
-          });
-          const accepted = acceptJson?.ok || acceptJson?.error === "invite already accepted";
-          if (accepted) {
-            // all good - redirect
-            navigate("/dashboard");
-            return;
-          }
-          if (acceptError || !acceptJson?.ok) {
-            setErrorMsg(acceptJson?.error || "Failed to accept invite");
-            setLoading(false);
-            return;
-          }
+      // Join the organisation from the invite
+      if (inviteToken && inviteToken.trim()) {
+        const acceptJson = await acceptInvite(inviteToken.trim());
+        const accepted = acceptJson?.ok || acceptJson?.error === "invite already accepted";
+        if (!accepted) {
+          setErrorMsg(acceptJson?.error || "Failed to accept invite");
+          setLoading(false);
+          return;
         }
       }
 

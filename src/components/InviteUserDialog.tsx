@@ -9,11 +9,11 @@ import {
 } from "@/lib/validations/authSchemas";
 import { useToast } from "@/hooks/use-toast";
 import { usePlanAccess, memberLimitMessage } from "@/contexts/plan-access-context";
-import { supabase } from "@/integrations/supabase/client";
+import { createInvite } from "@/lib/api/account";
 
 interface Props {
   companyId: string;
-  accessToken: string; // pass supabase session access token
+  accessToken: string; // kept for the callers; the API call gets the current token itself
 }
 
 export const InviteUserDialog: React.FC<Props> = ({
@@ -99,14 +99,8 @@ export const InviteUserDialog: React.FC<Props> = ({
     setLoading(true);
 
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-      const url = `${supabaseUrl}/functions/v1/create-invite`;
-
-      // Use fresh session token so Edge Function always receives a valid Authorization header
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? accessToken ?? supabaseAnonKey;
-      if (!token || token === supabaseAnonKey) {
+      const result = await createInvite(companyId, normalizedEmail);
+      if (result.status === 401) {
         toast({
           title: "Authentication required",
           description: "Please sign in again and try inviting.",
@@ -115,29 +109,8 @@ export const InviteUserDialog: React.FC<Props> = ({
         setLoading(false);
         return;
       }
-
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": supabaseAnonKey,
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          companyId,
-          inviteEmail: normalizedEmail,
-          inviteName: form.values.name || undefined,
-        }),
-      });
-
-      const contentType = res.headers.get("content-type") || "";
-      let data: any;
-      if (contentType.includes("application/json")) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        data = { raw: text };
-      }
+      const res = { ok: result.ok, status: result.status };
+      const data: any = result.body;
 
       console.log("create-invite response:", res.status, data);
 

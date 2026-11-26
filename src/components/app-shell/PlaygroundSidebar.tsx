@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams, matchPath } from "react-router-dom";
 import { Award, BookOpen, ChevronDown, CreditCard, FileBarChart, FlaskConical, FolderOpen, GraduationCap, Images, LayoutDashboard, Menu, Settings, Sparkles, type LucideIcon } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { liveProjectFilter } from "@/lib/liveProjects";
+import { listProjects } from "@/lib/api/account";
 import { useProfile } from "@/hooks/useProfile";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSidebar } from "./sidebar-context";
@@ -69,13 +68,9 @@ export const PlaygroundSidebar: React.FC<{ onNavigate?: () => void; preview?: bo
 
   useEffect(() => {
     if (!profile?.company_id) return;
-    supabase
-      .from("projects")
-      .select("id, name")
-      .eq("company_id", profile.company_id)
-      .match(liveProjectFilter)
-      .order("created_at", { ascending: false })
-      .then(({ data }) => setProjects((data as Project[]) ?? []));
+    listProjects()
+      .then((data) => setProjects((data as Project[]) ?? []))
+      .catch(() => setProjects([]));
   }, [profile?.company_id, location.pathname]);
 
   useEffect(() => {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { decideJoinRequest, errorMessage, getJoinRequester, listIncomingJoinRequests } from "@/lib/api/account";
 import {
   Sheet,
   SheetContent,
@@ -39,20 +39,6 @@ const APPROVAL_ROLES = [
 ] as const;
 
 type ApprovalRole = (typeof APPROVAL_ROLES)[number]["value"];
-
-// supabase.functions.invoke hides the function's JSON error behind a generic message
-const getFunctionErrorMessage = async (
-  error: { message?: string; context?: { json?: () => Promise<{ error?: string }> } },
-  fallback: string
-): Promise<string> => {
-  try {
-    const body = await error?.context?.json?.();
-    if (body?.error) return body.error;
-  } catch {
-    // ignore - use the generic message
-  }
-  return error?.message || fallback;
-};
 
 interface JoinRequestsSidePanelProps {
   open: boolean;
@@ -96,40 +82,14 @@ export const JoinRequestsSidePanel: React.FC<JoinRequestsSidePanelProps> = ({
 
     setLoading(true);
     try {
-      // Fetch requests first - include pending, email_sent, and approved (exclude ignored)
-      const { data: requestsData, error: requestsError } = await supabase
-        .from("workspace_join_requests")
-        .select("*")
-        .eq("admin_email", adminEmail)
-        .in("status", ["pending", "email_sent", "approved"])
-        .order("created_at", { ascending: false });
+      // Requests sent to me: pending, email_sent and approved (ignored ones are left out)
+      const requestsData = await listIncomingJoinRequests();
 
-      if (requestsError) throw requestsError;
-
-      // Fetch user info for each request using RPC function (bypasses RLS)
+      // Name / email / phone of each person who asked
       const requestsWithProfiles = await Promise.all(
         (requestsData || []).map(async (request) => {
           if (!request.user_id) return { ...request, profiles: null };
-
-          // Use RPC function to get user info (bypasses RLS)
-          const { data: userInfo, error: userInfoError } = await supabase
-            .rpc("get_join_request_user_info", { request_user_id: request.user_id });
-
-          // If RPC fails, try direct query as fallback
-          let profileData = null;
-          if (userInfoError || !userInfo || userInfo.length === 0) {
-            // Fallback to direct query (may fail due to RLS, but we try)
-            const { data: fallbackData } = await supabase
-              .from("profiles")
-              .select("name, email, phone")
-              .eq("id", request.user_id)
-              .maybeSingle();
-            profileData = fallbackData;
-          } else {
-            // RPC function returns array, get first result
-            profileData = userInfo[0] || null;
-          }
-
+          const profileData = await getJoinRequester(request.id).catch(() => null);
           return {
             ...request,
             profiles: profileData,
@@ -176,15 +136,12 @@ export const JoinRequestsSidePanel: React.FC<JoinRequestsSidePanelProps> = ({
 
     setActionLoading(request.id);
     try {
-      // Use Edge Function to approve request (bypasses RLS)
-      // The Edge Function uses service role key and can update any profile
-      const { data, error } = await supabase.functions.invoke("approve-workspace-request", {
-        body: { token: request.token, role: approvalRole },
-      });
+      const result = await decideJoinRequest("approve", { id: request.id, role: approvalRole });
+      const data = result.body;
 
-      if (error) {
-        console.error("[JoinRequestsSidePanel] Approval error:", error);
-        throw new Error(await getFunctionErrorMessage(error, "Failed to approve request."));
+      if (!result.ok || data?.success === false) {
+        console.error("[JoinRequestsSidePanel] Approval error:", data);
+        throw new Error(errorMessage(data, "Failed to approve request."));
       }
 
       const name = request.profiles?.name?.trim() || request.profiles?.email || "The user";
@@ -222,14 +179,12 @@ export const JoinRequestsSidePanel: React.FC<JoinRequestsSidePanelProps> = ({
 
     setActionLoading(requestId);
     try {     
-      // Use Edge Function to reject request and send email (bypasses RLS)
-      const { data, error } = await supabase.functions.invoke("reject-workspace-request", {
-        body: { token: request.token },
-        });
+      const result = await decideJoinRequest("reject", { id: request.id });
+      const data = result.body;
 
-      if (error) {
-        console.error("[JoinRequestsSidePanel] Rejection error:", error);
-        throw error;
+      if (!result.ok || data?.success === false) {
+        console.error("[JoinRequestsSidePanel] Rejection error:", data);
+        throw new Error(errorMessage(data, "Failed to reject request."));
       }
 
       console.log("[JoinRequestsSidePanel] Request rejected successfully:", data);
