@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,10 +32,16 @@ const VerifyEmail = () => {
     rememberSignupPlan(new URLSearchParams(window.location.search).get("plan"));
   }, []);
 
+  // The token from the link, read once when the page opens
+  const [token] = useState<string | null>(() => new URLSearchParams(window.location.search).get("token"));
+  // Start-up code can run twice in development; a link works only once, so send it once
+  const verifyStarted = useRef(false);
+
   // Confirm the email with the token from the link (each link works once); this also signs them in
   useEffect(() => {
+    if (verifyStarted.current) return;
+    verifyStarted.current = true;
     const checkVerificationStatus = async () => {
-      const token = new URLSearchParams(window.location.search).get("token");
       if (!token) {
         setStatus("invalid");
         setMessage("We couldn't verify your email with this link. It may have been used already or expired.");
@@ -64,7 +70,7 @@ const VerifyEmail = () => {
     };
 
     checkVerificationStatus();
-  }, []);
+  }, [token]);
 
   // Auto-redirect for verified status only (first-time verification)
   useEffect(() => {

@@ -20,8 +20,9 @@ const ResetPassword = () => {
 
   const [loading, setLoading] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
-  // The one-time token from the emailed link (/reset-password?token=...)
-  const [resetToken, setResetToken] = useState<string | null>(null);
+  // The one-time token from the emailed link (/reset-password?token=...), read once when the page opens
+  // (start-up code can run twice in development, after the token has left the address bar)
+  const [resetToken] = useState<string | null>(() => new URLSearchParams(window.location.search).get("token"));
   const [passwordStrengthError, setPasswordStrengthError] = useState(false);
 
   // Force light theme on reset password page (no dark mode)
@@ -71,9 +72,7 @@ const ResetPassword = () => {
 
   // Ensure user reached this page from the emailed reset link
   const checkSession = async () => {
-    const token = new URLSearchParams(window.location.search).get("token");
-
-    if (!token) {
+    if (!resetToken) {
       toast({
         title: "Invalid or expired link",
         description: "Please request a new password reset email.",
@@ -84,7 +83,6 @@ const ResetPassword = () => {
     }
 
     // Keep the token in memory only, not in the address bar / browser history
-    setResetToken(token);
     window.history.replaceState(null, "", window.location.pathname);
     setSessionChecked(true);
   };
@@ -92,15 +90,15 @@ const ResetPassword = () => {
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Mark all fields as touched to show errors
-    resetPasswordForm.validateForm();
+    // Mark all fields as touched to show errors (its result is fresh; isValid is from the last render)
+    const formIsValid = resetPasswordForm.validateForm();
 
     // Check if all password requirements are met
     const passwordIsValid = isPasswordValid();
     setPasswordStrengthError(!passwordIsValid && resetPasswordForm.values.password.length > 0);
 
     // Check if form is valid (including password requirements)
-    const hasFormErrors = !resetPasswordForm.isValid || !passwordIsValid;
+    const hasFormErrors = !formIsValid || !passwordIsValid;
 
     if (hasFormErrors) {
       toast({
