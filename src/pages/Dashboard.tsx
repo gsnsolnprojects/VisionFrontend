@@ -51,7 +51,7 @@ import { apiRequest } from "@/lib/api/config";
 import { RoleBadge } from "@/components/RoleBadge";
 import { usePlanAccess, PLAN_REQUIRED_MESSAGE, BILLING_ROUTE } from "@/contexts/plan-access-context";
 import { useWorkspaceKind } from "@/lib/workspaceKind";
-import { markBillingOpenedForSignup, rememberSignupPlan, shouldOpenBillingForSignup } from "@/lib/signupPlan";
+import { getSignupPlan, markBillingOpenedForSignup, rememberSignupPlan, shouldOpenBillingForSignup } from "@/lib/signupPlan";
 import { OrganisationNameDialog } from "@/components/dashboard/OrganisationNameDialog";
 
 type ViewMode = "overview" | "projects" | "simulation" | "members";
@@ -1185,7 +1185,7 @@ const Dashboard = () => {
         />
       )}
 
-      {/* New account without an organisation: just its name, then the plan page */}
+      {/* New account without an organisation: just its name, then the Overview (or the plan page if they picked a plan) */}
       <OrganisationNameDialog
         open={showCompanyChoiceDialog}
         onOpenChange={setShowCompanyChoiceDialog}
@@ -1200,9 +1200,13 @@ const Dashboard = () => {
                 ? `Welcome to ${savedName}.`
                 : `"${typedName}" was already in use, so yours is saved as "${savedName}".`,
           });
-          // Then straight to the plan page (the sign-up link's last step, and needed before any work)
-          markBillingOpenedForSignup();
-          navigate(BILLING_ROUTE, { replace: true });
+          // Picked a plan on the way in (sign-up link /start or a landing-page plan button): that plan's
+          // page is the last step. Everyone else stays on the Overview; the plan page opens when they
+          // try something that needs a plan.
+          if (getSignupPlan()) {
+            markBillingOpenedForSignup();
+            navigate(BILLING_ROUTE, { replace: true });
+          }
         }}
       />
 

@@ -99,8 +99,13 @@ function scheduleRefresh() {
   }, ms);
 }
 
+// Goes up every time the session is replaced, so a slow refresh can tell that a newer sign-in
+// (login, email link, ...) happened while it was waiting and must not overwrite it
+let sessionVersion = 0;
+
 function setSession(next: Session | null, event: AuthChangeEvent | null, broadcast = false) {
   session = next;
+  sessionVersion += 1;
   scheduleRefresh();
   if (event) emit(event);
   if (broadcast && channel) channel.postMessage({ type: event });
@@ -110,7 +115,10 @@ function setSession(next: Session | null, event: AuthChangeEvent | null, broadca
 function refreshNow(event: AuthChangeEvent | null = "TOKEN_REFRESHED"): Promise<Session | null> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
+      const startedAt = sessionVersion;
       const r = await post("refresh");
+      // Someone signed in (or out) while this refresh was on its way: their result wins
+      if (sessionVersion !== startedAt) return session;
       if (r.status === 200 && r.body?.session) {
         setSession(r.body.session, event);
         return session;
