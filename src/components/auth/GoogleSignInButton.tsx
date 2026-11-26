@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/auth/authClient";
@@ -11,6 +11,14 @@ import { cn } from "@/lib/utils";
  */
 export const GoogleSignInButton: React.FC<{ onError: (message: string) => void; className?: string }> = ({ onError, className }) => {
   const [redirecting, setRedirecting] = useState(false);
+
+  // Back from Google's page: the browser restores this page as it was left (spinner and all),
+  // so make the button usable again
+  useEffect(() => {
+    const onPageShow = () => setRedirecting(false);
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, []);
 
   const signIn = async () => {
     setRedirecting(true);
